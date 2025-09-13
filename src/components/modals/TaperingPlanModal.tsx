@@ -3,7 +3,7 @@ import { X, AlertTriangle, Calendar, TrendingDown, CheckCircle2, Clock, Heart, S
 import { generateTaperingPlan, getMedicationByName, generateEnhancedTaperingPlan, generateIntelligentTaperingRecommendation } from '@/services/medicationDatabase';
 import { useMedicationStore } from '@/store';
 import { Medication } from '@/types';
-import { formatDate, calculateOptimalPillReduction, formatPillCountsForTapering, calculatePillCountsForDose } from '@/utils/helpers';
+import { formatDate, calculateOptimalPillReduction, formatPillCountsForTapering, calculatePillCountsForDose, generateMultiplePillTaperingSteps } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 
 interface TaperingPlanModalProps {
@@ -28,17 +28,30 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
 
   React.useEffect(() => {
     if (isOpen && medication) {
-      const currentDose = parseFloat(medication.dosage);
+      // Get current dose - handle multiple pills vs single dosage
+      let currentDose = parseFloat(medication.dosage);
+      let currentUnit = medication.unit;
+      
+      if (medication.useMultiplePills && medication.doseConfigurations) {
+        const defaultConfig = medication.doseConfigurations.find(
+          config => config.id === medication.defaultDoseConfigurationId
+        ) || medication.doseConfigurations[0];
+        
+        if (defaultConfig) {
+          currentDose = defaultConfig.totalDoseAmount;
+          currentUnit = defaultConfig.totalDoseUnit;
+        }
+      }
       
       // Generate intelligent recommendation
       const intelligent = generateIntelligentTaperingRecommendation(
-        medication.name, currentDose, medication.unit, medication
+        medication.name, currentDose, currentUnit, medication
       );
       setIntelligentRecommendation(intelligent);
       
       // Generate enhanced plan with intelligent recommendations
       const plan = generateEnhancedTaperingPlan(
-        medication.name, currentDose, medication.unit, medication
+        medication.name, currentDose, currentUnit, medication
       );
       setTaperingPlan(plan);
       
@@ -52,13 +65,26 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
   }, [isOpen, medication]);
 
   const generateCustomPlan = () => {
-    const currentDose = parseFloat(medication.dosage);
+    // Get current dose - handle multiple pills vs single dosage
+    let currentDose = parseFloat(medication.dosage);
+    let currentUnit = medication.unit;
+    
+    if (medication.useMultiplePills && medication.doseConfigurations) {
+      const defaultConfig = medication.doseConfigurations.find(
+        config => config.id === medication.defaultDoseConfigurationId
+      ) || medication.doseConfigurations[0];
+      
+      if (defaultConfig) {
+        currentDose = defaultConfig.totalDoseAmount;
+        currentUnit = defaultConfig.totalDoseUnit;
+      }
+    }
     
     // Use enhanced plan generation with custom options
     const enhancedPlan = generateEnhancedTaperingPlan(
       medication.name, 
       currentDose, 
-      medication.unit, 
+      currentUnit, 
       medication,
       {
         preferredMethod: customMethod,
@@ -487,6 +513,19 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                       </div>
                     </div>
 
+                    {/* Multiple Pill Instructions */}
+                    {medication.useMultiplePills && medication.pillConfigurations && (
+                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h5 className="text-sm font-medium text-blue-800 mb-2">📋 Multiple Pill Medication Guide</h5>
+                        <div className="text-xs text-blue-700 space-y-1">
+                          <p>• This medication requires multiple pills per dose</p>
+                          <p>• Follow the exact pill combinations shown for each step</p>
+                          <p>• Pills can be split in half if needed for precise dosing</p>
+                          <p>• Keep track of your pill inventory and reorder as needed</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-3 max-h-60 overflow-y-auto">
                       {plan.steps.map((step: any, index: number) => (
                         <div key={index} className="bg-white p-3 rounded border border-gray-200">
@@ -513,8 +552,17 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                                 }
                               </p>
                               <p className="text-xs text-gray-500">
-                                {Math.round((step.dose / parseFloat(medication.dosage)) * 100)}% of original
+                                Total: {step.dose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}
                               </p>
+                              {medication.useMultiplePills && (
+                                <p className="text-xs text-blue-600 mt-1">
+                                  {(() => {
+                                    const pillCounts = calculatePillCountsForDose(step.dose, medication);
+                                    const totalPills = Object.values(pillCounts).reduce((sum, count) => sum + count, 0);
+                                    return `${totalPills} pill${totalPills !== 1 ? 's' : ''} total`;
+                                  })()}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>

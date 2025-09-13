@@ -11,6 +11,7 @@ import { Reminders } from '@/pages/Reminders';
 import { Reports } from '@/pages/Reports';
 import { HealthProfile } from '@/pages/HealthProfile';
 import { Wiki } from '@/pages/Wiki';
+import { CyclicDosing } from '@/pages/CyclicDosing';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
 
@@ -40,6 +41,7 @@ function App() {
           <Route path="/reports" element={<Reports />} />
           <Route path="/profile" element={<HealthProfile />} />
           <Route path="/wiki" element={<Wiki />} />
+          <Route path="/cyclic-dosing" element={<CyclicDosing />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Layout>

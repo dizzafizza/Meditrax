@@ -70,6 +70,7 @@ For first-time users:
 2. Set up reminders for consistent tracking
 3. Explore the dashboard to monitor your adherence
 4. Use the calendar view to see your medication schedule
+5. Explore advanced features like Cyclic Dosing for complex schedules
 
 ### Building for Production
 

@@ -38,10 +38,12 @@ import {
   generateCSV,
   formatDate,
   formatTime,
-  calculateTaperingDose
+  calculateTaperingDose,
+  calculatePillCountsForDose
 } from '@/utils/helpers';
 import { DependencePreventionService } from '@/services/dependencePreventionService';
 import { suggestPauseDuration } from '@/services/medicationDatabase';
+import { PsychologicalSafetyService } from '@/services/psychologicalSafetyService';
 
 interface MedicationStore {
   // State
@@ -59,6 +61,7 @@ interface MedicationStore {
   psychologicalInterventions: PsychologicalIntervention[];
   adherencePatterns: AdherencePattern[];
   dependencyRiskAssessments: DependencyRiskAssessment[];
+  psychologicalSafetyAlerts: PsychologicalSafetyAlert[];
 
   // Medication actions
   addMedication: (medication: Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>) => void;
@@ -97,6 +100,12 @@ interface MedicationStore {
   // Profile actions
   updateProfile: (updates: Partial<UserProfile>) => void;
   createProfile: (profile: Omit<UserProfile, 'id' | 'createdAt' | 'updatedAt'>) => void;
+
+  // Enhanced Psychological Safety Alerts
+  generatePsychologicalSafetyAlerts: (medicationId?: string) => PsychologicalSafetyAlert[];
+  acknowledgePsychologicalAlert: (alertId: string, response?: 'helpful' | 'not-helpful' | 'dismissed') => void;
+  getPsychologicalSafetyAlertsForMedication: (medicationId: string) => PsychologicalSafetyAlert[];
+  getActivePsychologicalSafetyAlerts: () => PsychologicalSafetyAlert[];
 
   // Analytics and computed values
   getMedicationAdherence: (medicationId: string, days: number) => number;
@@ -212,6 +221,7 @@ export const useMedicationStore = create<MedicationStore>()(
       psychologicalInterventions: [],
       adherencePatterns: [],
       dependencyRiskAssessments: [],
+      psychologicalSafetyAlerts: [],
 
       // Medication actions
       addMedication: (medicationData) => {
@@ -283,6 +293,13 @@ export const useMedicationStore = create<MedicationStore>()(
         set((state) => ({
           logs: [...state.logs, log],
         }));
+
+        // Update inventory for single dose medications (legacy system)
+        if (!medication.useMultiplePills && medication.pillsRemaining !== undefined) {
+          get().updateMedication(medicationId, {
+            pillsRemaining: Math.max(0, medication.pillsRemaining - 1)
+          });
+        }
 
         // Update pill inventory for multiple pill medications
         if (medication.useMultiplePills && medication.pillInventory && medication.pillInventory.length > 0) {
@@ -414,6 +431,13 @@ export const useMedicationStore = create<MedicationStore>()(
 
       // Analytics and computed values
       getMedicationAdherence: (medicationId, days) => {
+        const medication = get().medications.find((med) => med.id === medicationId);
+        
+        // Don't calculate adherence for as-needed medications
+        if (medication?.frequency === 'as-needed') {
+          return 100; // As-needed medications are always "100% adherent" when taken as needed
+        }
+
         const logs = get().logs.filter((log) => {
           const logDate = new Date(log.timestamp);
           const daysDiff = Math.floor((Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -965,6 +989,7 @@ export const useMedicationStore = create<MedicationStore>()(
         if (!medication) return { dose: 0, phase: 'maintenance' };
         
         let baseDose = parseFloat(medication.dosage);
+        let pillBreakdown: Record<string, number> = {};
         
         // Handle multiple pills - use total dose from default configuration
         if (medication.useMultiplePills && medication.doseConfigurations) {
@@ -979,7 +1004,19 @@ export const useMedicationStore = create<MedicationStore>()(
         
         // Apply tapering if active
         if (medication.tapering?.isActive) {
-          baseDose = calculateTaperingDose(baseDose, medication.tapering, new Date(), medication);
+          const taperedDose = calculateTaperingDose(baseDose, medication.tapering, new Date(), medication);
+          
+          // For multiple pills, calculate the pill breakdown
+          if (medication.useMultiplePills && medication.pillConfigurations) {
+            pillBreakdown = calculatePillCountsForDose(taperedDose, medication);
+            // Recalculate actual dose based on available pill combinations
+            baseDose = Object.entries(pillBreakdown).reduce((total, [pillId, count]) => {
+              const pillConfig = medication.pillConfigurations?.find(config => config.id === pillId);
+              return total + (pillConfig ? pillConfig.strength * count : 0);
+            }, 0);
+          } else {
+            baseDose = taperedDose;
+          }
         }
         
         // Apply cyclic dosing if active
@@ -988,7 +1025,13 @@ export const useMedicationStore = create<MedicationStore>()(
           medication.cyclicDosing?.id === p.id
         );
         
-        return calculateCyclicDose(baseDose, pattern, new Date());
+        const cyclicResult = calculateCyclicDose(baseDose, pattern, new Date());
+        
+        // Return enhanced result with pill breakdown for multiple pill medications
+        return {
+          ...cyclicResult,
+          pillBreakdown: medication.useMultiplePills ? pillBreakdown : undefined
+        };
       },
 
       // Tapering schedules
@@ -1152,6 +1195,56 @@ export const useMedicationStore = create<MedicationStore>()(
         return get().medications.filter(med => 
           med.riskLevel === 'high' || med.riskLevel === 'moderate'
         );
+      },
+
+      // Enhanced Psychological Safety Alerts
+      generatePsychologicalSafetyAlerts: (medicationId?: string) => {
+        const { medications, logs } = get();
+        const targetMedications = medicationId 
+          ? medications.filter(med => med.id === medicationId)
+          : medications.filter(med => med.isActive);
+
+        const allAlerts: PsychologicalSafetyAlert[] = [];
+
+        targetMedications.forEach(medication => {
+          const result = PsychologicalSafetyService.generatePsychologicalSafetyAlerts(
+            medication, 
+            logs, 
+            medications
+          );
+          allAlerts.push(...result.alerts);
+        });
+
+        // Deduplicate alerts by medicationId and type
+        const uniqueAlerts = allAlerts.filter((alert, index, arr) => 
+          arr.findIndex(a => a.medicationId === alert.medicationId && a.type === alert.type) === index
+        );
+
+        set((state) => ({
+          psychologicalSafetyAlerts: uniqueAlerts
+        }));
+
+        return allAlerts;
+      },
+
+      acknowledgePsychologicalAlert: (alertId: string, response?: 'helpful' | 'not-helpful' | 'dismissed') => {
+        set((state) => ({
+          psychologicalSafetyAlerts: state.psychologicalSafetyAlerts.map(alert =>
+            alert.id === alertId 
+              ? { ...alert, acknowledged: true, userResponse: response }
+              : alert
+          )
+        }));
+      },
+
+      getPsychologicalSafetyAlertsForMedication: (medicationId: string) => {
+        return get().psychologicalSafetyAlerts.filter(alert => 
+          alert.medicationId === medicationId && !alert.acknowledged
+        );
+      },
+
+      getActivePsychologicalSafetyAlerts: () => {
+        return get().psychologicalSafetyAlerts.filter(alert => !alert.acknowledged);
       },
 
       // Behavioral analysis

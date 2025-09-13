@@ -687,13 +687,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Kratom",
     brandNames: ["Mitragyna speciosa"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "opioid",
     riskLevel: "high",
-    commonDosages: ["1", "2", "3", "4", "5", "6", "7", "8"],
+    commonDosages: ["1", "2", "4", "7", "12"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki standards)
     commonUnits: ["g"],
     commonFrequencies: ["twice-daily", "three-times-daily", "as-needed"],
-    description: "Plant-based substance with opioid-like effects; legal status varies by location",
+    description: "Tropical tree leaf with mu-opioid receptor activity; legal status varies by location. Duration: 2-4 hours onset, 3-6 hours total",
     commonSideEffects: ["nausea", "constipation", "dizziness", "drowsiness", "dependence", "tolerance"],
     commonInteractions: ["opioids", "alcohol", "benzodiazepines", "MAO inhibitors"],
     withdrawalRisk: "high",
@@ -707,9 +707,11 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["withdrawal avoidance", "pain management", "mood regulation"],
       motivationalMessages: [
-        "Managing kratom use responsibly helps prevent dependence",
-        "Gradual reduction is safer than abrupt cessation",
-        "Consider discussing alternatives with a healthcare provider"
+        "Start with 1-2g to assess tolerance - kratom potency varies greatly",
+        "Rotate strains to prevent tolerance buildup",
+        "Take on empty stomach for better effects, with food to reduce nausea",
+        "Stay hydrated - kratom can be dehydrating",
+        "Take tolerance breaks every few weeks to maintain effectiveness"
       ],
       riskTriggers: ["dose escalation", "multiple daily doses", "using for mood regulation"]
     }
@@ -867,13 +869,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   // MORE PLANT-BASED DRUGS AND NOOTROPICS
   {
     name: "Phenibut",
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "benzodiazepine",
     riskLevel: "high",
-    commonDosages: ["250", "500", "750", "1000"],
+    commonDosages: ["250", "500", "1000", "1500", "2500"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
     commonUnits: ["mg"],
     commonFrequencies: ["once-daily", "twice-daily"],
-    description: "GABA-B agonist with anxiolytic and nootropic effects; high addiction potential",
+    description: "GABA-B agonist with anxiolytic effects; extremely high addiction potential. Duration: 2-4 hours onset, 8-24 hours total",
     commonSideEffects: ["sedation", "tolerance", "dependence", "withdrawal"],
     withdrawalRisk: "severe",
     taperingRequired: true,
@@ -886,8 +888,11 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["anxiety management", "withdrawal fear", "tolerance issues"],
       motivationalMessages: [
-        "Tapering phenibut safely requires patience and medical support",
-        "Gradual reduction prevents dangerous withdrawal symptoms"
+        "Use only 1-2x per week maximum to prevent physical dependence",
+        "Start with 250-500mg - effects can take 2-4 hours to appear",
+        "Never combine with alcohol or other GABAergic substances",
+        "Take on empty stomach for consistent effects",
+        "If daily use, seek medical help immediately for supervised withdrawal"
       ],
       riskTriggers: ["dose escalation", "daily use", "tolerance development"]
     }
@@ -1388,7 +1393,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Alcohol",
     brandNames: ["Ethanol", "Beer", "Wine", "Spirits"],
-    category: "herbal", // Using herbal category for recreational substances
+    category: "recreational",
     dependencyRiskCategory: "alcohol",
     riskLevel: "high",
     commonDosages: ["1", "2", "3", "4", "5"], // Standard drinks
@@ -1418,11 +1423,11 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Cannabis",
     brandNames: ["Marijuana", "THC", "CBD", "Weed"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "low-risk",
     riskLevel: "low",
-    commonDosages: ["2.5", "5", "10", "25", "50"],
-    commonUnits: ["mg THC"],
+    commonDosages: ["0.25", "0.5", "1", "2.5", "5", "10", "25", "50"],
+    commonUnits: ["mg THC", "mg CBD", "grams", "ounces"],
     commonFrequencies: ["as-needed", "daily", "weekly"],
     description: "Cannabis with THC and CBD; legal status varies by location",
     commonSideEffects: ["euphoria", "dry mouth", "red eyes", "increased appetite", "anxiety", "paranoia"],
@@ -1440,12 +1445,64 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     }
   },
   {
+    name: "Psilocybin",
+    brandNames: ["Magic Mushrooms", "Psilocybe", "Shrooms"],
+    category: "recreational",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["0.1", "0.25", "1", "2.5", "5"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki standards)
+    commonUnits: ["grams"],
+    commonFrequencies: ["as-needed"],
+    description: "Psychedelic compound found in certain mushrooms; illegal in most jurisdictions",
+    commonSideEffects: ["visual/auditory hallucinations", "altered perception", "nausea", "anxiety", "confusion"],
+    commonInteractions: ["MAOIs", "lithium", "antidepressants"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["set and setting", "experience level", "mental state"],
+      motivationalMessages: [
+        "Start with 0.25g or less to assess sensitivity",
+        "Set: Good mindset. Setting: Safe environment with trusted people",
+        "Have a sober trip sitter for doses >1g",
+        "Wait 2+ weeks between sessions for tolerance reset",
+        "Avoid if you have mental health issues or are on SSRIs"
+      ],
+      riskTriggers: ["frequent use", "high doses", "unsafe environments", "mental health issues"]
+    }
+  },
+  {
+    name: "LSD",
+    brandNames: ["Acid", "Lucy", "L"],
+    category: "recreational",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["15", "50", "100", "200", "400"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki standards)
+    commonUnits: ["mcg"],
+    commonFrequencies: ["as-needed"],
+    description: "Synthetic psychedelic; illegal in most jurisdictions",
+    commonSideEffects: ["visual/auditory hallucinations", "altered perception", "increased heart rate", "anxiety"],
+    commonInteractions: ["MAOIs", "lithium", "antidepressants"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["set and setting", "experience level", "mental state"],
+      motivationalMessages: [
+        "Always test with Ehrlich reagent - never take untested tabs",
+        "Start with 50mcg or less for first time",
+        "Clear your schedule for 12+ hours minimum",
+        "Wait 2+ weeks between sessions for tolerance reset",
+        "Avoid if you're on psychiatric medications"
+      ],
+      riskTriggers: ["frequent use", "unknown dosage", "unsafe environments", "mental health issues"]
+    }
+  },
+  {
     name: "MDMA",
     brandNames: ["Ecstasy", "Molly", "E"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "stimulant",
     riskLevel: "high",
-    commonDosages: ["75", "100", "125", "150"],
+    commonDosages: ["40", "75", "125", "180", "300"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki standards)
     commonUnits: ["mg"],
     commonFrequencies: ["as-needed"],
     description: "Empathogenic stimulant; illegal in most jurisdictions",
@@ -1456,10 +1513,11 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["therapeutic contexts", "social events", "emotional processing"],
       motivationalMessages: [
-        "Test your substances - adulterants like fentanyl can be fatal",
-        "Stay hydrated but don't overdrink water - electrolyte balance is key",
-        "Use only in safe environments with trusted people",
-        "Wait 3+ months between uses to prevent tolerance and neurotoxicity"
+        "Test with Marquis, Mecke, and Simon's reagents",
+        "Take 3+ month breaks to prevent neurotoxicity",
+        "Stay cool and hydrated - sip water, don't chug",
+        "Pre-load: Vitamin C, Magnesium. Post-load: 5-HTP (after 24h)",
+        "Avoid redosing - it increases neurotoxicity without enhancing effects"
       ],
       riskTriggers: ["frequent use", "high doses", "hot environments", "polydrug use"]
     }
@@ -1467,13 +1525,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Cocaine",
     brandNames: ["Coke", "Blow", "Snow"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "stimulant",
     riskLevel: "high",
-    commonDosages: ["20", "50", "100"],
+    commonDosages: ["10", "30", "60", "90", "150"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
     commonUnits: ["mg"],
     commonFrequencies: ["as-needed"],
-    description: "Powerful stimulant with high addiction potential; illegal",
+    description: "Powerful stimulant with dopamine reuptake inhibition; illegal in most countries. Duration: 15-30min onset, 1-2 hours total",
     commonSideEffects: ["euphoria", "increased energy", "paranoia", "heart palpitations", "nose damage"],
     commonInteractions: ["alcohol", "MAOIs", "heart medications", "blood pressure medications"],
     withdrawalRisk: "moderate",
@@ -1481,10 +1539,12 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["energy boost", "confidence", "social situations"],
       motivationalMessages: [
-        "Test for fentanyl contamination - use fentanyl test strips",
-        "Avoid mixing with alcohol - creates toxic cocaethylene",
-        "Take breaks between lines to assess effects",
-        "Have a trusted person monitor you for cardiac issues"
+        "Test every batch with fentanyl strips - contamination is common",
+        "Never mix with alcohol - creates cardiotoxic cocaethylene",
+        "Start with small bumps (10-20mg) and wait 30min between doses",
+        "Have someone monitor you for cardiac symptoms",
+        "Avoid daily use - highly psychologically addictive",
+        "Use nasal spray/saline to reduce nasal damage"
       ],
       riskTriggers: ["binge use", "mixing with depressants", "frequent use", "injection use"]
     }
@@ -1492,7 +1552,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "LSD",
     brandNames: ["Acid", "Lucy", "Tabs"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "low-risk",
     riskLevel: "moderate",
     commonDosages: ["25", "50", "100", "200"],
@@ -1542,13 +1602,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Ketamine",
     brandNames: ["K", "Special K", "Ket"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "dissociative",
     riskLevel: "high",
-    commonDosages: ["10", "25", "50", "100"],
+    commonDosages: ["15", "30", "75", "150", "300"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
     commonUnits: ["mg"],
     commonFrequencies: ["as-needed"],
-    description: "Dissociative anesthetic with therapeutic and recreational uses",
+    description: "NMDA receptor antagonist dissociative; medical anesthetic with recreational use. Duration: 15-30min onset, 1-3 hours total",
     commonSideEffects: ["dissociation", "nausea", "confusion", "bladder damage", "tolerance"],
     commonInteractions: ["alcohol", "benzodiazepines", "opioids", "stimulants"],
     withdrawalRisk: "moderate",
@@ -1562,10 +1622,12 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["depression treatment", "dissociative experiences", "pain management"],
       motivationalMessages: [
-        "Use only pharmaceutical ketamine if possible",
-        "Avoid frequent use to prevent bladder damage and tolerance",
-        "Never use alone - have someone present for safety",
-        "Consider therapeutic ketamine programs for depression"
+        "Use pharmaceutical grade when possible - street ketamine often adulterated",
+        "Start with 15-30mg to assess sensitivity",
+        "Never use alone - dissociation makes you vulnerable",
+        "Limit to once per week maximum to prevent bladder damage",
+        "Test with reagents - 2F-DCK and other analogs are common",
+        "Stay hydrated but avoid excessive water intake"
       ],
       riskTriggers: ["daily use", "high doses", "bladder pain", "tolerance escalation"]
     }
@@ -1573,13 +1635,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "DMT",
     brandNames: ["Dimethyltryptamine", "Deems", "The Spirit Molecule"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "low-risk",
     riskLevel: "moderate",
-    commonDosages: ["15", "25", "40", "60"],
+    commonDosages: ["10", "20", "30", "50", "80"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
     commonUnits: ["mg"],
     commonFrequencies: ["as-needed"],
-    description: "Short-acting psychedelic compound; illegal in most jurisdictions",
+    description: "Endogenous tryptamine psychedelic; short duration breakthrough experiences. Duration: Instant onset, 5-15min total (smoked)",
     commonSideEffects: ["intense hallucinations", "out-of-body experiences", "anxiety", "rapid heart rate"],
     commonInteractions: ["MAOIs", "SSRIs", "heart medications"],
     withdrawalRisk: "none",
@@ -1598,13 +1660,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Amphetamine",
     brandNames: ["Speed", "Amp", "Dextroamphetamine"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "stimulant",
     riskLevel: "high",
-    commonDosages: ["5", "10", "20", "30"],
+    commonDosages: ["5", "15", "30", "50", "80"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
     commonUnits: ["mg"],
-    commonFrequencies: ["as-needed", "daily"],
-    description: "Stimulant with high addiction potential; prescription versions available",
+    commonFrequencies: ["as-needed"],
+    description: "CNS stimulant with dopamine/norepinephrine activity; illegal when unprescribed. Duration: 30-60min onset, 4-8 hours total",
     commonSideEffects: ["increased energy", "decreased appetite", "insomnia", "anxiety", "paranoia"],
     commonInteractions: ["MAOIs", "heart medications", "blood pressure medications"],
     withdrawalRisk: "moderate",
@@ -1612,10 +1674,12 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["productivity", "weight loss", "energy boost"],
       motivationalMessages: [
-        "Test for adulterants and fentanyl contamination",
-        "Stay hydrated and maintain nutrition during use",
-        "Avoid binge use - sleep deprivation increases risks",
-        "Monitor heart rate and blood pressure"
+        "Test substance purity - street speed often contains caffeine or worse",
+        "Start with 10-15mg oral to assess tolerance",
+        "Stay hydrated and force yourself to eat regularly",
+        "Avoid redosing - comedown leads to compulsive redosing cycle",
+        "Monitor heart rate and blood pressure",
+        "Take magnesium to reduce jaw clenching and muscle tension"
       ],
       riskTriggers: ["binge use", "injection use", "sleep deprivation", "paranoid thoughts"]
     }
@@ -1623,13 +1687,13 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
   {
     name: "Methamphetamine",
     brandNames: ["Crystal Meth", "Ice", "Glass"],
-    category: "herbal",
+    category: "recreational",
     dependencyRiskCategory: "stimulant",
     riskLevel: "high",
-    commonDosages: ["5", "10", "25", "50"],
+    commonDosages: ["5", "15", "30", "50", "100"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
     commonUnits: ["mg"],
     commonFrequencies: ["as-needed"],
-    description: "Highly addictive stimulant with severe health risks; illegal",
+    description: "Highly neurotoxic amphetamine with extreme addiction potential; illegal. Duration: 30min-2h onset, 8-24 hours total",
     commonSideEffects: ["extreme euphoria", "hyperfocus", "paranoia", "psychosis", "dental problems"],
     commonInteractions: ["all medications", "MAOIs", "heart medications"],
     withdrawalRisk: "severe",
@@ -1643,12 +1707,128 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     psychologicalSupport: {
       adherenceFactors: ["extreme stimulation", "productivity", "euphoria"],
       motivationalMessages: [
-        "Seek professional help - meth addiction requires medical support",
-        "Avoid injection use to prevent infectious diseases",
-        "Maintain dental hygiene - meth severely damages teeth",
-        "Monitor for psychotic symptoms and paranoid thoughts"
+        "Seek immediate professional help - meth is extremely addictive",
+        "Never inject - extreme risk of HIV, hepatitis, abscesses",
+        "Start extremely low (5mg) - purity varies drastically",
+        "Maintain oral hygiene obsessively - meth mouth is severe",
+        "Monitor for psychosis, paranoia, hyperthermia",
+        "Stay hydrated and force yourself to eat regularly"
       ],
       riskTriggers: ["injection use", "binge use", "psychotic symptoms", "dental problems"]
+    }
+  },
+  {
+    name: "2C-B",
+    brandNames: ["Nexus", "2C-B-FLY", "Bees"],
+    category: "recreational",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["5", "12", "18", "25", "35"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Phenethylamine psychedelic with visual and empathogenic effects. Duration: 30-90min onset, 4-8 hours total",
+    commonSideEffects: ["visual hallucinations", "enhanced emotions", "nausea", "body load", "jaw tension"],
+    commonInteractions: ["MAOIs", "lithium", "antidepressants"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["visual experiences", "emotional enhancement", "creativity"],
+      motivationalMessages: [
+        "Test with reagents - 25x-NBOMe series is dangerous and common adulterant",
+        "Start with 10-12mg for first time - dose-response curve is steep",
+        "Take on empty stomach, eat small snack if nausea occurs",
+        "Set timer - easy to lose track of time during experience",
+        "Stay hydrated but avoid excessive water intake",
+        "Wait 2+ weeks between uses for tolerance reset"
+      ],
+      riskTriggers: ["frequent use", "high doses", "unknown substance", "mental health issues"]
+    }
+  },
+  {
+    name: "4-AcO-DMT",
+    brandNames: ["Psilacetin", "O-Acetylpsilocin"],
+    category: "recreational",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["5", "10", "20", "35", "50"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Synthetic psilocin analog; very similar effects to psilocybin mushrooms. Duration: 30-90min onset, 4-8 hours total",
+    commonSideEffects: ["visual hallucinations", "altered perception", "nausea", "anxiety", "confusion"],
+    commonInteractions: ["MAOIs", "lithium", "antidepressants"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["spiritual exploration", "therapeutic experiences", "introspection"],
+      motivationalMessages: [
+        "Start with 10-15mg - more potent than expected",
+        "Prepare for nausea during come-up - ginger can help",
+        "Use accurate milligram scale - small dose differences matter",
+        "Have trip sitter for doses above 20mg",
+        "Clear schedule for 6-8 hours minimum",
+        "Avoid if you have mental health conditions or take SSRIs"
+      ],
+      riskTriggers: ["frequent use", "high doses", "unsafe environments", "mental health issues"]
+    }
+  },
+  {
+    name: "GHB",
+    brandNames: ["Gamma-Hydroxybutyrate", "G", "Liquid Ecstasy"],
+    category: "recreational",
+    dependencyRiskCategory: "benzodiazepine",
+    riskLevel: "high",
+    commonDosages: ["0.5", "1", "2", "3", "4"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
+    commonUnits: ["g"],
+    commonFrequencies: ["as-needed"],
+    description: "GABA-B agonist depressant; extremely dangerous dose-response curve. Duration: 15-45min onset, 2-4 hours total",
+    commonSideEffects: ["euphoria", "sedation", "dizziness", "nausea", "unconsciousness"],
+    commonInteractions: ["alcohol", "benzodiazepines", "opioids", "all depressants"],
+    withdrawalRisk: "severe",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "hyperbolic",
+      durationWeeks: 6,
+      reductionPercent: 10,
+      notes: "GHB withdrawal can be life-threatening with seizures. Medical supervision absolutely essential. Never stop abruptly."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["euphoria", "social disinhibition", "sexual enhancement"],
+      motivationalMessages: [
+        "NEVER mix with alcohol or other depressants - can be fatal",
+        "Use oral syringe for accurate dosing - overdose margin is small",
+        "Start with 0.5-1g maximum and wait 2+ hours before redosing",
+        "Have sober person present - overdose causes unconsciousness",
+        "Keep exact timing log - easy to forget previous doses",
+        "Seek immediate medical help if daily use develops"
+      ],
+      riskTriggers: ["alcohol combination", "frequent redosing", "daily use", "unknown concentration"]
+    }
+  },
+  {
+    name: "Nitrous Oxide",
+    brandNames: ["N2O", "Laughing Gas", "Whippits", "Nangs"],
+    category: "recreational",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["1", "2", "4", "8", "12"], // cartridges - psychonaut wiki standard
+    commonUnits: ["cartridges"],
+    commonFrequencies: ["as-needed"],
+    description: "NMDA receptor antagonist; short-acting dissociative gas. Duration: Immediate onset, 1-5 minutes total",
+    commonSideEffects: ["euphoria", "dissociation", "vitamin B12 depletion", "dizziness", "hypoxia"],
+    commonInteractions: ["oxygen deprivation risk with all substances"],
+    withdrawalRisk: "low",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["short duration", "ease of access", "social use"],
+      motivationalMessages: [
+        "Always use with adequate oxygen - hypoxia can cause brain damage",
+        "Sit down before use - falling is common cause of injury",
+        "Take vitamin B12 supplements if using regularly",
+        "Use balloon or dispenser - never inhale directly from cartridge",
+        "Wait several minutes between uses to reoxygenate",
+        "Avoid daily use - B12 depletion causes nerve damage"
+      ],
+      riskTriggers: ["daily use", "direct inhalation", "standing use", "oxygen deprivation"]
     }
   },
 

@@ -28,6 +28,7 @@ export function PersonalMedicationDashboard() {
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [pharmacies, setPharmacies] = useState<PharmacyInfo[]>([]);
   const [trackingSettings, setTrackingSettings] = useState<PersonalMedicationTracking[]>([]);
+  const [validPredictions, setValidPredictions] = useState<any[]>([]);
 
   useEffect(() => {
     // Load saved configuration
@@ -67,6 +68,7 @@ export function PersonalMedicationDashboard() {
           message: 'Enable "Multiple Pills" on your medications to start tracking inventory.',
           action: 'Go to Medications page'
         }]);
+        setValidPredictions([]);
         setIsLoading(false);
         return;
       }
@@ -105,14 +107,16 @@ export function PersonalMedicationDashboard() {
       });
 
       // Only show refill schedule if there are actual predictions
-      const validPredictions = analysis.refillPredictions.filter(pred => 
+      const predictions = analysis.refillPredictions.filter(pred => 
         pred.confidence !== 'low' && pred.currentPillCount > 0
       );
+      
+      setValidPredictions(predictions);
 
-      if (validPredictions.length > 0) {
+      if (predictions.length > 0) {
         const refillSchedule = PersonalRefillService.generatePersonalRefillSchedule(
           trackableMedications,
-          validPredictions
+          predictions
         );
 
         // Add urgent refills as insights
@@ -167,6 +171,7 @@ export function PersonalMedicationDashboard() {
         title: 'Analysis Error',
         message: 'Unable to analyze inventory status. Please try again.'
       }]);
+      setValidPredictions([]);
     } finally {
       setIsLoading(false);
     }
@@ -191,8 +196,6 @@ export function PersonalMedicationDashboard() {
   };
 
   const handleInsightAction = (insight: InventoryInsight) => {
-    console.log('🔄 Handling insight action:', insight);
-    
     // Handle different insight actions
     if (insight.action?.includes('Go to Medications')) {
       window.location.href = '/medications';
@@ -371,13 +374,34 @@ export function PersonalMedicationDashboard() {
         </div>
 
         <div className="p-6">
-          <div className="text-center py-8">
-            <Calendar className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Refill calendar coming soon</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              We're building a calendar to help you plan your refills ahead of time.
-            </p>
-          </div>
+          {validPredictions.length > 0 ? (
+            <div className="space-y-4">
+              {validPredictions.slice(0, 5).map((prediction, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">{prediction.medicationName}</h4>
+                    <p className="text-sm text-gray-600">
+                      Expected empty: {prediction.estimatedEmptyDate.toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-gray-900">
+                      {Math.ceil((prediction.estimatedEmptyDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days
+                    </div>
+                    <div className="text-xs text-gray-500">remaining</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No refill predictions available</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Add medications with inventory tracking to see refill predictions.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

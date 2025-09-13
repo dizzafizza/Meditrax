@@ -36,6 +36,14 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
   const currentDose = getCurrentDose(medication.id);
   const displayDose = currentDose.phase !== 'maintenance' ? currentDose.dose : parseFloat(medication.dosage);
   
+  // For multiple pills with tapering, use the current tapered dose
+  const getDisplayDoseForMultiplePills = () => {
+    if (medication.useMultiplePills && medication.tapering?.isActive) {
+      return currentDose.dose;
+    }
+    return displayDose;
+  };
+  
   // Dose validation and psychological safety checks
   const validateCustomDose = (proposedDose: number) => {
     const expectedDose = displayDose;
@@ -103,14 +111,6 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
            medication.pillConfigurations.length > 0 &&
            medication.doseConfigurations.length > 0;
     
-    // Debug logging
-    console.log(`🔍 QuickMedicationLog ${medication.name}:`, {
-      useMultiplePills: medication.useMultiplePills,
-      hasConfigs: result,
-      pillConfigs: medication.pillConfigurations?.length || 0,
-      doseConfigs: medication.doseConfigurations?.length || 0,
-      fullMedication: medication
-    });
     
     return result;
   };
@@ -119,11 +119,6 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
     setIsLoading(true);
     try {
       const actualDosage = dosage || displayDose;
-      console.log('🔄 Logging medication:', medication.name, {
-        dosage: actualDosage,
-        useMultiplePills: medication.useMultiplePills,
-        hasPillInventory: !!medication.pillInventory?.length
-      });
       
       markMedicationTaken(medication.id, actualDosage);
       
@@ -283,7 +278,6 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
 
   // Use MultiplePillQuickLog for medications with multiple pills enabled AND configured
   if (hasConfiguredMultiplePills()) {
-    console.log(`✅ Using MultiplePillQuickLog for ${medication.name}`);
     return (
       <MultiplePillQuickLog 
         medication={medication} 
@@ -292,7 +286,6 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
     );
   }
   
-  console.log(`✅ Using regular QuickMedicationLog for ${medication.name}`);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
@@ -312,6 +305,11 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
                 ? formatPillDisplayShort(medication) 
                 : formatDosage(displayDose.toString(), medication.unit)}
             </p>
+            {medication.tapering?.isActive && (
+              <p className="text-xs text-purple-600 font-medium mt-1">
+                📉 Tapering: {currentDose.dose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}
+              </p>
+            )}
             {hasConfiguredMultiplePills() && (
               <div className="mt-2 space-y-1">
                 {getPillComponents(medication).map((component, index) => (

@@ -10,7 +10,8 @@ import {
   Bell,
   FileText,
   Package,
-  Book
+  Book,
+  Activity
 } from 'lucide-react';
 import { cn } from '@/utils/helpers';
 
@@ -29,6 +30,7 @@ const navigation = [
 ];
 
 const secondaryNavigation = [
+  { name: 'Cyclic Dosing', href: '/cyclic-dosing', icon: Activity },
   { name: 'Wiki', href: '/wiki', icon: Book },
   { name: 'Reminders', href: '/reminders', icon: Bell },
   { name: 'Reports', href: '/reports', icon: FileText },

@@ -150,11 +150,6 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
       updatedAt: new Date(),
     });
 
-    console.log('✅ Multiple Pills enabled for', medication.name, {
-      pillConfigurations: newPillConfigs,
-      doseConfigurations: [doseConfig],
-      pillInventory: pillInventory
-    });
 
     onClose();
   };
