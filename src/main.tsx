@@ -24,34 +24,29 @@ if (import.meta.env.DEV) {
   console.log('');
 }
 
+// Simple test version for debugging GitHub Pages
+console.log('🧪 DEBUG: main.tsx is executing');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <HashRouter>
-      <App />
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-          },
-          success: {
-            duration: 3000,
-            iconTheme: {
-              primary: '#22c55e',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            duration: 5000,
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
-            },
-          },
-        }}
-      />
-    </HashRouter>
+    <div style={{padding: '20px', fontFamily: 'Arial, sans-serif'}}>
+      <h1 style={{color: '#3b82f6'}}>🧪 Debug Test - React is Working!</h1>
+      <p>If you see this, React is rendering correctly on GitHub Pages.</p>
+      <p><strong>Next test:</strong> Trying HashRouter...</p>
+      <HashRouter>
+        <div style={{border: '2px solid green', padding: '10px', margin: '10px 0'}}>
+          <h2>✅ HashRouter is working!</h2>
+          <p>Current URL: {window.location.href}</p>
+          <p>Hash: {window.location.hash}</p>
+        </div>
+      </HashRouter>
+      <div style={{marginTop: '20px', padding: '10px', backgroundColor: '#f3f4f6'}}>
+        <h3>Debug Info:</h3>
+        <p>Environment: {import.meta.env.MODE}</p>
+        <p>Base URL: {import.meta.env.BASE_URL}</p>
+        <p>Dev: {import.meta.env.DEV ? 'Yes' : 'No'}</p>
+        <p>Prod: {import.meta.env.PROD ? 'Yes' : 'No'}</p>
+      </div>
+    </div>
   </React.StrictMode>,
 )
