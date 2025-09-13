@@ -40,7 +40,6 @@ jobs:
       run: npm run build
       env:
         NODE_ENV: production
-        BASE_URL: /MedTrack/
     
     - name: Upload build artifacts
       uses: actions/upload-pages-artifact@v3
