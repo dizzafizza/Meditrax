@@ -27,5 +27,5 @@ export default defineConfig({
       },
     },
   },
-  // base: '/MedTrack/', // Temporarily removing base path for debugging
+  base: './', // Use relative base for GitHub Pages
 })

@@ -12,7 +12,7 @@
     "typescript",
     "healthcare"
   ],
-  "homepage": "https://dizzafizza.github.io/MedTrack",
+  "homepage": ".",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dizzafizza/MedTrack.git"
