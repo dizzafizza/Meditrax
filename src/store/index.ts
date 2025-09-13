@@ -1,0 +1,1767 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { 
+  Medication, 
+  MedicationLog, 
+  Reminder, 
+  UserProfile, 
+  StorageData,
+  SmartMessage,
+  CyclicDosingPattern,
+  TaperingSchedule,
+  PsychologicalIntervention,
+  AdherencePattern,
+  DependencyRiskAssessment,
+  RiskLevel,
+  DependencyRiskCategory,
+  PillConfiguration,
+  DoseConfiguration,
+  PillLogEntry,
+  PillInventoryItem,
+  AdherenceDetails,
+  MedicationUnit,
+  SideEffectReport,
+  DependencePrevention,
+  UsagePattern,
+  DependenceAlert,
+  DependenceIntervention
+} from '@/types';
+import { 
+  generateId, 
+  isToday, 
+  getRiskLevel, 
+  getDependencyRiskCategory,
+  calculateCyclicDose,
+  generatePsychologicalMessage,
+  calculateDependencyRisk,
+  detectBehaviorPatterns,
+  generateCSV,
+  formatDate,
+  formatTime,
+  calculateTaperingDose
+} from '@/utils/helpers';
+import { DependencePreventionService } from '@/services/dependencePreventionService';
+import { suggestPauseDuration } from '@/services/medicationDatabase';
+
+interface MedicationStore {
+  // State
+  medications: Medication[];
+  logs: MedicationLog[];
+  reminders: Reminder[];
+  userProfile: UserProfile | null;
+  isLoading: boolean;
+  error: string | null;
+  
+  // Advanced features state
+  smartMessages: SmartMessage[];
+  cyclicDosingPatterns: CyclicDosingPattern[];
+  taperingSchedules: TaperingSchedule[];
+  psychologicalInterventions: PsychologicalIntervention[];
+  adherencePatterns: AdherencePattern[];
+  dependencyRiskAssessments: DependencyRiskAssessment[];
+
+  // Medication actions
+  addMedication: (medication: Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateMedication: (id: string, updates: Partial<Medication>) => void;
+  deleteMedication: (id: string) => void;
+  toggleMedicationActive: (id: string) => void;
+
+  // Log actions
+  logMedication: (medicationId: string, dosage?: number, notes?: string, sideEffects?: string[]) => void;
+  updateLog: (id: string, updates: Partial<MedicationLog>) => void;
+  deleteLog: (id: string) => void;
+  markMedicationTaken: (medicationId: string, dosage?: number) => void;
+  markMedicationMissed: (medicationId: string) => void;
+
+  // NEW: Multiple pills support
+  addPillConfiguration: (medicationId: string, config: Omit<PillConfiguration, 'id'>) => void;
+  updatePillConfiguration: (medicationId: string, configId: string, updates: Partial<PillConfiguration>) => void;
+  deletePillConfiguration: (medicationId: string, configId: string) => void;
+  addDoseConfiguration: (medicationId: string, config: Omit<DoseConfiguration, 'id'>) => void;
+  updateDoseConfiguration: (medicationId: string, configId: string, updates: Partial<DoseConfiguration>) => void;
+  deleteDoseConfiguration: (medicationId: string, configId: string) => void;
+  setDefaultDoseConfiguration: (medicationId: string, configId: string) => void;
+  logMultiplePillDose: (medicationId: string, pillLogs: PillLogEntry[], notes?: string, sideEffects?: string[]) => void;
+  logDoseConfiguration: (medicationId: string, doseConfigId: string, pillLogs: PillLogEntry[], notes?: string, sideEffects?: string[]) => void;
+  calculateTotalDoseFromPills: (medicationId: string, doseConfigId?: string) => { amount: number; unit: MedicationUnit } | null;
+  updatePillInventory: (medicationId: string, inventoryUpdates: Partial<PillInventoryItem>[]) => void;
+  enableMultiplePills: (medicationId: string) => void;
+
+  // Reminder actions
+  addReminder: (reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateReminder: (id: string, updates: Partial<Reminder>) => void;
+  deleteReminder: (id: string) => void;
+  toggleReminderActive: (id: string) => void;
+  snoozeReminder: (id: string, minutes: number) => void;
+
+  // Profile actions
+  updateProfile: (updates: Partial<UserProfile>) => void;
+  createProfile: (profile: Omit<UserProfile, 'id' | 'createdAt' | 'updatedAt'>) => void;
+
+  // Analytics and computed values
+  getMedicationAdherence: (medicationId: string, days: number) => number;
+  getTodaysReminders: () => (Reminder & { medication: Medication })[];
+  getTodaysLogs: () => MedicationLog[];
+  getMissedDoses: (days: number) => MedicationLog[];
+  getUpcomingRefills: () => Medication[];
+
+  // Utility actions
+  clearAllData: () => void;
+  importData: (data: Partial<StorageData>) => void;
+  exportData: () => StorageData;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+
+  // Enhanced Export/Import actions
+  exportDataWithOptions: (options: any) => Promise<string>;
+  importDataWithValidation: (data: any, format: 'json' | 'csv') => Promise<{ success: boolean; errors: string[]; warnings: string[] }>;
+  validateImportData: (data: any) => { isValid: boolean; errors: string[]; warnings: string[] };
+  exportToCSV: (dataType: 'medications' | 'logs' | 'reminders' | 'all', dateRange?: { start: Date; end: Date }) => string;
+  exportToPDF: (options: any) => Promise<string>;
+  backupData: () => void;
+  restoreData: (backupData: any) => Promise<{ success: boolean; errors: string[] }>;
+
+  // Advanced features actions
+  // Smart messaging
+  addSmartMessage: (message: Omit<SmartMessage, 'id'>) => void;
+  markMessageAsRead: (messageId: string) => void;
+  dismissMessage: (messageId: string) => void;
+  generateContextualMessage: (medicationId: string, type: string) => void;
+
+  // Cyclic dosing
+  addCyclicDosingPattern: (pattern: Omit<CyclicDosingPattern, 'id'>) => void;
+  updateCyclicDosingPattern: (id: string, updates: Partial<CyclicDosingPattern>) => void;
+  deleteCyclicDosingPattern: (id: string) => void;
+  getCurrentDose: (medicationId: string) => { dose: number; phase: string; message?: string };
+
+  // Tapering schedules
+  addTaperingSchedule: (schedule: Omit<TaperingSchedule, 'id'>) => void;
+  updateTaperingSchedule: (id: string, updates: Partial<TaperingSchedule>) => void;
+  deleteTaperingSchedule: (id: string) => void;
+
+  // Risk assessment
+  assessDependencyRisk: (medicationId: string) => DependencyRiskAssessment;
+  updateRiskAssessment: (medicationId: string) => void;
+  getHighRiskMedications: () => Medication[];
+
+  // Behavioral analysis
+  analyzeAdherencePatterns: (medicationId: string) => AdherencePattern;
+  detectBehaviorPattern: (medicationId: string) => void;
+  triggerPsychologicalIntervention: (medicationId: string, type: string, trigger: string) => void;
+
+  // Analytics
+  getSmartInsights: () => any[];
+  getPsychologicalProfile: (medicationId: string) => any;
+  getAdherenceScore: (medicationId: string, timeWindow?: number) => number;
+}
+
+const initialUserProfile: UserProfile = {
+  id: generateId(),
+  name: '',
+  preferences: {
+    theme: 'system',
+    notifications: {
+      push: true,
+      sound: true,
+      vibration: true,
+      reminderAdvance: 15,
+    },
+    privacy: {
+      shareData: false,
+      analytics: true,
+      anonymousReporting: {
+        enabled: false,
+        consentGiven: false,
+        dataTypesAllowed: [],
+        privacyLevel: 'minimal',
+        granularControls: {
+          includeAdherence: false,
+          includeSideEffects: false,
+          includeMedicationPatterns: false,
+          includeRiskAssessments: false,
+          allowTemporalAnalysis: false,
+          allowDemographicAnalysis: false
+        }
+      }
+    },
+    display: {
+      timeFormat: '12h',
+      dateFormat: 'MM/DD/YYYY',
+      defaultView: 'dashboard',
+    },
+  },
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+export const useMedicationStore = create<MedicationStore>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      medications: [],
+      logs: [],
+      reminders: [],
+      userProfile: null,
+      isLoading: false,
+      error: null,
+      
+      // Advanced features initial state
+      smartMessages: [],
+      cyclicDosingPatterns: [],
+      taperingSchedules: [],
+      psychologicalInterventions: [],
+      adherencePatterns: [],
+      dependencyRiskAssessments: [],
+
+      // Medication actions
+      addMedication: (medicationData) => {
+        const dependencyRiskCategory = getDependencyRiskCategory(medicationData.name) as DependencyRiskCategory;
+        const riskLevel = getRiskLevel(dependencyRiskCategory) as RiskLevel;
+        
+        const medication: Medication = {
+          ...medicationData,
+          id: generateId(),
+          riskLevel,
+          dependencyRiskCategory,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        set((state) => ({
+          medications: [...state.medications, medication],
+        }));
+
+        // Automatically assess risk for high-risk medications
+        if (riskLevel === 'high' || riskLevel === 'moderate') {
+          setTimeout(() => {
+            get().updateRiskAssessment(medication.id);
+          }, 100);
+        }
+      },
+
+      updateMedication: (id, updates) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === id ? { ...med, ...updates, updatedAt: new Date() } : med
+          ),
+        }));
+      },
+
+      deleteMedication: (id) => {
+        set((state) => ({
+          medications: state.medications.filter((med) => med.id !== id),
+          logs: state.logs.filter((log) => log.medicationId !== id),
+          reminders: state.reminders.filter((reminder) => reminder.medicationId !== id),
+        }));
+      },
+
+      toggleMedicationActive: (id) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === id ? { ...med, isActive: !med.isActive, updatedAt: new Date() } : med
+          ),
+        }));
+      },
+
+      // Log actions
+      logMedication: (medicationId, dosage, notes, sideEffects) => {
+        const medication = get().medications.find((med) => med.id === medicationId);
+        if (!medication) return;
+
+        const log: MedicationLog = {
+          id: generateId(),
+          medicationId,
+          timestamp: new Date(),
+          dosageTaken: dosage || parseFloat(medication.dosage),
+          unit: medication.unit,
+          notes,
+          sideEffectsReported: sideEffects,
+          adherence: 'taken',
+          createdAt: new Date(),
+        };
+
+        set((state) => ({
+          logs: [...state.logs, log],
+        }));
+
+        // Update pill inventory for multiple pill medications
+        if (medication.useMultiplePills && medication.pillInventory && medication.pillInventory.length > 0) {
+          // For simple dosage logging, estimate pill consumption based on default dose configuration
+          const defaultConfig = medication.doseConfigurations?.find(
+            config => config.id === medication.defaultDoseConfigurationId
+          ) || medication.doseConfigurations?.[0];
+          
+          if (defaultConfig) {
+            const pillLogs = defaultConfig.pillComponents.map(component => ({
+              pillConfigurationId: component.pillConfigurationId,
+              quantityTaken: component.quantity,
+              timestamp: new Date()
+            }));
+            
+            const inventoryUpdates = pillLogs.map((pillLog) => ({
+              pillConfigurationId: pillLog.pillConfigurationId,
+              currentCount: -pillLog.quantityTaken, // Negative to subtract
+            }));
+            
+            get().updatePillInventory(medicationId, inventoryUpdates);
+          }
+        }
+      },
+
+      updateLog: (id, updates) => {
+        set((state) => ({
+          logs: state.logs.map((log) =>
+            log.id === id ? { ...log, ...updates } : log
+          ),
+        }));
+      },
+
+      deleteLog: (id) => {
+        set((state) => ({
+          logs: state.logs.filter((log) => log.id !== id),
+        }));
+      },
+
+      markMedicationTaken: (medicationId, dosage) => {
+        get().logMedication(medicationId, dosage);
+      },
+
+      markMedicationMissed: (medicationId) => {
+        const medication = get().medications.find((med) => med.id === medicationId);
+        if (!medication) return;
+
+        const log: MedicationLog = {
+          id: generateId(),
+          medicationId,
+          timestamp: new Date(),
+          dosageTaken: 0,
+          unit: medication.unit,
+          adherence: 'missed',
+          createdAt: new Date(),
+        };
+
+        set((state) => ({
+          logs: [...state.logs, log],
+        }));
+      },
+
+      // Reminder actions
+      addReminder: (reminderData) => {
+        const reminder: Reminder = {
+          ...reminderData,
+          id: generateId(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        set((state) => ({
+          reminders: [...state.reminders, reminder],
+        }));
+      },
+
+      updateReminder: (id, updates) => {
+        set((state) => ({
+          reminders: state.reminders.map((reminder) =>
+            reminder.id === id ? { ...reminder, ...updates, updatedAt: new Date() } : reminder
+          ),
+        }));
+      },
+
+      deleteReminder: (id) => {
+        set((state) => ({
+          reminders: state.reminders.filter((reminder) => reminder.id !== id),
+        }));
+      },
+
+      toggleReminderActive: (id) => {
+        set((state) => ({
+          reminders: state.reminders.map((reminder) =>
+            reminder.id === id ? { ...reminder, isActive: !reminder.isActive, updatedAt: new Date() } : reminder
+          ),
+        }));
+      },
+
+      snoozeReminder: (id, minutes) => {
+        const snoozeUntil = new Date();
+        snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+
+        set((state) => ({
+          reminders: state.reminders.map((reminder) =>
+            reminder.id === id ? { ...reminder, snoozeUntil, updatedAt: new Date() } : reminder
+          ),
+        }));
+      },
+
+      // Profile actions
+      updateProfile: (updates) => {
+        set((state) => ({
+          userProfile: state.userProfile
+            ? { ...state.userProfile, ...updates, updatedAt: new Date() }
+            : { ...initialUserProfile, ...updates },
+        }));
+      },
+
+      createProfile: (profileData) => {
+        const profile: UserProfile = {
+          ...profileData,
+          id: generateId(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        set({ userProfile: profile });
+      },
+
+      // Analytics and computed values
+      getMedicationAdherence: (medicationId, days) => {
+        const logs = get().logs.filter((log) => {
+          const logDate = new Date(log.timestamp);
+          const daysDiff = Math.floor((Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+          return log.medicationId === medicationId && daysDiff <= days;
+        });
+
+        if (logs.length === 0) return 0;
+
+        const takenLogs = logs.filter((log) => log.adherence === 'taken');
+        return Math.round((takenLogs.length / logs.length) * 100);
+      },
+
+      getTodaysReminders: () => {
+        const medications = get().medications;
+        const reminders = get().reminders;
+        const today = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const dayMapping = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const todayName = dayMapping[today];
+
+        return reminders
+          .filter((reminder) => {
+            const medication = medications.find((med) => med.id === reminder.medicationId);
+            return (
+              reminder.isActive &&
+              medication?.isActive &&
+              reminder.days.includes(todayName as any) &&
+              (!reminder.snoozeUntil || reminder.snoozeUntil <= new Date())
+            );
+          })
+          .map((reminder) => ({
+            ...reminder,
+            medication: medications.find((med) => med.id === reminder.medicationId)!,
+          }))
+          .sort((a, b) => a.time.localeCompare(b.time));
+      },
+
+      getTodaysLogs: () => {
+        return get().logs.filter((log) => isToday(new Date(log.timestamp)));
+      },
+
+      getMissedDoses: (days) => {
+        const logs = get().logs.filter((log) => {
+          const logDate = new Date(log.timestamp);
+          const daysDiff = Math.floor((Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+          return log.adherence === 'missed' && daysDiff <= days;
+        });
+
+        return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      },
+
+      getUpcomingRefills: () => {
+        return get().medications.filter((med) => {
+          if (!med.pillsRemaining || !med.totalPills || !med.refillReminder) return false;
+          const remainingPercent = (med.pillsRemaining / med.totalPills) * 100;
+          return remainingPercent <= 20; // Alert when 20% or less remaining
+        });
+      },
+
+      // Utility actions
+      clearAllData: () => {
+        set({
+          medications: [],
+          logs: [],
+          reminders: [],
+          userProfile: null,
+          error: null,
+          smartMessages: [],
+          cyclicDosingPatterns: [],
+          taperingSchedules: [],
+          psychologicalInterventions: [],
+          adherencePatterns: [],
+          dependencyRiskAssessments: [],
+        });
+      },
+
+      importData: (data) => {
+        set((state) => ({
+          medications: data.medications || state.medications,
+          logs: data.logs || state.logs,
+          reminders: data.reminders || state.reminders,
+          userProfile: data.userProfile || state.userProfile,
+        }));
+      },
+
+      exportData: () => {
+        const state = get();
+        return {
+          medications: state.medications,
+          logs: state.logs,
+          reminders: state.reminders,
+          userProfile: state.userProfile!,
+          version: '1.0.0',
+          lastSyncDate: new Date(),
+        };
+      },
+
+      setLoading: (loading) => {
+        set({ isLoading: loading });
+      },
+
+      setError: (error) => {
+        set({ error });
+      },
+
+      // Enhanced Export/Import methods
+      exportDataWithOptions: async (options) => {
+        const state = get();
+        let filteredData: any = {};
+
+        // Apply date range filtering if specified
+        if (options.dateRange) {
+          const { start, end } = options.dateRange;
+          filteredData.logs = state.logs.filter(log => {
+            const logDate = new Date(log.timestamp);
+            return logDate >= start && logDate <= end;
+          });
+        } else {
+          filteredData.logs = state.logs;
+        }
+
+        // Include data based on options
+        if (options.includeMedications) {
+          filteredData.medications = state.medications;
+        }
+        if (options.includeReminders) {
+          filteredData.reminders = state.reminders;
+        }
+        if (options.includeProfile && options.includePersonalInfo) {
+          filteredData.userProfile = state.userProfile;
+        }
+        if (options.includeAdvancedFeatures) {
+          filteredData.smartMessages = state.smartMessages;
+          filteredData.cyclicDosingPatterns = state.cyclicDosingPatterns;
+          filteredData.taperingSchedules = state.taperingSchedules;
+          filteredData.psychologicalInterventions = state.psychologicalInterventions;
+          filteredData.adherencePatterns = state.adherencePatterns;
+          filteredData.dependencyRiskAssessments = state.dependencyRiskAssessments;
+        }
+
+        // Add metadata
+        filteredData.exportMetadata = {
+          version: '2.0.0',
+          exportDate: new Date(),
+          exportOptions: options,
+          totalRecords: {
+            medications: filteredData.medications?.length || 0,
+            logs: filteredData.logs?.length || 0,
+            reminders: filteredData.reminders?.length || 0,
+            hasProfile: !!filteredData.userProfile
+          }
+        };
+
+        return JSON.stringify(filteredData, null, 2);
+      },
+
+      importDataWithValidation: async (data) => {
+        const validation = get().validateImportData(data);
+        
+        if (!validation.isValid) {
+          return {
+            success: false,
+            errors: validation.errors,
+            warnings: validation.warnings
+          };
+        }
+
+        try {
+          // Backup current data before import
+          get().backupData();
+
+          // Apply imported data
+          set((state) => {
+            const newState = { ...state };
+            
+            if (data.medications) {
+              // Merge medications, avoiding duplicates by name
+              const existingNames = new Set(state.medications.map(med => med.name));
+              const newMedications = data.medications.filter((med: any) => !existingNames.has(med.name));
+              newState.medications = [...state.medications, ...newMedications.map((med: any) => ({
+                ...med,
+                id: generateId(),
+                createdAt: new Date(),
+                updatedAt: new Date()
+              }))];
+            }
+
+            if (data.logs) {
+              newState.logs = [...state.logs, ...data.logs.map((log: any) => ({
+                ...log,
+                id: generateId(),
+                timestamp: new Date(log.timestamp),
+                createdAt: new Date()
+              }))];
+            }
+
+            if (data.reminders) {
+              newState.reminders = [...state.reminders, ...data.reminders.map((reminder: any) => ({
+                ...reminder,
+                id: generateId(),
+                createdAt: new Date(),
+                updatedAt: new Date()
+              }))];
+            }
+
+            if (data.userProfile && !state.userProfile) {
+              newState.userProfile = {
+                ...data.userProfile,
+                id: generateId(),
+                createdAt: new Date(),
+                updatedAt: new Date()
+              };
+            }
+
+            return newState;
+          });
+
+          return {
+            success: true,
+            errors: [],
+            warnings: validation.warnings
+          };
+        } catch (error) {
+          return {
+            success: false,
+            errors: [`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
+            warnings: []
+          };
+        }
+      },
+
+      validateImportData: (data) => {
+        const errors: string[] = [];
+        const warnings: string[] = [];
+
+        // Check for required structure
+        if (!data || typeof data !== 'object') {
+          errors.push('Invalid data format: must be a valid JSON object');
+          return { isValid: false, errors, warnings };
+        }
+
+        // Validate medications
+        if (data.medications) {
+          if (!Array.isArray(data.medications)) {
+            errors.push('Medications must be an array');
+          } else {
+            data.medications.forEach((med: any, index: number) => {
+              if (!med.name || typeof med.name !== 'string') {
+                errors.push(`Medication ${index + 1}: name is required and must be a string`);
+              }
+              if (!med.dosage || typeof med.dosage !== 'string') {
+                errors.push(`Medication ${index + 1}: dosage is required and must be a string`);
+              }
+              if (!med.unit || typeof med.unit !== 'string') {
+                errors.push(`Medication ${index + 1}: unit is required and must be a string`);
+              }
+              if (!med.frequency || typeof med.frequency !== 'string') {
+                errors.push(`Medication ${index + 1}: frequency is required and must be a string`);
+              }
+            });
+          }
+        }
+
+        // Validate logs
+        if (data.logs) {
+          if (!Array.isArray(data.logs)) {
+            errors.push('Logs must be an array');
+          } else {
+            data.logs.forEach((log: any, index: number) => {
+              if (!log.medicationId || typeof log.medicationId !== 'string') {
+                errors.push(`Log ${index + 1}: medicationId is required and must be a string`);
+              }
+              if (!log.timestamp) {
+                errors.push(`Log ${index + 1}: timestamp is required`);
+              } else {
+                const date = new Date(log.timestamp);
+                if (isNaN(date.getTime())) {
+                  errors.push(`Log ${index + 1}: invalid timestamp format`);
+                }
+              }
+              if (log.adherence && !['taken', 'missed', 'skipped', 'partial'].includes(log.adherence)) {
+                warnings.push(`Log ${index + 1}: unknown adherence status '${log.adherence}'`);
+              }
+            });
+          }
+        }
+
+        // Validate reminders
+        if (data.reminders) {
+          if (!Array.isArray(data.reminders)) {
+            errors.push('Reminders must be an array');
+          } else {
+            data.reminders.forEach((reminder: any, index: number) => {
+              if (!reminder.medicationId || typeof reminder.medicationId !== 'string') {
+                errors.push(`Reminder ${index + 1}: medicationId is required and must be a string`);
+              }
+              if (!reminder.time || typeof reminder.time !== 'string') {
+                errors.push(`Reminder ${index + 1}: time is required and must be a string`);
+              }
+              if (!reminder.days || !Array.isArray(reminder.days)) {
+                errors.push(`Reminder ${index + 1}: days is required and must be an array`);
+              }
+            });
+          }
+        }
+
+        // Version compatibility warnings
+        if (data.exportMetadata?.version && data.exportMetadata.version !== '2.0.0') {
+          warnings.push(`Import data was exported with version ${data.exportMetadata.version}, some features may not be compatible`);
+        }
+
+        return {
+          isValid: errors.length === 0,
+          errors,
+          warnings
+        };
+      },
+
+      exportToCSV: (dataType, dateRange) => {
+        const state = get();
+        
+        switch (dataType) {
+          case 'medications':
+            return generateCSV(state.medications.map(med => ({
+              name: med.name,
+              dosage: med.dosage,
+              unit: med.unit,
+              frequency: med.frequency,
+              category: med.category,
+              isActive: med.isActive,
+              startDate: formatDate(new Date(med.startDate)),
+              riskLevel: med.riskLevel,
+              prescribedBy: med.prescribedBy || '',
+              pharmacy: med.pharmacy || '',
+              notes: med.notes || ''
+            })));
+
+          case 'logs':
+            let logs = state.logs;
+            if (dateRange) {
+              logs = logs.filter(log => {
+                const logDate = new Date(log.timestamp);
+                return logDate >= dateRange.start && logDate <= dateRange.end;
+              });
+            }
+            return generateCSV(logs.map(log => {
+              const medication = state.medications.find(med => med.id === log.medicationId);
+              return {
+                date: formatDate(new Date(log.timestamp)),
+                time: formatTime(new Date(log.timestamp)),
+                medication: medication?.name || 'Unknown',
+                dosageTaken: log.dosageTaken,
+                unit: log.unit,
+                adherence: log.adherence,
+                notes: log.notes || '',
+                sideEffects: log.sideEffectsReported?.join('; ') || ''
+              };
+            }));
+
+          case 'reminders':
+            return generateCSV(state.reminders.map(reminder => {
+              const medication = state.medications.find(med => med.id === reminder.medicationId);
+              return {
+                medication: medication?.name || 'Unknown',
+                time: reminder.time,
+                days: reminder.days.join(', '),
+                isActive: reminder.isActive,
+                customMessage: reminder.customMessage || '',
+                notificationSound: reminder.notificationSound || false
+              };
+            }));
+
+          case 'all':
+            // Comprehensive export with all data
+            const allData = {
+              medications: state.medications,
+              logs: dateRange ? state.logs.filter(log => {
+                const logDate = new Date(log.timestamp);
+                return logDate >= dateRange.start && logDate <= dateRange.end;
+              }) : state.logs,
+              reminders: state.reminders,
+              userProfile: state.userProfile,
+              summary: {
+                totalMedications: state.medications.length,
+                activeMedications: state.medications.filter(med => med.isActive).length,
+                totalLogs: state.logs.length,
+                totalReminders: state.reminders.length,
+                exportDate: new Date()
+              }
+            };
+            return JSON.stringify(allData, null, 2);
+
+          default:
+            return '';
+        }
+      },
+
+      exportToPDF: async (options) => {
+        // For now, return JSON data - PDF generation would require additional library
+        // In a real implementation, this would use jsPDF or similar
+        const data = await get().exportDataWithOptions(options);
+        return data;
+      },
+
+      backupData: () => {
+        const state = get();
+        const backup = {
+          medications: state.medications,
+          logs: state.logs,
+          reminders: state.reminders,
+          userProfile: state.userProfile,
+          smartMessages: state.smartMessages,
+          cyclicDosingPatterns: state.cyclicDosingPatterns,
+          taperingSchedules: state.taperingSchedules,
+          psychologicalInterventions: state.psychologicalInterventions,
+          adherencePatterns: state.adherencePatterns,
+          dependencyRiskAssessments: state.dependencyRiskAssessments,
+          backupDate: new Date()
+        };
+        
+        // Store backup in localStorage with timestamp
+        localStorage.setItem(`medtrack-backup-${Date.now()}`, JSON.stringify(backup));
+        
+        // Keep only last 5 backups
+        const backupKeys = Object.keys(localStorage).filter(key => key.startsWith('medtrack-backup-'));
+        if (backupKeys.length > 5) {
+          backupKeys.sort().slice(0, -5).forEach(key => localStorage.removeItem(key));
+        }
+      },
+
+      restoreData: async (backupData) => {
+        try {
+          const validation = get().validateImportData(backupData);
+          
+          if (!validation.isValid) {
+            return {
+              success: false,
+              errors: ['Invalid backup data format', ...validation.errors]
+            };
+          }
+
+          set({
+            medications: backupData.medications || [],
+            logs: backupData.logs || [],
+            reminders: backupData.reminders || [],
+            userProfile: backupData.userProfile || null,
+            smartMessages: backupData.smartMessages || [],
+            cyclicDosingPatterns: backupData.cyclicDosingPatterns || [],
+            taperingSchedules: backupData.taperingSchedules || [],
+            psychologicalInterventions: backupData.psychologicalInterventions || [],
+            adherencePatterns: backupData.adherencePatterns || [],
+            dependencyRiskAssessments: backupData.dependencyRiskAssessments || [],
+          });
+
+          return { success: true, errors: [] };
+        } catch (error) {
+          return {
+            success: false,
+            errors: [`Restore failed: ${error instanceof Error ? error.message : 'Unknown error'}`]
+          };
+        }
+      },
+
+      // Advanced features actions implementation
+      // Smart messaging
+      addSmartMessage: (messageData) => {
+        const message: SmartMessage = {
+          ...messageData,
+          id: generateId(),
+        };
+        
+        set((state) => ({
+          smartMessages: [...state.smartMessages, message],
+        }));
+      },
+
+      markMessageAsRead: (messageId) => {
+        set((state) => ({
+          smartMessages: state.smartMessages.filter(msg => msg.id !== messageId),
+        }));
+      },
+
+      dismissMessage: (messageId) => {
+        set((state) => ({
+          smartMessages: state.smartMessages.filter(msg => msg.id !== messageId),
+        }));
+      },
+
+      generateContextualMessage: (medicationId, type) => {
+        const { medications, logs } = get();
+        const medication = medications.find(med => med.id === medicationId);
+        
+        if (!medication) return;
+
+        const adherenceData = {
+          adherenceStreak: logs.filter(log => 
+            log.medicationId === medicationId && 
+            log.adherence === 'taken'
+          ).length
+        };
+
+        const messageContent = generatePsychologicalMessage(
+          type as any, 
+          medication.name, 
+          adherenceData
+        );
+
+        get().addSmartMessage({
+          medicationId,
+          type: type as any,
+          priority: medication.riskLevel === 'high' ? 'high' : 'medium',
+          title: messageContent.title,
+          message: messageContent.message,
+          psychologicalApproach: messageContent.approach as any,
+          scheduledTime: new Date(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        });
+      },
+
+      // Cyclic dosing
+      addCyclicDosingPattern: (patternData) => {
+        const pattern: CyclicDosingPattern = {
+          ...patternData,
+          id: generateId(),
+        };
+        
+        set((state) => ({
+          cyclicDosingPatterns: [...state.cyclicDosingPatterns, pattern],
+        }));
+      },
+
+      updateCyclicDosingPattern: (id, updates) => {
+        set((state) => ({
+          cyclicDosingPatterns: state.cyclicDosingPatterns.map(pattern =>
+            pattern.id === id ? { ...pattern, ...updates } : pattern
+          ),
+        }));
+      },
+
+      deleteCyclicDosingPattern: (id) => {
+        set((state) => ({
+          cyclicDosingPatterns: state.cyclicDosingPatterns.filter(pattern => pattern.id !== id),
+        }));
+      },
+
+      getCurrentDose: (medicationId) => {
+        const { medications, cyclicDosingPatterns } = get();
+        const medication = medications.find(med => med.id === medicationId);
+        
+        if (!medication) return { dose: 0, phase: 'maintenance' };
+        
+        let baseDose = parseFloat(medication.dosage);
+        
+        // Handle multiple pills - use total dose from default configuration
+        if (medication.useMultiplePills && medication.doseConfigurations) {
+          const defaultConfig = medication.doseConfigurations.find(
+            config => config.id === medication.defaultDoseConfigurationId
+          ) || medication.doseConfigurations[0];
+          
+          if (defaultConfig) {
+            baseDose = defaultConfig.totalDoseAmount;
+          }
+        }
+        
+        // Apply tapering if active
+        if (medication.tapering?.isActive) {
+          baseDose = calculateTaperingDose(baseDose, medication.tapering, new Date(), medication);
+        }
+        
+        // Apply cyclic dosing if active
+        const pattern = cyclicDosingPatterns.find(p => 
+          p.isActive && 
+          medication.cyclicDosing?.id === p.id
+        );
+        
+        return calculateCyclicDose(baseDose, pattern, new Date());
+      },
+
+      // Tapering schedules
+      addTaperingSchedule: (scheduleData) => {
+        const schedule: TaperingSchedule = {
+          ...scheduleData,
+          id: generateId(),
+        };
+        
+        set((state) => ({
+          taperingSchedules: [...state.taperingSchedules, schedule],
+        }));
+      },
+
+      updateTaperingSchedule: (id, updates) => {
+        set((state) => ({
+          taperingSchedules: state.taperingSchedules.map(schedule =>
+            schedule.id === id ? { ...schedule, ...updates } : schedule
+          ),
+        }));
+      },
+
+      deleteTaperingSchedule: (id) => {
+        set((state) => ({
+          taperingSchedules: state.taperingSchedules.filter(schedule => schedule.id !== id),
+        }));
+      },
+
+      pauseTaperingSchedule: (medicationId, withdrawalSeverity: 'mild' | 'moderate' | 'severe' = 'moderate') => {
+        set((state) => ({
+          medications: state.medications.map(med => {
+            if (med.id === medicationId && med.tapering && !med.tapering.isPaused) {
+              const suggestedDays = suggestPauseDuration(med.name, withdrawalSeverity);
+              
+              return {
+                ...med,
+                tapering: {
+                  ...med.tapering,
+                  isPaused: true,
+                  pausedAt: new Date(),
+                  suggestedResumeDays: suggestedDays
+                }
+              };
+            }
+            return med;
+          })
+        }));
+      },
+
+      resumeTaperingSchedule: (medicationId) => {
+        set((state) => ({
+          medications: state.medications.map(med => {
+            if (med.id === medicationId && med.tapering && med.tapering.isPaused) {
+              const pauseDuration = med.tapering.pausedAt ? 
+                Math.floor((new Date().getTime() - new Date(med.tapering.pausedAt).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+              
+              // Extend the end date by the pause duration
+              const newEndDate = new Date(med.tapering.endDate);
+              newEndDate.setDate(newEndDate.getDate() + pauseDuration);
+              
+              return {
+                ...med,
+                tapering: {
+                  ...med.tapering,
+                  isPaused: false,
+                  pausedAt: undefined,
+                  endDate: newEndDate,
+                  suggestedResumeDays: undefined
+                }
+              };
+            }
+            return med;
+          })
+        }));
+      },
+
+      adjustTaperingSchedule: (medicationId, adjustments: {
+        newReductionPercent?: number;
+        extendDurationWeeks?: number;
+        changeMethod?: 'linear' | 'exponential' | 'hyperbolic' | 'custom';
+      }) => {
+        set((state) => ({
+          medications: state.medications.map(med => {
+            if (med.id === medicationId && med.tapering) {
+              const updatedTapering = { ...med.tapering };
+              
+              if (adjustments.extendDurationWeeks) {
+                const extensionDays = adjustments.extendDurationWeeks * 7;
+                const newEndDate = new Date(updatedTapering.endDate);
+                newEndDate.setDate(newEndDate.getDate() + extensionDays);
+                updatedTapering.endDate = newEndDate;
+              }
+              
+              if (adjustments.changeMethod) {
+                updatedTapering.taperingMethod = adjustments.changeMethod;
+              }
+              
+              return {
+                ...med,
+                tapering: updatedTapering
+              };
+            }
+            return med;
+          })
+        }));
+      },
+
+      // Risk assessment
+      assessDependencyRisk: (medicationId) => {
+        const { medications, logs } = get();
+        const medication = medications.find(med => med.id === medicationId);
+        
+        if (!medication) {
+          return {
+            medicationId,
+            riskScore: 0,
+            riskFactors: [],
+            lastAssessment: new Date(),
+            recommendedActions: [],
+            escalationRequired: false,
+          };
+        }
+
+        const riskAssessment = calculateDependencyRisk(logs, medication);
+        
+        const assessment: DependencyRiskAssessment = {
+          medicationId,
+          riskScore: riskAssessment.riskScore,
+          riskFactors: riskAssessment.riskFactors.map(factor => ({
+            factor: 'dose-escalation',
+            weight: 1,
+            description: factor,
+            firstDetected: new Date(),
+            currentSeverity: 'medium' as const,
+          })),
+          lastAssessment: new Date(),
+          recommendedActions: riskAssessment.recommendations,
+          escalationRequired: riskAssessment.riskScore > 50,
+        };
+
+        return assessment;
+      },
+
+      updateRiskAssessment: (medicationId) => {
+        const assessment = get().assessDependencyRisk(medicationId);
+        
+        set((state) => ({
+          dependencyRiskAssessments: [
+            ...state.dependencyRiskAssessments.filter(a => a.medicationId !== medicationId),
+            assessment,
+          ],
+        }));
+
+        // Generate alert message if high risk
+        if (assessment.escalationRequired) {
+          get().generateContextualMessage(medicationId, 'risk-alert');
+        }
+      },
+
+      getHighRiskMedications: () => {
+        return get().medications.filter(med => 
+          med.riskLevel === 'high' || med.riskLevel === 'moderate'
+        );
+      },
+
+      // Behavioral analysis
+      analyzeAdherencePatterns: (medicationId) => {
+        const { medications } = get();
+        const medication = medications.find(med => med.id === medicationId);
+        
+        if (!medication) {
+          return {
+            medicationId,
+            weeklyAdherence: [],
+            monthlyTrend: 'stable' as const,
+            riskScore: 0,
+            concerningBehaviors: [],
+            positivePatterns: [],
+          };
+        }
+
+        // const medicationLogs = logs.filter(log => log.medicationId === medicationId);
+        const adherenceData = get().getMedicationAdherence(medicationId, 7);
+        
+        const pattern: AdherencePattern = {
+          medicationId,
+          weeklyAdherence: [adherenceData],
+          monthlyTrend: adherenceData > 80 ? 'stable' : 'declining',
+          riskScore: 100 - adherenceData,
+          concerningBehaviors: adherenceData < 70 ? ['Low adherence detected'] : [],
+          positivePatterns: adherenceData > 90 ? ['Excellent adherence'] : [],
+        };
+
+        return pattern;
+      },
+
+      detectBehaviorPattern: (medicationId) => {
+        const { medications, logs } = get();
+        const medication = medications.find(med => med.id === medicationId);
+        
+        if (!medication) return;
+
+        const patterns = detectBehaviorPatterns(logs, medication);
+        
+        // Generate appropriate interventions based on detected patterns
+        patterns.forEach(pattern => {
+          if (pattern.type === 'weekend-gaps') {
+            get().generateContextualMessage(medicationId, 'adherence-reminder');
+          } else if (pattern.type === 'dose-timing-drift') {
+            get().generateContextualMessage(medicationId, 'motivation');
+          }
+        });
+      },
+
+      triggerPsychologicalIntervention: (medicationId, type, trigger) => {
+        const intervention: PsychologicalIntervention = {
+          id: generateId(),
+          medicationId,
+          type: type as any,
+          trigger,
+          message: '',
+          timestamp: new Date(),
+        };
+
+        set((state) => ({
+          psychologicalInterventions: [...state.psychologicalInterventions, intervention],
+        }));
+
+        // Generate corresponding smart message
+        get().generateContextualMessage(medicationId, type);
+      },
+
+      // Analytics
+      getSmartInsights: () => {
+        const { medications } = get();
+        const insights: any[] = [];
+
+        // High-risk medication insights
+        const highRiskMeds = medications.filter(med => med.riskLevel === 'high');
+        if (highRiskMeds.length > 0) {
+          insights.push({
+            type: 'risk-alert',
+            title: 'High-Risk Medications Detected',
+            description: `You have ${highRiskMeds.length} high-risk medication(s) that require careful monitoring.`,
+            priority: 'high',
+            medications: highRiskMeds.map(med => med.name),
+          });
+        }
+
+        // Adherence insights
+        const adherenceScores = medications.map(med => 
+          get().getMedicationAdherence(med.id, 7)
+        );
+        const avgAdherence = adherenceScores.reduce((a, b) => a + b, 0) / adherenceScores.length;
+        
+        if (avgAdherence < 70) {
+          insights.push({
+            type: 'adherence-concern',
+            title: 'Adherence Below Target',
+            description: `Your average adherence is ${Math.round(avgAdherence)}%. Consider setting more reminders.`,
+            priority: 'medium',
+          });
+        } else if (avgAdherence > 90) {
+          insights.push({
+            type: 'celebration',
+            title: 'Excellent Adherence!',
+            description: `Your adherence is ${Math.round(avgAdherence)}%. Keep up the great work!`,
+            priority: 'low',
+          });
+        }
+
+        return insights;
+      },
+
+      getPsychologicalProfile: (medicationId) => {
+        const medication = get().medications.find(med => med.id === medicationId);
+        return medication?.psychologicalProfile || null;
+      },
+
+      getAdherenceScore: (medicationId, timeWindow = 30) => {
+        return get().getMedicationAdherence(medicationId, timeWindow);
+      },
+
+      // NEW: Multiple pills support methods
+      addPillConfiguration: (medicationId, config) => {
+        const pillConfig: PillConfiguration = {
+          ...config,
+          id: generateId(),
+        };
+
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  pillConfigurations: [...(med.pillConfigurations || []), pillConfig],
+                  updatedAt: new Date(),
+                }
+              : med
+          ),
+        }));
+      },
+
+      updatePillConfiguration: (medicationId, configId, updates) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  pillConfigurations: (med.pillConfigurations || []).map((config) =>
+                    config.id === configId ? { ...config, ...updates } : config
+                  ),
+                  updatedAt: new Date(),
+                }
+              : med
+          ),
+        }));
+      },
+
+      deletePillConfiguration: (medicationId, configId) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  pillConfigurations: (med.pillConfigurations || []).filter(
+                    (config) => config.id !== configId
+                  ),
+                  updatedAt: new Date(),
+                }
+              : med
+          ),
+        }));
+      },
+
+      addDoseConfiguration: (medicationId, config) => {
+        const doseConfig: DoseConfiguration = {
+          ...config,
+          id: generateId(),
+        };
+
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  doseConfigurations: [...(med.doseConfigurations || []), doseConfig],
+                  defaultDoseConfigurationId: med.defaultDoseConfigurationId || doseConfig.id,
+                  updatedAt: new Date(),
+                }
+              : med
+          ),
+        }));
+      },
+
+      updateDoseConfiguration: (medicationId, configId, updates) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  doseConfigurations: (med.doseConfigurations || []).map((config) =>
+                    config.id === configId ? { ...config, ...updates } : config
+                  ),
+                  updatedAt: new Date(),
+                }
+              : med
+          ),
+        }));
+      },
+
+      deleteDoseConfiguration: (medicationId, configId) => {
+        set((state) => ({
+          medications: state.medications.map((med) => {
+            if (med.id === medicationId) {
+              const updatedDoseConfigs = (med.doseConfigurations || []).filter(
+                (config) => config.id !== configId
+              );
+              return {
+                ...med,
+                doseConfigurations: updatedDoseConfigs,
+                defaultDoseConfigurationId:
+                  med.defaultDoseConfigurationId === configId
+                    ? updatedDoseConfigs[0]?.id || undefined
+                    : med.defaultDoseConfigurationId,
+                updatedAt: new Date(),
+              };
+            }
+            return med;
+          }),
+        }));
+      },
+
+      setDefaultDoseConfiguration: (medicationId, configId) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  defaultDoseConfigurationId: configId,
+                  updatedAt: new Date(),
+                }
+              : med
+          ),
+        }));
+      },
+
+      logMultiplePillDose: (medicationId, pillLogs, notes, sideEffects) => {
+        const medication = get().medications.find((med) => med.id === medicationId);
+        if (!medication) return;
+
+        // Calculate adherence details
+        const totalExpected = pillLogs.reduce((sum, log) => sum + log.quantityExpected, 0);
+        const totalTaken = pillLogs.reduce((sum, log) => sum + log.quantityTaken, 0);
+        const adherencePercentage = totalExpected > 0 ? (totalTaken / totalExpected) * 100 : 0;
+        const partialDose = adherencePercentage > 0 && adherencePercentage < 100;
+
+        const adherenceDetails: AdherenceDetails = {
+          totalExpectedPills: totalExpected,
+          totalTakenPills: totalTaken,
+          partialDose,
+          adherencePercentage,
+        };
+
+        const log: MedicationLog = {
+          id: generateId(),
+          medicationId,
+          timestamp: new Date(),
+          dosageTaken: totalTaken, // For backward compatibility
+          unit: medication.unit, // For backward compatibility
+          notes,
+          sideEffectsReported: sideEffects,
+          adherence: adherencePercentage >= 100 ? 'taken' : partialDose ? 'partial' : 'missed',
+          createdAt: new Date(),
+          pillsLogged: pillLogs,
+          adherenceDetails,
+          useMultiplePills: true,
+        };
+
+        set((state) => ({
+          logs: [...state.logs, log],
+        }));
+
+        // Update pill inventory if available
+        if (medication.pillInventory) {
+          const inventoryUpdates = pillLogs.map((pillLog) => ({
+            pillConfigurationId: pillLog.pillConfigurationId,
+            currentCount: -pillLog.quantityTaken, // Negative to subtract
+          }));
+          get().updatePillInventory(medicationId, inventoryUpdates);
+        }
+      },
+
+      logDoseConfiguration: (medicationId, doseConfigId, pillLogs, notes, sideEffects) => {
+        get().logMultiplePillDose(medicationId, pillLogs, notes, sideEffects);
+        
+        // Update the log to include dose configuration reference
+        const logs = get().logs;
+        const latestLog = logs[logs.length - 1];
+        if (latestLog && latestLog.medicationId === medicationId) {
+          get().updateLog(latestLog.id, { doseConfigurationId: doseConfigId });
+        }
+      },
+
+      calculateTotalDoseFromPills: (medicationId, doseConfigId) => {
+        const medication = get().medications.find((med) => med.id === medicationId);
+        if (!medication?.pillConfigurations || !medication?.doseConfigurations) {
+          return null;
+        }
+
+        let targetDoseConfig: DoseConfiguration | undefined;
+        if (doseConfigId) {
+          targetDoseConfig = medication.doseConfigurations.find((config) => config.id === doseConfigId);
+        } else {
+          targetDoseConfig = medication.doseConfigurations.find(
+            (config) => config.id === medication.defaultDoseConfigurationId
+          ) || medication.doseConfigurations[0];
+        }
+
+        if (!targetDoseConfig) return null;
+
+        let totalAmount = 0;
+        let commonUnit: MedicationUnit | null = null;
+
+        for (const component of targetDoseConfig.pillComponents) {
+          const pillConfig = medication.pillConfigurations.find(
+            (config) => config.id === component.pillConfigurationId
+          );
+          if (pillConfig) {
+            totalAmount += pillConfig.strength * component.quantity;
+            commonUnit = commonUnit || pillConfig.unit;
+          }
+        }
+
+        return commonUnit ? { amount: totalAmount, unit: commonUnit } : null;
+      },
+
+      updatePillInventory: (medicationId, inventoryUpdates) => {
+        set((state) => ({
+          medications: state.medications.map((med) => {
+            if (med.id === medicationId) {
+              const currentInventory = med.pillInventory || [];
+              const updatedInventory = [...currentInventory];
+
+              inventoryUpdates.forEach((update) => {
+                const existingIndex = updatedInventory.findIndex(
+                  (item) => item.pillConfigurationId === update.pillConfigurationId
+                );
+
+                if (existingIndex >= 0) {
+                  updatedInventory[existingIndex] = {
+                    ...updatedInventory[existingIndex],
+                    ...update,
+                    currentCount: Math.max(
+                      0,
+                      updatedInventory[existingIndex].currentCount + (update.currentCount || 0)
+                    ),
+                    lastUpdated: new Date(),
+                  };
+                } else if (update.currentCount !== undefined) {
+                  updatedInventory.push({
+                    pillConfigurationId: update.pillConfigurationId!,
+                    currentCount: Math.max(0, update.currentCount),
+                    lastUpdated: new Date(),
+                    ...update,
+                  } as PillInventoryItem);
+                }
+              });
+
+              return {
+                ...med,
+                pillInventory: updatedInventory,
+                updatedAt: new Date(),
+              };
+            }
+            return med;
+          }),
+        }));
+      },
+
+      // Enhanced Side Effect Reporting
+      addSideEffectReport: (medicationId: string, report: Omit<SideEffectReport, 'id' | 'medicationId' | 'timestamp'>) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  sideEffectReports: [
+                    ...(med.sideEffectReports || []),
+                    {
+                      ...report,
+                      id: generateId(),
+                      medicationId,
+                      timestamp: new Date()
+                    } as SideEffectReport
+                  ],
+                  enhancedMonitoring: true
+                }
+              : med
+          ),
+        }));
+      },
+
+      updateSideEffectReport: (medicationId: string, reportId: string, updates: Partial<SideEffectReport>) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? {
+                  ...med,
+                  sideEffectReports: med.sideEffectReports?.map((report) =>
+                    report.id === reportId ? { ...report, ...updates } : report
+                  )
+                }
+              : med
+          ),
+        }));
+      },
+
+      // Dependence Prevention System
+      initializeDependencePrevention: (medicationId: string) => {
+        const medication = get().medications.find(med => med.id === medicationId);
+        if (!medication) return;
+
+        const prevention = DependencePreventionService.initializePrevention(medication);
+        
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? { ...med, dependencePrevention: prevention, enhancedMonitoring: true }
+              : med
+          ),
+        }));
+      },
+
+      updateDependenceAssessment: (medicationId: string) => {
+        const state = get();
+        const medication = state.medications.find(med => med.id === medicationId);
+        if (!medication || !medication.dependencePrevention) return;
+
+        // Get usage patterns from medication logs
+        const usagePatterns: UsagePattern[] = state.logs
+          .filter(log => log.medicationId === medicationId)
+          .slice(-30) // Last 30 entries
+          .map(log => ({
+            date: new Date(log.timestamp),
+            doseTaken: parseFloat(log.dosageTaken || medication.dosage),
+            prescribedDose: parseFloat(medication.dosage),
+            selfAdjustment: false, // Would need to track this separately
+            timesBetweenDoses: 24 / (medication.timesPerDay || 1), // Estimate
+            effectivenessRating: 7 // Default, would need user input
+          }));
+
+        const updatedPrevention = DependencePreventionService.assessCurrentRisk(medication, usagePatterns);
+        
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId
+              ? { ...med, dependencePrevention: updatedPrevention }
+              : med
+          ),
+        }));
+      },
+
+      recordUsagePattern: (medicationId: string, pattern: Omit<UsagePattern, 'date'>) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId && med.dependencePrevention
+              ? {
+                  ...med,
+                  dependencePrevention: {
+                    ...med.dependencePrevention,
+                    usagePatterns: [
+                      ...med.dependencePrevention.usagePatterns,
+                      { ...pattern, date: new Date() }
+                    ].slice(-50) // Keep last 50 patterns
+                  }
+                }
+              : med
+          ),
+        }));
+
+        // Trigger reassessment
+        get().updateDependenceAssessment(medicationId);
+      },
+
+      acknowledgeDependenceAlert: (medicationId: string, alertId: string, actionTaken?: string) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId && med.dependencePrevention
+              ? {
+                  ...med,
+                  dependencePrevention: {
+                    ...med.dependencePrevention,
+                    alerts: med.dependencePrevention.alerts.map((alert) =>
+                      alert.id === alertId
+                        ? { ...alert, acknowledged: true, actionTaken }
+                        : alert
+                    )
+                  }
+                }
+              : med
+          ),
+        }));
+      },
+
+      addDependenceIntervention: (medicationId: string, intervention: Omit<DependenceIntervention, 'id' | 'timestamp'>) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId && med.dependencePrevention
+              ? {
+                  ...med,
+                  dependencePrevention: {
+                    ...med.dependencePrevention,
+                    interventions: [
+                      ...med.dependencePrevention.interventions,
+                      {
+                        ...intervention,
+                        id: generateId(),
+                        timestamp: new Date()
+                      }
+                    ]
+                  }
+                }
+              : med
+          ),
+        }));
+      },
+
+      updateDoctorReview: (medicationId: string, reviewDate: Date) => {
+        set((state) => ({
+          medications: state.medications.map((med) =>
+            med.id === medicationId && med.dependencePrevention
+              ? {
+                  ...med,
+                  dependencePrevention: {
+                    ...med.dependencePrevention,
+                    lastDoctorReview: reviewDate,
+                    doctorReviewRequired: false
+                  }
+                }
+              : med
+          ),
+        }));
+      },
+
+      // Get dependence insights and recommendations
+      getDependenceInsights: (medicationId: string) => {
+        const medication = get().medications.find(med => med.id === medicationId);
+        if (!medication) return null;
+
+        return DependencePreventionService.generateTaperingRecommendation(medication);
+      },
+
+      enableMultiplePills: (medicationId) => {
+        set((state) => ({
+          medications: state.medications.map((med) => {
+            if (med.id !== medicationId) return med;
+
+            // Create pill configurations if they don't exist
+            const pillConfigs = med.pillConfigurations || [
+              {
+                id: generateId(),
+                strength: parseFloat(med.dosage) || 1,
+                unit: med.unit,
+                isActive: true,
+                color: med.color,
+                shape: 'round',
+                markings: ''
+              },
+            ];
+
+            // Create dose configurations with proper pillComponents linking
+            const doseConfigs = med.doseConfigurations || [
+              {
+                id: generateId(),
+                name: 'Default Dose',
+                description: `Standard dose of ${med.dosage} ${med.unit}`,
+                pillComponents: [
+                  {
+                    pillConfigurationId: pillConfigs[0].id,
+                    quantity: 1 // Adjust based on how many pills make up the dose
+                  }
+                ],
+                totalDoseAmount: parseFloat(med.dosage) || 1,
+                totalDoseUnit: med.unit,
+                isDefault: true
+              }
+            ];
+
+            // Create initial pill inventory if it doesn't exist
+            const pillInventory = med.pillInventory || pillConfigs.map(config => ({
+              pillConfigurationId: config.id,
+              currentCount: med.pillsRemaining || 30, // Use existing pills remaining or default to 30
+              lastUpdated: new Date()
+            }));
+
+            return {
+              ...med,
+              useMultiplePills: true,
+              pillConfigurations: pillConfigs,
+              doseConfigurations: doseConfigs,
+              defaultDoseConfigurationId: doseConfigs[0].id,
+              pillInventory: pillInventory,
+              updatedAt: new Date(),
+            };
+          }),
+        }));
+      },
+    }),
+    {
+      name: 'medtrack-storage',
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+    }
+  )
+);
