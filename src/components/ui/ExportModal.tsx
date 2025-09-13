@@ -79,7 +79,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
       onClose();
     } catch (error) {
       toast.error('Failed to export data');
-      console.error('Export error:', error);
+      // Error handled by toast notification
     } finally {
       setIsExporting(false);
     }

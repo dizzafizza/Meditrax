@@ -9,34 +9,30 @@ export function TodaysMedications() {
     getTodaysReminders, 
     getTodaysLogs, 
     medications,
-    smartMessages
+    smartMessages,
+    getCurrentDose
   } = useMedicationStore();
 
   const todaysReminders = getTodaysReminders();
   const todaysLogs = getTodaysLogs();
   const activeMedications = medications.filter(med => med.isActive);
   
-  // Debug logging to understand what's happening
-  React.useEffect(() => {
-    console.log('🔍 TodaysMedications Debug:', {
-      totalMedications: medications.length,
-      activeMedications: activeMedications.length,
-      todaysReminders: todaysReminders.length,
-      medicationsWithoutReminders: medicationsWithoutReminders.length,
-      totalForToday: getTotalMedicationsForToday(),
-      medications: activeMedications.map(med => ({
-        id: med.id,
-        name: med.name,
-        isActive: med.isActive,
-        useMultiplePills: med.useMultiplePills,
-        hasConfigs: !!(med.pillConfigurations && med.doseConfigurations)
-      }))
-    });
-  }, [medications.length, activeMedications.length, todaysReminders.length]);
-
-  // Get medications that need to be taken today but don't have reminders
+  // Separate medications that don't have reminders into scheduled and as-needed
   const medicationsWithoutReminders = activeMedications.filter(med => 
     !todaysReminders.some(reminder => reminder.medicationId === med.id)
+  );
+  
+  const scheduledMedicationsWithoutReminders = medicationsWithoutReminders.filter(med => 
+    med.frequency !== 'as-needed'
+  );
+
+  // Calculate total medications for today
+  const getTotalMedicationsForToday = () => {
+    return todaysReminders.length + scheduledMedicationsWithoutReminders.length;
+  };
+  
+  const asNeededMedications = medicationsWithoutReminders.filter(med => 
+    med.frequency === 'as-needed'
   );
 
   // Check which medications have been logged today
@@ -52,10 +48,6 @@ export function TodaysMedications() {
     if (hour < 12) return "Good morning! ☀️";
     if (hour < 17) return "Good afternoon! 🌤️";
     return "Good evening! 🌙";
-  };
-
-  const getTotalMedicationsForToday = () => {
-    return todaysReminders.length + medicationsWithoutReminders.length;
   };
 
   const getCompletedCount = () => {
@@ -216,14 +208,60 @@ export function TodaysMedications() {
         </div>
       )}
 
-      {/* Medications without Reminders */}
-      {medicationsWithoutReminders.length > 0 && (
+      {/* Scheduled Medications without Reminders */}
+      {scheduledMedicationsWithoutReminders.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-medium text-gray-900 flex items-center space-x-2">
+            <Calendar className="h-4 w-4" />
+            <span>Scheduled for Today</span>
+          </h3>
+          {scheduledMedicationsWithoutReminders.map((medication) => {
+            const completionStatus = getDailyCompletionStatus(medication);
+            const progressText = getProgressDisplayText(
+              completionStatus.remaining,
+              completionStatus.total,
+              completionStatus.completed,
+              medication.frequency
+            );
+            
+            return (
+              <div key={medication.id} className="relative">
+                <div className="absolute top-2 right-2 z-10 flex flex-col items-end space-y-1">
+                  {completionStatus.completed ? (
+                    <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full flex items-center space-x-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>All Complete</span>
+                    </div>
+                  ) : completionStatus.remaining > 0 && completionStatus.total > 0 ? (
+                    <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                      {progressText}
+                    </div>
+                  ) : null}
+                </div>
+                <div className={completionStatus.completed ? 'opacity-60' : ''}>
+                  <QuickMedicationLog
+                    medication={medication}
+                    onAction={(action) => {
+                      if (action === 'taken') {
+                        // Refresh will happen automatically via store updates
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* As-Needed Medications */}
+      {asNeededMedications.length > 0 && (
         <div className="space-y-3">
           <h3 className="font-medium text-gray-900 flex items-center space-x-2">
             <Plus className="h-4 w-4" />
-            <span>As Needed / No Reminders Set</span>
+            <span>As Needed</span>
           </h3>
-          {medicationsWithoutReminders.map((medication) => {
+          {asNeededMedications.map((medication) => {
             const completionStatus = getDailyCompletionStatus(medication);
             const progressText = getProgressDisplayText(
               completionStatus.remaining,
@@ -244,13 +282,13 @@ export function TodaysMedications() {
                     <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
                       {progressText}
                     </div>
-                  ) : medication.frequency === 'as-needed' ? (
+                  ) : (
                     <div className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
                       As needed
                     </div>
-                  ) : null}
+                  )}
                 </div>
-                <div className={completionStatus.completed ? 'opacity-60' : ''}>
+                <div>
                   <QuickMedicationLog
                     medication={medication}
                     onAction={(action) => {

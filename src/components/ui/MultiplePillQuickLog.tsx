@@ -11,18 +11,18 @@ interface MultiplePillQuickLogProps {
 }
 
 export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuickLogProps) {
-  const { logMultiplePillDose } = useMedicationStore();
+  const { logMultiplePillDose, getCurrentDose } = useMedicationStore();
   const [pillsTaken, setPillsTaken] = React.useState<Record<string, number>>({});
   const [isLogging, setIsLogging] = React.useState(false);
 
+  const currentDose = getCurrentDose(medication.id);
+  
   const pillComponents = React.useMemo(() => {
     // Return empty array if not supporting multiple pills
     if (!medication.useMultiplePills || !medication.pillConfigurations || !medication.doseConfigurations) {
       return [];
     }
-    const components = getPillComponents(medication);
-    console.log(`🔍 MultiplePillQuickLog getPillComponents for ${medication.name}:`, components);
-    return components;
+    return getPillComponents(medication);
   }, [
     medication.useMultiplePills,
     medication.pillConfigurations,
@@ -68,12 +68,6 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
         timeTaken: new Date(),
       }));
 
-      console.log('🔄 Logging multiple pill dose:', medication.name, {
-        pillLogs,
-        pillComponents,
-        pillsTaken,
-        inventoryCount: medication.pillInventory?.length || 0
-      });
 
       logMultiplePillDose(medication.id, pillLogs);
 
@@ -116,16 +110,6 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
   const getTotalTaken = () => Object.values(pillsTaken).reduce((sum, count) => sum + count, 0);
   const getTotalExpected = () => pillComponents.reduce((sum, comp) => sum + comp.quantity, 0);
 
-  // Debug the validation checks
-  console.log(`🔍 MultiplePillQuickLog validation for ${medication.name}:`, {
-    useMultiplePills: medication.useMultiplePills,
-    hasPillConfigs: !!medication.pillConfigurations,
-    hasDoseConfigs: !!medication.doseConfigurations,
-    pillConfigsLength: medication.pillConfigurations?.length || 0,
-    doseConfigsLength: medication.doseConfigurations?.length || 0,
-    pillComponentsLength: pillComponents.length,
-    pillComponents: pillComponents
-  });
 
   // Return early if no valid configuration (after all hooks)
   if (!medication.useMultiplePills || 
@@ -134,7 +118,6 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
       medication.pillConfigurations.length === 0 ||
       medication.doseConfigurations.length === 0 ||
       pillComponents.length === 0) {
-    console.log(`❌ MultiplePillQuickLog: Invalid configuration for ${medication.name}, returning null`);
     return null;
   }
 
@@ -146,7 +129,14 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
             className="w-4 h-4 rounded-full"
             style={{ backgroundColor: medication.color }}
           />
-          <h3 className="font-medium text-gray-900">{medication.name}</h3>
+          <div>
+            <h3 className="font-medium text-gray-900">{medication.name}</h3>
+            {medication.tapering?.isActive && (
+              <p className="text-xs text-purple-600 font-medium">
+                📉 Tapering: {currentDose.dose} {medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || 'mg'}
+              </p>
+            )}
+          </div>
         </div>
         <div className="text-sm text-gray-500">
           {getTotalTaken()}/{getTotalExpected()} pills

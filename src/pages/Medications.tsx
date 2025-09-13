@@ -550,6 +550,7 @@ export function Medications() {
             <option value="supplement">Supplement</option>
             <option value="vitamin">Vitamin</option>
             <option value="herbal">Herbal</option>
+            <option value="recreational">Recreational</option>
             <option value="injection">Injection</option>
             <option value="topical">Topical</option>
             <option value="emergency">Emergency</option>

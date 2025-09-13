@@ -10,10 +10,37 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Generate a unique ID
+ * Generate a unique ID with collision prevention
  */
+let idCounter = 0;
+let lastTimestamp = 0;
+
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const timestamp = Date.now();
+  
+  // If same timestamp, increment counter
+  if (timestamp === lastTimestamp) {
+    idCounter = (idCounter + 1) % 100000;
+  } else {
+    idCounter = 0;
+    lastTimestamp = timestamp;
+  }
+  
+  // Add process/session identifier for additional uniqueness
+  const sessionId = typeof window !== 'undefined' 
+    ? window.performance?.now().toString(36).substr(2, 4) || 'xxxx'
+    : 'node';
+    
+  return `${timestamp}-${idCounter.toString().padStart(5, '0')}-${sessionId}-${Math.random().toString(36).substr(2, 6)}`;
+}
+
+/**
+ * Generate a React key with additional context to prevent collisions
+ */
+export function generateReactKey(prefix: string = 'item', index?: number, id?: string): string {
+  const baseKey = id || generateId();
+  const indexPart = typeof index === 'number' ? `-${index}` : '';
+  return `${prefix}-${baseKey}${indexPart}`;
 }
 
 /**
@@ -478,6 +505,8 @@ export function getRiskLevel(category: string): 'minimal' | 'low' | 'moderate' |
     'opioid': 'high',
     'benzodiazepine': 'high',
     'stimulant': 'high',
+    'dissociative': 'high',
+    'alcohol': 'high',
     'sleep-aid': 'moderate',
     'muscle-relaxant': 'moderate',
     'antidepressant': 'low',
@@ -502,15 +531,29 @@ export function getDependencyRiskCategory(medicationName: string): string {
   // Benzodiazepines and GABA drugs
   if (name.includes('alprazolam') || name.includes('lorazepam') || name.includes('diazepam') || 
       name.includes('clonazepam') || name.includes('xanax') || name.includes('valium') ||
-      name.includes('ativan') || name.includes('klonopin') || name.includes('phenibut')) {
+      name.includes('ativan') || name.includes('klonopin') || name.includes('phenibut') ||
+      name.includes('ghb')) {
     return 'benzodiazepine';
   }
   
   // Stimulants
   if (name.includes('adderall') || name.includes('ritalin') || name.includes('concerta') || 
       name.includes('vyvanse') || name.includes('amphetamine') || name.includes('methylphenidate') ||
-      name.includes('modafinil')) {
+      name.includes('modafinil') || name.includes('cocaine') || name.includes('methamphetamine') ||
+      name.includes('crystal meth') || name.includes('mdma') || name.includes('ecstasy')) {
     return 'stimulant';
+  }
+  
+  // Dissociatives
+  if (name.includes('ketamine') || name.includes('dmt') || name.includes('nitrous oxide') ||
+      name.includes('n2o') || name.includes('pcp')) {
+    return 'dissociative';
+  }
+  
+  // Alcohol
+  if (name.includes('alcohol') || name.includes('ethanol') || name.includes('beer') ||
+      name.includes('wine') || name.includes('vodka') || name.includes('whiskey')) {
+    return 'alcohol';
   }
   
   // Sleep aids
@@ -651,7 +694,7 @@ export function calculateTaperingDose(
   
   const taperedDose = baseDose;
   
-  // If medication uses multiple pills, we might need to adjust to available pill combinations
+  // If medication uses multiple pills, calculate the optimal pill combination for tapered dose
   if (medication?.useMultiplePills && medication?.pillConfigurations) {
     return adjustDoseForMultiplePills(taperedDose, medication);
   }
@@ -659,7 +702,7 @@ export function calculateTaperingDose(
   return taperedDose;
 }
 
-// Helper function to adjust tapered dose to available pill combinations
+// Helper function to adjust tapered dose to available pill combinations for multiple pills
 export function adjustDoseForMultiplePills(targetDose: number, medication: any): number {
   if (!medication?.pillConfigurations) return targetDose;
   
@@ -690,44 +733,36 @@ export function adjustDoseForMultiplePills(targetDose: number, medication: any):
 }
 
 // Enhanced tapering functions for multiple pills
+// Calculate optimal pill reduction for tapering with multiple pill configurations
 export function calculateOptimalPillReduction(
   currentPillCounts: Record<string, number>,
   reductionPercent: number,
   medication: any
 ): { newPillCounts: Record<string, number>; actualReduction: number } {
-  if (!medication?.pillConfigurations || !medication?.doseConfigurations) {
-    return { newPillCounts: currentPillCounts, actualReduction: 0 };
+  if (!medication?.pillConfigurations) {
+    return { newPillCounts: {}, actualReduction: 0 };
   }
 
   // Calculate current total dose
-  let currentTotalDose = 0;
-  Object.entries(currentPillCounts).forEach(([pillConfigId, count]) => {
-    const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillConfigId);
-    if (pillConfig) {
-      currentTotalDose += pillConfig.strength * (count as number);
-    }
-  });
+  const currentTotalDose = Object.entries(currentPillCounts).reduce((total, [pillId, count]) => {
+    const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillId);
+    return total + (pillConfig ? pillConfig.strength * count : 0);
+  }, 0);
 
   // Calculate target dose after reduction
   const targetDose = currentTotalDose * (1 - reductionPercent / 100);
-  
-  // Find the best pill combination for the target dose
-  const adjustedDose = adjustDoseForMultiplePills(targetDose, medication);
-  
-  // Convert back to pill counts
-  const newPillCounts = calculatePillCountsForDose(adjustedDose, medication);
-  
+
+  // Use existing function to calculate optimal pill combination for target dose
+  const newPillCounts = calculatePillCountsForDose(targetDose, medication);
+
   // Calculate actual reduction achieved
-  let newTotalDose = 0;
-  Object.entries(newPillCounts).forEach(([pillConfigId, count]) => {
-    const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillConfigId);
-    if (pillConfig) {
-      newTotalDose += pillConfig.strength * (count as number);
-    }
-  });
-  
-  const actualReduction = currentTotalDose > 0 ? ((currentTotalDose - newTotalDose) / currentTotalDose) * 100 : 0;
-  
+  const newTotalDose = Object.entries(newPillCounts).reduce((total, [pillId, count]) => {
+    const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillId);
+    return total + (pillConfig ? pillConfig.strength * count : 0);
+  }, 0);
+
+  const actualReduction = currentTotalDose > 0 ? 
+    ((currentTotalDose - newTotalDose) / currentTotalDose) * 100 : 0;
   return { newPillCounts, actualReduction };
 }
 
@@ -766,22 +801,97 @@ export function calculatePillCountsForDose(targetDose: number, medication: any):
   return pillCounts;
 }
 
+// Format pill counts for tapering display showing which pills to take
 export function formatPillCountsForTapering(pillCounts: Record<string, number>, medication: any): string {
   if (!medication?.pillConfigurations) return '';
   
-  const descriptions: string[] = [];
+  const parts: string[] = [];
   
-  Object.entries(pillCounts).forEach(([pillConfigId, count]) => {
-    if ((count as number) > 0) {
-      const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillConfigId);
+  Object.entries(pillCounts).forEach(([pillId, count]) => {
+    if (count > 0) {
+      const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillId);
       if (pillConfig) {
-        const countStr = (count as number) % 1 === 0 ? count.toString() : count.toString();
-        descriptions.push(`${countStr} × ${pillConfig.strength}${pillConfig.unit} ${pillConfig.color || ''} pill${(count as number) !== 1 ? 's' : ''}`);
+        const countDisplay = count === Math.floor(count) ? count.toString() : count.toString();
+        parts.push(`${countDisplay}x ${pillConfig.strength}${pillConfig.unit} ${pillConfig.shape || 'pill'}${count > 1 ? 's' : ''}`);
       }
     }
   });
   
-  return descriptions.join(' + ') || 'No pills';
+  return parts.join(' + ') || 'No pills needed';
+}
+
+// Calculate total dose from pill counts for multiple pill medications
+export function calculateTotalDoseFromPillCounts(pillCounts: Record<string, number>, medication: any): number {
+  if (!medication?.pillConfigurations) return 0;
+  
+  let totalDose = 0;
+  Object.entries(pillCounts).forEach(([pillId, count]) => {
+    const pillConfig = medication.pillConfigurations.find((config: any) => config.id === pillId);
+    if (pillConfig) {
+      totalDose += pillConfig.strength * count;
+    }
+  });
+  
+  return totalDose;
+}
+
+// Enhanced function to generate step-by-step tapering plan for multiple pills
+export function generateMultiplePillTaperingSteps(
+  medication: any,
+  initialDose: number,
+  finalDose: number,
+  durationWeeks: number,
+  method: 'linear' | 'exponential' | 'hyperbolic' = 'hyperbolic'
+): Array<{
+  week: number;
+  day: number;
+  targetDose: number;
+  pillCounts: Record<string, number>;
+  instructions: string;
+  totalDose: number;
+}> {
+  if (!medication?.pillConfigurations) return [];
+  
+  const steps: Array<{
+    week: number;
+    day: number;
+    targetDose: number;
+    pillCounts: Record<string, number>;
+    instructions: string;
+    totalDose: number;
+  }> = [];
+  
+  for (let week = 1; week <= durationWeeks; week++) {
+    let targetDose: number;
+    
+    if (method === 'linear') {
+      const progress = (week - 1) / (durationWeeks - 1);
+      targetDose = initialDose + (finalDose - initialDose) * progress;
+    } else if (method === 'exponential') {
+      const progress = (week - 1) / (durationWeeks - 1);
+      const exponentialProgress = 1 - Math.pow(1 - progress, 2);
+      targetDose = initialDose + (finalDose - initialDose) * exponentialProgress;
+    } else { // hyperbolic
+      const reductionPercent = 10; // 10% reduction each step
+      targetDose = week === 1 ? initialDose : steps[week - 2].targetDose * (1 - reductionPercent / 100);
+      targetDose = Math.max(targetDose, finalDose);
+    }
+    
+    const pillCounts = calculatePillCountsForDose(targetDose, medication);
+    const actualDose = calculateTotalDoseFromPillCounts(pillCounts, medication);
+    const instructions = formatPillCountsForTapering(pillCounts, medication);
+    
+    steps.push({
+      week,
+      day: week * 7,
+      targetDose,
+      pillCounts,
+      instructions,
+      totalDose: actualDose
+    });
+  }
+  
+  return steps;
 }
 
 // Psychological Messaging

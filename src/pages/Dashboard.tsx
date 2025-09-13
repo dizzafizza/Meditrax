@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { formatTime, getAdherenceColor, formatPillDisplayShort } from '@/utils/helpers';
+import { generateListItemKey } from '@/utils/reactKeyHelper';
 import { TodaysMedications } from '@/components/ui/TodaysMedications';
 import '@/utils/fixKratomData'; // Import the fix utility
 import { WithdrawalSymptomTracker } from '@/components/ui/WithdrawalSymptomTracker';
@@ -39,7 +40,10 @@ export function Dashboard() {
     getHighRiskMedications,
     markMessageAsRead,
     getCurrentDose,
-    addSmartMessage
+    addSmartMessage,
+    generatePsychologicalSafetyAlerts,
+    getActivePsychologicalSafetyAlerts,
+    acknowledgePsychologicalAlert
   } = useMedicationStore();
 
   const todaysReminders = getTodaysReminders();
@@ -58,8 +62,15 @@ export function Dashboard() {
   );
   const cyclicDosingMedications = activeMedications.filter(med => med.cyclicDosing?.isActive);
   const prnMedications = activeMedications.filter(med => med.frequency === 'as-needed');
+  const recreationalMedications = activeMedications.filter(med => med.category === 'recreational');
 
-  // Psychological warnings for dose deviations
+  // Enhanced Psychological Safety Alerts (with 7-day minimum requirement)
+  React.useEffect(() => {
+    // Regenerate alerts when medications or logs change
+    generatePsychologicalSafetyAlerts();
+  }, [medications, logs, generatePsychologicalSafetyAlerts]);
+
+  // Legacy dose deviation warnings (for backward compatibility)
   const getDoseDeviationWarnings = () => {
     const warnings: Array<{id: string; medication: string; message: string; severity: 'warning' | 'critical'}> = [];
     const processedLogIds = new Set(); // Track which logs we've already processed
@@ -154,20 +165,13 @@ export function Dashboard() {
   // State for withdrawal tracking modal
   const [selectedWithdrawalMedication, setSelectedWithdrawalMedication] = React.useState<Medication | null>(null);
 
-  // Debug: Check if we have any data at all
+  // Enhanced Psychological Safety Alerts (with 7-day minimum requirement)
   React.useEffect(() => {
-    console.log('🔍 Dashboard Data Check:', {
-      totalMedications: medications.length,
-      activeMedications: activeMedications.length,
-      allMedications: medications.map(med => ({
-        id: med.id,
-        name: med.name,
-        isActive: med.isActive,
-        dosage: med.dosage,
-        unit: med.unit
-      }))
-    });
-  }, [medications.length]);
+    // Regenerate alerts when medications or logs change
+    if (medications.length > 0) {
+      generatePsychologicalSafetyAlerts();
+    }
+  }, [medications, logs]); // Remove generatePsychologicalSafetyAlerts from deps to prevent infinite loop
 
 
   const stats = [
@@ -337,14 +341,125 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Dose Deviation Warnings */}
+      {/* Enhanced Psychological Safety Alerts */}
+      {getActivePsychologicalSafetyAlerts().length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <Brain className="h-5 w-5 text-purple-500 mr-2" />
+                Psychological Safety Alerts
+              </h3>
+              <span className={`badge ${
+                getActivePsychologicalSafetyAlerts().some(a => a.priority === 'urgent') ? 'badge-danger' : 
+                getActivePsychologicalSafetyAlerts().some(a => a.priority === 'high') ? 'badge-warning' : 'badge-info'
+              }`}>
+                {getActivePsychologicalSafetyAlerts().length}
+              </span>
+            </div>
+          </div>
+          <div className="card-content">
+            <div className="space-y-4">
+              {getActivePsychologicalSafetyAlerts().map((alert, index) => {
+                const medication = medications.find(med => med.id === alert.medicationId);
+                const priorityColors = {
+                  urgent: 'border-red-500 bg-red-50',
+                  high: 'border-orange-500 bg-orange-50',
+                  medium: 'border-yellow-500 bg-yellow-50',
+                  low: 'border-blue-500 bg-blue-50'
+                };
+                const iconColors = {
+                  urgent: 'text-red-500',
+                  high: 'text-orange-500',
+                  medium: 'text-yellow-500',
+                  low: 'text-blue-500'
+                };
+
+                return (
+                  <div
+                    key={generateListItemKey(alert, index, 'safety-alert')}
+                    className={`p-4 rounded-lg border-l-4 ${priorityColors[alert.priority]}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <Brain className={`h-4 w-4 ${iconColors[alert.priority]}`} />
+                          <h4 className="text-sm font-semibold text-gray-900">{alert.title}</h4>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            alert.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                            alert.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                            alert.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {alert.priority.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 mb-2">{alert.message}</p>
+                        {medication && (
+                          <p className="text-xs text-gray-500 mb-2">
+                            <span className="font-medium">Medication:</span> {medication.name}
+                          </p>
+                        )}
+                        <div className="text-xs text-gray-600 mb-3">
+                          <span className="font-medium">Psychological Impact:</span> {alert.psychologicalImpact}
+                        </div>
+                        {alert.recommendedActions && alert.recommendedActions.length > 0 && (
+                          <div className="mt-3">
+                            <h5 className="text-xs font-medium text-gray-700 mb-1">Recommended Actions:</h5>
+                            <ul className="text-xs text-gray-600 list-disc list-inside space-y-1">
+                              {alert.recommendedActions.map((action, actionIndex) => (
+                                <li key={`action-${alert.id}-${actionIndex}`}>{action}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col space-y-2 ml-4">
+                        <button
+                          onClick={() => acknowledgePsychologicalAlert(alert.id, 'helpful')}
+                          className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                        >
+                          Helpful
+                        </button>
+                        <button
+                          onClick={() => acknowledgePsychologicalAlert(alert.id, 'not-helpful')}
+                          className="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                        >
+                          Not Helpful
+                        </button>
+                        <button
+                          onClick={() => acknowledgePsychologicalAlert(alert.id, 'dismissed')}
+                          className="text-xs px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="flex items-start space-x-2">
+                <Brain className="h-4 w-4 text-purple-500 mt-0.5" />
+                <div className="text-xs text-purple-700">
+                  <p className="font-medium mb-1">Understanding Psychological Safety Alerts</p>
+                  <p>These alerts are only shown for medications you've been taking for at least 7 days. They help identify patterns that may indicate psychological concerns, tolerance development, or dependency risks. Each alert is based on your usage patterns and medical research.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Dose Deviation Warnings (for immediate safety) */}
       {doseDeviationWarnings.length > 0 && (
         <div className="card">
           <div className="card-header">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                <Brain className="h-5 w-5 text-red-500 mr-2" />
-                Psychological Safety Alerts
+                <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+                Immediate Safety Alerts
               </h3>
               <span className={`badge ${doseDeviationWarnings.some(w => w.severity === 'critical') ? 'badge-danger' : 'badge-warning'}`}>
                 {doseDeviationWarnings.length}
@@ -395,16 +510,30 @@ export function Dashboard() {
           </div>
           <div className="card-content">
             <div className="space-y-4">
-              {taperingMedications.map((medication) => {
+              {taperingMedications.map((medication, index) => {
                 const currentDose = getCurrentDose(medication.id);
-                const originalDose = parseFloat(medication.dosage);
-                const progress = ((originalDose - currentDose.dose) / originalDose) * 100;
+                
+                // Get original dose - handle multiple pills vs single dosage
+                let originalDose = parseFloat(medication.dosage);
+                if (medication.useMultiplePills && medication.doseConfigurations) {
+                  const defaultConfig = medication.doseConfigurations.find(
+                    config => config.id === medication.defaultDoseConfigurationId
+                  ) || medication.doseConfigurations[0];
+                  
+                  if (defaultConfig) {
+                    originalDose = defaultConfig.totalDoseAmount;
+                  }
+                }
+                
+                // Fix: Calculate progress correctly to avoid negative values on day 1
+                const reductionAmount = Math.max(0, originalDose - currentDose.dose);
+                const progress = originalDose > 0 ? (reductionAmount / originalDose) * 100 : 0;
                 const daysElapsed = medication.tapering?.startDate 
                   ? Math.floor((Date.now() - new Date(medication.tapering.startDate).getTime()) / (1000 * 60 * 60 * 24))
                   : 0;
                 
                 return (
-                  <div key={medication.id} className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div key={generateListItemKey(medication, index, 'tapering-med')} className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <div
@@ -414,8 +543,22 @@ export function Dashboard() {
                         <div>
                           <h4 className="font-medium text-gray-900">{medication.name}</h4>
                           <p className="text-sm text-gray-600">
-                            {currentDose.dose} {medication.unit} (down from {originalDose} {medication.unit})
+                            Current: {currentDose.dose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}
                           </p>
+                          <p className="text-xs text-gray-500">
+                            Original: {originalDose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}
+                          </p>
+                          {medication.useMultiplePills && medication.pillConfigurations && currentDose.pillBreakdown && (
+                            <div className="mt-1">
+                              <p className="text-xs text-purple-600 font-medium">
+                                📋 Current pills: {Object.entries(currentDose.pillBreakdown).map(([pillId, count]) => {
+                                  const pillConfig = medication.pillConfigurations?.find(config => config.id === pillId);
+                                  if (!pillConfig || count === 0) return '';
+                                  return `${count}x ${pillConfig.strength}${pillConfig.unit}`;
+                                }).filter(Boolean).join(' + ')}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
@@ -432,8 +575,8 @@ export function Dashboard() {
                     </div>
                     
                     <div className="flex items-center justify-between text-xs text-gray-600">
-                      <span>Original: {originalDose} {medication.unit}</span>
-                      <span>Target: 0 {medication.unit}</span>
+                      <span>Original: {originalDose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}</span>
+                      <span>Target: 0 {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}</span>
                     </div>
                     
                     {medication.tapering?.isPaused && (
@@ -449,8 +592,47 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Withdrawal Tracking Section */}
-      {withdrawalTrackingMedications.length > 0 && (
+          {/* Recreational Substances - Simplified View */}
+          {recreationalMedications.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <div className="flex items-center space-x-2">
+                  <ShieldAlert className="h-5 w-5 text-orange-600" />
+                  <h3 className="text-lg font-medium text-gray-900">Recreational Substances</h3>
+                  <span className="badge bg-orange-100 text-orange-800">{recreationalMedications.length}</span>
+                </div>
+              </div>
+              <div className="card-content">
+                <div className="space-y-3">
+                  {recreationalMedications.map((medication) => (
+                    <div key={medication.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: medication.color }}
+                          />
+                          <div>
+                            <h4 className="font-medium text-gray-900">{medication.name}</h4>
+                            <div className="flex items-center space-x-2 text-sm text-gray-600">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                Risk: {medication.riskLevel}
+                              </span>
+                              <span className="text-gray-500">•</span>
+                              <span>{medication.category}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Withdrawal Tracking Section */}
+          {withdrawalTrackingMedications.length > 0 && (
         <div className="card">
           <div className="card-header">
             <div className="flex items-center justify-between">
@@ -463,14 +645,14 @@ export function Dashboard() {
           </div>
           <div className="card-content">
             <div className="space-y-4">
-              {withdrawalTrackingMedications.map((medication) => {
+              {withdrawalTrackingMedications.map((medication, index) => {
                 const activeWithdrawal = medication.dependencePrevention?.withdrawalHistory.find(event => !event.endDate);
                 const daysSinceStart = activeWithdrawal?.startDate 
                   ? Math.floor((Date.now() - new Date(activeWithdrawal.startDate).getTime()) / (1000 * 60 * 60 * 24))
                   : 0;
                 
                 return (
-                  <div key={medication.id} className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <div key={generateListItemKey(medication, index, 'cyclicmeds')} className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <div
@@ -548,11 +730,11 @@ export function Dashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {activeMedications.slice(0, 5).map((medication) => {
+                {activeMedications.slice(0, 5).map((medication, index) => {
                   const adherence = getMedicationAdherence(medication.id, 7);
                   return (
                     <div
-                      key={medication.id}
+                      key={generateListItemKey(medication, index, 'adherence-med')}
                       className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
                       <div className="flex items-center space-x-3">

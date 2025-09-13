@@ -194,7 +194,14 @@ export type MedicationUnit =
   | 'sprays' 
   | 'patches' 
   | 'iu' 
-  | 'units';
+  | 'units'
+  | 'mg THC'
+  | 'mg CBD'
+  | 'grams'
+  | 'ounces'
+  | 'drinks'
+  | 'hits'
+  | 'doses';
 
 export type MedicationCategory = 
   | 'prescription'
@@ -204,7 +211,8 @@ export type MedicationCategory =
   | 'herbal'
   | 'injection'
   | 'topical'
-  | 'emergency';
+  | 'emergency'
+  | 'recreational';
 
 export type RiskLevel = 'minimal' | 'low' | 'moderate' | 'high';
 
@@ -668,6 +676,22 @@ export interface MessageAction {
   label: string;
   action: 'mark-taken' | 'snooze' | 'contact-doctor' | 'view-resources' | 'adjust-schedule';
   style: 'primary' | 'secondary' | 'warning' | 'danger';
+}
+
+// Enhanced Psychological Safety Alert interface
+export interface PsychologicalSafetyAlert {
+  id: string;
+  medicationId: string;
+  type: 'dose-escalation' | 'tolerance-indicator' | 'dependency-pattern' | 'anxiety-pattern' | 
+        'timing-drift' | 'stress-related' | 'multi-substance-concern';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  title: string;
+  message: string;
+  detectedAt: Date;
+  psychologicalImpact: string;
+  recommendedActions: string[];
+  acknowledged?: boolean;
+  userResponse?: 'helpful' | 'not-helpful' | 'dismissed';
 }
 
 // Anonymous Reporting Types

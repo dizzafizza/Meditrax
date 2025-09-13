@@ -82,6 +82,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
 
   const selectedColor = watch('color');
   const medicationName = watch('name');
+  const selectedCategory = watch('category');
 
   // Handle medication search and suggestions
   const handleMedicationSearch = (searchTerm: string) => {
@@ -399,12 +400,112 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                       <option value="supplement">Supplement</option>
                       <option value="vitamin">Vitamin</option>
                       <option value="herbal">Herbal</option>
+                      <option value="recreational">Recreational</option>
                       <option value="injection">Injection</option>
                       <option value="topical">Topical</option>
                       <option value="emergency">Emergency</option>
                     </select>
                   </div>
                 </div>
+
+                {/* Recreational Drug Warning & Info */}
+                {selectedCategory === 'recreational' && (
+                  <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-red-800">⚠️ Recreational Substance - Important Safety Information</h4>
+                        <div className="mt-2 text-sm text-red-700">
+                          {selectedMedicationData && (
+                            <>
+                              <p className="font-medium">Risk Level: <span className="uppercase">{selectedMedicationData.riskLevel}</span></p>
+                              <p className="mt-1">{selectedMedicationData.description}</p>
+                            </>
+                          )}
+                          
+                          {/* Psychonaut Wiki Dosage Info */}
+                          {selectedMedicationData?.commonDosages && selectedMedicationData.commonDosages.length >= 5 && (
+                            <div className="mt-3 p-3 bg-white rounded border">
+                              <h5 className="font-medium text-gray-900 mb-2">📊 Psychonaut Wiki Dosage Chart:</h5>
+                              <div className="grid grid-cols-5 gap-2 text-xs">
+                                <div className="text-center">
+                                  <div className="font-medium text-gray-700">Threshold</div>
+                                  <div className="text-blue-600">{selectedMedicationData.commonDosages[0]}{selectedMedicationData.commonUnits[0]}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium text-gray-700">Light</div>
+                                  <div className="text-green-600">{selectedMedicationData.commonDosages[1]}{selectedMedicationData.commonUnits[0]}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium text-gray-700">Common</div>
+                                  <div className="text-yellow-600">{selectedMedicationData.commonDosages[2]}{selectedMedicationData.commonUnits[0]}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium text-gray-700">Strong</div>
+                                  <div className="text-orange-600">{selectedMedicationData.commonDosages[3]}{selectedMedicationData.commonUnits[0]}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium text-gray-700">Heavy</div>
+                                  <div className="text-red-600">{selectedMedicationData.commonDosages[4]}{selectedMedicationData.commonUnits[0]}</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Harm Reduction Messages */}
+                          {selectedMedicationData?.psychologicalSupport?.motivationalMessages && (
+                            <div className="mt-3 p-3 bg-blue-50 rounded border">
+                              <h5 className="font-medium text-blue-900 mb-2">🛡️ Harm Reduction Guidelines:</h5>
+                              <ul className="text-xs text-blue-800 space-y-1">
+                                {selectedMedicationData.psychologicalSupport.motivationalMessages.slice(0, 4).map((message, index) => (
+                                  <li key={index} className="flex items-start">
+                                    <span className="text-blue-500 mr-1">•</span>
+                                    <span>{message}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Risk Triggers */}
+                          {selectedMedicationData?.psychologicalSupport?.riskTriggers && (
+                            <div className="mt-3 p-3 bg-yellow-50 rounded border">
+                              <h5 className="font-medium text-yellow-900 mb-2">⚠️ High-Risk Situations:</h5>
+                              <div className="text-xs text-yellow-800">
+                                {selectedMedicationData.psychologicalSupport.riskTriggers.join(', ')}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* General recreational drug warning */}
+                          {!selectedMedicationData && (
+                            <div className="mt-3 p-3 bg-yellow-50 rounded border">
+                              <h5 className="font-medium text-yellow-900 mb-2">⚠️ General Recreational Substance Guidelines:</h5>
+                              <ul className="text-xs text-yellow-800 space-y-1">
+                                <li>• Research the substance thoroughly before use</li>
+                                <li>• Start with the lowest possible dose</li>
+                                <li>• Test substances with reagent kits when available</li>
+                                <li>• Use in safe environments with trusted people</li>
+                                <li>• Avoid mixing with other substances</li>
+                                <li>• Be aware of legal status in your jurisdiction</li>
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="mt-3 p-2 bg-gray-100 rounded text-xs text-gray-700">
+                            <strong>Legal Notice:</strong> This substance may be illegal in your jurisdiction. 
+                            <strong className="block mt-1">Medical Disclaimer:</strong> This information is for harm reduction purposes only and does not constitute medical advice. 
+                            Always consult healthcare professionals for substance-related concerns.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Color Selection */}
                 <div>
@@ -622,16 +723,16 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">Risk Assessment:</span>
                         <span className={`badge ${
-                          getRiskLevel(getDependencyRiskCategory(watch('name'))) === 'high' ? 'badge-danger' :
-                          getRiskLevel(getDependencyRiskCategory(watch('name'))) === 'moderate' ? 'badge-warning' :
-                          getRiskLevel(getDependencyRiskCategory(watch('name'))) === 'low' ? 'badge-success' :
+                          (selectedMedicationData?.riskLevel || getRiskLevel(getDependencyRiskCategory(watch('name')))) === 'high' ? 'badge-danger' :
+                          (selectedMedicationData?.riskLevel || getRiskLevel(getDependencyRiskCategory(watch('name')))) === 'moderate' ? 'badge-warning' :
+                          (selectedMedicationData?.riskLevel || getRiskLevel(getDependencyRiskCategory(watch('name')))) === 'low' ? 'badge-success' :
                           'badge-secondary'
                         }`}>
-                          {getRiskLevel(getDependencyRiskCategory(watch('name')))} risk
+                          {selectedMedicationData?.riskLevel || getRiskLevel(getDependencyRiskCategory(watch('name')))} risk
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        Category: {getDependencyRiskCategory(watch('name')).replace('-', ' ')}
+                        Category: {selectedMedicationData?.dependencyRiskCategory?.replace('-', ' ') || getDependencyRiskCategory(watch('name')).replace('-', ' ')}
                       </p>
                     </div>
                   )}
