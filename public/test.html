@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Pages Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .success { color: green; font-size: 24px; }
+        .info { background: #f0f8ff; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1 class="success">✅ GitHub Pages is Working!</h1>
+    <div class="info">
+        <p><strong>Repository:</strong> dizzafizza/MedTrack</p>
+        <p><strong>Test URL:</strong> https://dizzafizza.github.io/MedTrack/test.html</p>
+        <p><strong>Current URL:</strong> <span id="currentUrl"></span></p>
+        <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+    </div>
+    <p>If you can see this page, GitHub Pages deployment is working correctly!</p>
+    
+    <script>
+        document.getElementById('currentUrl').textContent = window.location.href;
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+        console.log('✅ Static HTML test successful!');
+        console.log('Current URL:', window.location.href);
+        console.log('Base path:', window.location.pathname);
+    </script>
+</body>
+</html>
