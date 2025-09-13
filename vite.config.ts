@@ -27,5 +27,5 @@ export default defineConfig({
       },
     },
   },
-  base: '/MedTrack/',
+  // base: '/MedTrack/', // Temporarily removing base path for debugging
 })
