@@ -12,13 +12,13 @@
     "typescript",
     "healthcare"
   ],
-  "homepage": "https://github.com/your-username/MedTrack#readme",
+  "homepage": "https://dizzafizza.github.io/MedTrack",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-username/MedTrack.git"
+    "url": "git+https://github.com/dizzafizza/MedTrack.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/MedTrack/issues"
+    "url": "https://github.com/dizzafizza/MedTrack/issues"
   },
   "license": "MIT",
   "author": "MedTrack Contributors",
