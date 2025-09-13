@@ -395,3 +395,4 @@ export function WithdrawalSymptomTracker({ medication, isOpen, onClose }: Withdr
     </div>
   );
 }
+
