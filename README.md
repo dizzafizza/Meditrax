@@ -1,3 +1,5 @@
+<a href="https://www.buymeacoffee.com/dizzafizza"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=dizzafizza&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" /></a>
+
 # 🏥 MedTrack - Comprehensive Medication Tracking App
 
 A modern, responsive web application built with React and TypeScript for tracking medications, managing schedules, and monitoring adherence.
