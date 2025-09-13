@@ -10,6 +10,7 @@ import { Settings } from '@/pages/Settings';
 import { Reminders } from '@/pages/Reminders';
 import { Reports } from '@/pages/Reports';
 import { HealthProfile } from '@/pages/HealthProfile';
+import { Wiki } from '@/pages/Wiki';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
 
@@ -38,6 +39,7 @@ function App() {
           <Route path="/reminders" element={<Reminders />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/profile" element={<HealthProfile />} />
+          <Route path="/wiki" element={<Wiki />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Layout>

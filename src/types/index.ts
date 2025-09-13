@@ -217,6 +217,8 @@ export type DependencyRiskCategory =
   | 'antidepressant'
   | 'anticonvulsant'
   | 'antipsychotic'
+  | 'alcohol'
+  | 'dissociative'
   | 'low-risk';
 
 export type MedicationFrequency = 
