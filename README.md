@@ -164,7 +164,7 @@ The application uses client-side storage by default. For production deployments,
 - Export/import functionality allows full data control
 
 ### Privacy Features
-- Optional anonymous usage analytics
+- ~Optional anonymous usage analytics~> Disabled
 - Local-only storage with no cloud sync by default
 - Comprehensive data deletion options
 
@@ -190,7 +190,7 @@ We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
 
 ## 🆘 Support
 
