@@ -24,9 +24,12 @@ if (import.meta.env.DEV) {
   console.log('');
 }
 
+// Set basename for GitHub Pages deployment
+const basename = import.meta.env.PROD ? '/MedTrack' : '/';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <App />
       <Toaster 
         position="top-right"

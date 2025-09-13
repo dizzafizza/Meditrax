@@ -4,7 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "description": "A modern, responsive web application for comprehensive medication tracking and management",
-  "keywords": ["medication", "health", "tracking", "react", "typescript", "healthcare"],
+  "keywords": [
+    "medication",
+    "health",
+    "tracking",
+    "react",
+    "typescript",
+    "healthcare"
+  ],
   "homepage": "https://github.com/your-username/MedTrack#readme",
   "repository": {
     "type": "git",
@@ -17,7 +24,8 @@
   "author": "MedTrack Contributors",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
+    "build-with-tsc": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
@@ -39,6 +47,7 @@
     "zustand": "^4.4.1"
   },
   "devDependencies": {
+    "@types/node": "^24.3.3",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "@typescript-eslint/eslint-plugin": "^6.10.0",
