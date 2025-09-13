@@ -43,7 +43,7 @@ function App() {
       </Layout>
       
       {/* Hidden Admin Integration - tracks UI sequences for admin access */}
-      {/* <AdminIntegration /> */} {/* DISABLED */}
+      {/* <AdminIntegration /> */}
     </div>
   );
 }
