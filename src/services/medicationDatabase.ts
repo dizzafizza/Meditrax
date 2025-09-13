@@ -1384,6 +1384,274 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     taperingRequired: false
   },
 
+  // RECREATIONAL DRUGS & HARM REDUCTION
+  {
+    name: "Alcohol",
+    brandNames: ["Ethanol", "Beer", "Wine", "Spirits"],
+    category: "herbal", // Using herbal category for recreational substances
+    dependencyRiskCategory: "alcohol",
+    riskLevel: "high",
+    commonDosages: ["1", "2", "3", "4", "5"], // Standard drinks
+    commonUnits: ["drinks"],
+    commonFrequencies: ["as-needed", "daily", "weekly"],
+    description: "Legal recreational depressant; high addiction potential with severe withdrawal risk",
+    commonSideEffects: ["impaired coordination", "memory loss", "liver damage", "dehydration", "hangover"],
+    commonInteractions: ["all medications", "benzodiazepines", "opioids", "acetaminophen", "antihistamines"],
+    withdrawalRisk: "severe",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "hyperbolic",
+      durationWeeks: 4,
+      reductionPercent: 25,
+      notes: "Alcohol withdrawal can be life-threatening. Seek medical supervision for detox. Never stop suddenly if drinking daily. Use naltrexone or other medications under medical guidance."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["social situations", "stress relief", "habit patterns"],
+      motivationalMessages: [
+        "Track your drinking to understand patterns and reduce harm",
+        "Consider alcohol-free days to reset tolerance",
+        "Hydrate between drinks and eat before drinking"
+      ],
+      riskTriggers: ["daily use", "binge drinking", "blackouts", "withdrawal symptoms"]
+    }
+  },
+  {
+    name: "Cannabis",
+    brandNames: ["Marijuana", "THC", "CBD", "Weed"],
+    category: "herbal",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "low",
+    commonDosages: ["2.5", "5", "10", "25", "50"],
+    commonUnits: ["mg THC"],
+    commonFrequencies: ["as-needed", "daily", "weekly"],
+    description: "Cannabis with THC and CBD; legal status varies by location",
+    commonSideEffects: ["euphoria", "dry mouth", "red eyes", "increased appetite", "anxiety", "paranoia"],
+    commonInteractions: ["alcohol", "benzodiazepines", "blood thinners"],
+    withdrawalRisk: "low",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["pain management", "anxiety relief", "recreational use"],
+      motivationalMessages: [
+        "Start low and go slow with edibles - effects can take 2+ hours",
+        "Choose strains with balanced THC/CBD ratios for less anxiety",
+        "Consider taking tolerance breaks to maintain effectiveness"
+      ],
+      riskTriggers: ["daily use", "high-potency products", "synthetic cannabinoids"]
+    }
+  },
+  {
+    name: "MDMA",
+    brandNames: ["Ecstasy", "Molly", "E"],
+    category: "herbal",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["75", "100", "125", "150"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Empathogenic stimulant; illegal in most jurisdictions",
+    commonSideEffects: ["euphoria", "increased empathy", "jaw clenching", "dehydration", "hyperthermia"],
+    commonInteractions: ["MAOIs", "SSRIs", "alcohol", "stimulants"],
+    withdrawalRisk: "moderate",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["therapeutic contexts", "social events", "emotional processing"],
+      motivationalMessages: [
+        "Test your substances - adulterants like fentanyl can be fatal",
+        "Stay hydrated but don't overdrink water - electrolyte balance is key",
+        "Use only in safe environments with trusted people",
+        "Wait 3+ months between uses to prevent tolerance and neurotoxicity"
+      ],
+      riskTriggers: ["frequent use", "high doses", "hot environments", "polydrug use"]
+    }
+  },
+  {
+    name: "Cocaine",
+    brandNames: ["Coke", "Blow", "Snow"],
+    category: "herbal",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["20", "50", "100"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Powerful stimulant with high addiction potential; illegal",
+    commonSideEffects: ["euphoria", "increased energy", "paranoia", "heart palpitations", "nose damage"],
+    commonInteractions: ["alcohol", "MAOIs", "heart medications", "blood pressure medications"],
+    withdrawalRisk: "moderate",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["energy boost", "confidence", "social situations"],
+      motivationalMessages: [
+        "Test for fentanyl contamination - use fentanyl test strips",
+        "Avoid mixing with alcohol - creates toxic cocaethylene",
+        "Take breaks between lines to assess effects",
+        "Have a trusted person monitor you for cardiac issues"
+      ],
+      riskTriggers: ["binge use", "mixing with depressants", "frequent use", "injection use"]
+    }
+  },
+  {
+    name: "LSD",
+    brandNames: ["Acid", "Lucy", "Tabs"],
+    category: "herbal",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["25", "50", "100", "200"],
+    commonUnits: ["mcg"],
+    commonFrequencies: ["as-needed"],
+    description: "Psychedelic compound; illegal in most jurisdictions",
+    commonSideEffects: ["visual hallucinations", "altered perception", "anxiety", "confusion", "flashbacks"],
+    commonInteractions: ["SSRIs", "MAOIs", "lithium", "tramadol"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["therapeutic exploration", "spiritual experiences", "creativity"],
+      motivationalMessages: [
+        "Test your tabs - many contain NBOMe or other dangerous substances",
+        "Use in a safe, comfortable environment with a trusted trip sitter",
+        "Start with low doses - you can always take more next time",
+        "Avoid if you have history of psychosis or are on psychiatric medications"
+      ],
+      riskTriggers: ["high doses", "unsafe settings", "mental health issues", "frequent use"]
+    }
+  },
+  {
+    name: "Psilocybin",
+    brandNames: ["Magic Mushrooms", "Shrooms", "Mushrooms"],
+    category: "herbal",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["0.5", "1", "2", "3.5"],
+    commonUnits: ["g"],
+    commonFrequencies: ["as-needed"],
+    description: "Psychedelic mushrooms; legal status varies by location",
+    commonSideEffects: ["visual hallucinations", "altered perception", "nausea", "anxiety", "spiritual experiences"],
+    commonInteractions: ["SSRIs", "MAOIs", "lithium"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["therapeutic use", "spiritual exploration", "personal growth"],
+      motivationalMessages: [
+        "Know your mushroom species - misidentification can be fatal",
+        "Start with 0.5-1g to assess potency and sensitivity",
+        "Fast 4-6 hours before use to reduce nausea",
+        "Have a trip sitter present, especially for higher doses"
+      ],
+      riskTriggers: ["misidentified species", "high doses", "unsafe settings", "mental health conditions"]
+    }
+  },
+  {
+    name: "Ketamine",
+    brandNames: ["K", "Special K", "Ket"],
+    category: "herbal",
+    dependencyRiskCategory: "dissociative",
+    riskLevel: "high",
+    commonDosages: ["10", "25", "50", "100"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Dissociative anesthetic with therapeutic and recreational uses",
+    commonSideEffects: ["dissociation", "nausea", "confusion", "bladder damage", "tolerance"],
+    commonInteractions: ["alcohol", "benzodiazepines", "opioids", "stimulants"],
+    withdrawalRisk: "moderate",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "linear",
+      durationWeeks: 2,
+      reductionPercent: 50,
+      notes: "Ketamine can cause rapid tolerance and bladder damage. Seek medical guidance for therapeutic use."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["depression treatment", "dissociative experiences", "pain management"],
+      motivationalMessages: [
+        "Use only pharmaceutical ketamine if possible",
+        "Avoid frequent use to prevent bladder damage and tolerance",
+        "Never use alone - have someone present for safety",
+        "Consider therapeutic ketamine programs for depression"
+      ],
+      riskTriggers: ["daily use", "high doses", "bladder pain", "tolerance escalation"]
+    }
+  },
+  {
+    name: "DMT",
+    brandNames: ["Dimethyltryptamine", "Deems", "The Spirit Molecule"],
+    category: "herbal",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "moderate",
+    commonDosages: ["15", "25", "40", "60"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Short-acting psychedelic compound; illegal in most jurisdictions",
+    commonSideEffects: ["intense hallucinations", "out-of-body experiences", "anxiety", "rapid heart rate"],
+    commonInteractions: ["MAOIs", "SSRIs", "heart medications"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["spiritual exploration", "intense experiences", "breakthrough experiences"],
+      motivationalMessages: [
+        "DMT experiences are extremely intense but brief (5-15 minutes)",
+        "Use proper vaporization technique - don't burn the substance",
+        "Have an experienced sitter present for safety",
+        "Approach with respect and proper set/setting preparation"
+      ],
+      riskTriggers: ["heart conditions", "anxiety disorders", "improper administration", "unsafe settings"]
+    }
+  },
+  {
+    name: "Amphetamine",
+    brandNames: ["Speed", "Amp", "Dextroamphetamine"],
+    category: "herbal",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["5", "10", "20", "30"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed", "daily"],
+    description: "Stimulant with high addiction potential; prescription versions available",
+    commonSideEffects: ["increased energy", "decreased appetite", "insomnia", "anxiety", "paranoia"],
+    commonInteractions: ["MAOIs", "heart medications", "blood pressure medications"],
+    withdrawalRisk: "moderate",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["productivity", "weight loss", "energy boost"],
+      motivationalMessages: [
+        "Test for adulterants and fentanyl contamination",
+        "Stay hydrated and maintain nutrition during use",
+        "Avoid binge use - sleep deprivation increases risks",
+        "Monitor heart rate and blood pressure"
+      ],
+      riskTriggers: ["binge use", "injection use", "sleep deprivation", "paranoid thoughts"]
+    }
+  },
+  {
+    name: "Methamphetamine",
+    brandNames: ["Crystal Meth", "Ice", "Glass"],
+    category: "herbal",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["5", "10", "25", "50"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Highly addictive stimulant with severe health risks; illegal",
+    commonSideEffects: ["extreme euphoria", "hyperfocus", "paranoia", "psychosis", "dental problems"],
+    commonInteractions: ["all medications", "MAOIs", "heart medications"],
+    withdrawalRisk: "severe",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "linear",
+      durationWeeks: 4,
+      reductionPercent: 25,
+      notes: "Methamphetamine withdrawal can cause severe depression and suicidal thoughts. Professional support strongly recommended."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["extreme stimulation", "productivity", "euphoria"],
+      motivationalMessages: [
+        "Seek professional help - meth addiction requires medical support",
+        "Avoid injection use to prevent infectious diseases",
+        "Maintain dental hygiene - meth severely damages teeth",
+        "Monitor for psychotic symptoms and paranoid thoughts"
+      ],
+      riskTriggers: ["injection use", "binge use", "psychotic symptoms", "dental problems"]
+    }
+  },
+
   // ADDITIONAL SUPPLEMENTS
   {
     name: "NAD+",
