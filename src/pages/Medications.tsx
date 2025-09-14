@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Plus, 
   Search, 
@@ -32,6 +33,7 @@ import { Medication, MedicationCategory } from '@/types';
 import toast from 'react-hot-toast';
 
 export function Medications() {
+  const navigate = useNavigate();
   const {
     medications,
     deleteMedication,
@@ -107,9 +109,9 @@ export function Medications() {
     setPauseModalOpen(true);
   };
 
-  const handleConfirmPause = (severity: 'mild' | 'moderate' | 'severe') => {
+  const handleConfirmPause = (_severity: 'mild' | 'moderate' | 'severe') => {
     if (pauseMedication) {
-      // pauseTaperingSchedule(pauseMedication.id, severity);
+      // pauseTaperingSchedule(pauseMedication.id, _severity);
       setPauseModalOpen(false);
       setPauseMedication(null);
       toast.success(`Tapering paused for ${pauseMedication.name}. Take time to stabilize.`);
@@ -156,8 +158,8 @@ export function Medications() {
     setDependencyMedication(null);
   };
 
-  const handleResumeTapering = (medicationId: string) => {
-    // resumeTaperingSchedule(medicationId);
+  const handleResumeTapering = (_medicationId: string) => {
+    // resumeTaperingSchedule(_medicationId);
     toast.success('Tapering schedule resumed');
   };
 
@@ -436,7 +438,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           // Navigate to cyclic dosing page with this medication pre-selected
-                          window.location.href = `/cyclic-dosing?medication=${medication.id}`;
+                          navigate(`/cyclic-dosing?medication=${medication.id}`);
                           setShowActions(false);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50"
@@ -449,7 +451,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           // Navigate to cyclic dosing page to manage this medication
-                          window.location.href = `/cyclic-dosing?medication=${medication.id}`;
+                          navigate(`/cyclic-dosing?medication=${medication.id}`);
                           setShowActions(false);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-green-600 hover:bg-green-50"

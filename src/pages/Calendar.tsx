@@ -56,6 +56,7 @@ export function Calendar() {
     for (let date = today; date <= endDate; date = addDays(date, 1)) {
       const dayName = format(date, 'EEEE').toLowerCase();
       
+      // Process medications with reminders
       reminders.forEach(reminder => {
         const medication = activeMedications.find(med => med.id === reminder.medicationId);
         if (medication && reminder.isActive && reminder.days.includes(dayName as any)) {
@@ -93,6 +94,47 @@ export function Calendar() {
           }
         }
       });
+      
+      // Add medications without reminders as informational entries (for today only to avoid clutter)
+      if (isSameDay(date, today)) {
+        const medicationsWithReminders = new Set(reminders.map(r => r.medicationId));
+        activeMedications.forEach(medication => {
+          if (!medicationsWithReminders.has(medication.id)) {
+            // Check if this medication was already logged today
+            const existingLog = logs.find(log => 
+              log.medicationId === medication.id && 
+              isSameDay(new Date(log.timestamp), date)
+            );
+
+            if (!existingLog) {
+              // Get current dose for this date (considering cyclic dosing)
+              const currentDose = getCurrentDose(medication.id);
+              let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
+              
+              // If cyclic dosing is active and dose is different, show adjusted dose
+              if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                const adjustedDoseText = medication.useMultiplePills 
+                  ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
+                  : `${currentDose.dose} ${medication.unit}`;
+                dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+              }
+              
+              events.push({
+                id: `no-reminder-${medication.id}-${format(date, 'yyyy-MM-dd')}`,
+                medicationId: medication.id,
+                medicationName: medication.name,
+                dosageInfo: dosageInfo,
+                time: 'No reminder set',
+                type: 'reminder',
+                status: 'upcoming',
+                date,
+                cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
+                cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
+              } as any);
+            }
+          }
+        });
+      }
     }
 
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());

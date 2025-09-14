@@ -461,7 +461,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                             <div className="mt-3 p-3 bg-blue-50 rounded border">
                               <h5 className="font-medium text-blue-900 mb-2">🛡️ Harm Reduction Guidelines:</h5>
                               <ul className="text-xs text-blue-800 space-y-1">
-                                {selectedMedicationData.psychologicalSupport.motivationalMessages.slice(0, 4).map((message, index) => (
+                                {selectedMedicationData.psychologicalSupport.motivationalMessages.slice(0, 4).map((message: string, index: number) => (
                                   <li key={index} className="flex items-start">
                                     <span className="text-blue-500 mr-1">•</span>
                                     <span>{message}</span>
@@ -776,18 +776,39 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                         </p>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div className="p-3 bg-white border border-indigo-200 rounded-md text-center">
+                          <button 
+                            type="button"
+                            className="p-3 bg-white border border-indigo-200 rounded-md text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                            onClick={() => {
+                              // This will be handled after the medication is saved
+                              toast.success('On/Off Cycle pattern will be available after saving the medication');
+                            }}
+                          >
                             <div className="text-sm font-medium text-gray-900">On/Off Cycle</div>
                             <div className="text-xs text-gray-600 mt-1">5 days on, 2 days off</div>
-                          </div>
-                          <div className="p-3 bg-white border border-indigo-200 rounded-md text-center">
+                          </button>
+                          <button 
+                            type="button"
+                            className="p-3 bg-white border border-indigo-200 rounded-md text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                            onClick={() => {
+                              // This will be handled after the medication is saved
+                              toast.success('Variable Dose pattern will be available after saving the medication');
+                            }}
+                          >
                             <div className="text-sm font-medium text-gray-900">Variable Dose</div>
                             <div className="text-xs text-gray-600 mt-1">Different weekend dose</div>
-                          </div>
-                          <div className="p-3 bg-white border border-indigo-200 rounded-md text-center">
+                          </button>
+                          <button 
+                            type="button"
+                            className="p-3 bg-white border border-indigo-200 rounded-md text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+                            onClick={() => {
+                              // This will be handled after the medication is saved
+                              toast.success('Holiday Schedule pattern will be available after saving the medication');
+                            }}
+                          >
                             <div className="text-sm font-medium text-gray-900">Holiday Schedule</div>
                             <div className="text-xs text-gray-600 mt-1">Break during holidays</div>
-                          </div>
+                          </button>
                         </div>
                         
                         <div className="bg-blue-50 border border-blue-200 rounded-md p-3">

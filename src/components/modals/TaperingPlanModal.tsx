@@ -1,9 +1,9 @@
 import React from 'react';
-import { X, AlertTriangle, Calendar, TrendingDown, CheckCircle2, Clock, Heart, Settings, Brain, Lightbulb } from 'lucide-react';
-import { generateTaperingPlan, getMedicationByName, generateEnhancedTaperingPlan, generateIntelligentTaperingRecommendation } from '@/services/medicationDatabase';
+import { X, AlertTriangle, Calendar, TrendingDown, Clock, Heart, Settings, Brain, Lightbulb } from 'lucide-react';
+import { generateEnhancedTaperingPlan, generateIntelligentTaperingRecommendation } from '@/services/medicationDatabase';
 import { useMedicationStore } from '@/store';
 import { Medication } from '@/types';
-import { formatDate, calculateOptimalPillReduction, formatPillCountsForTapering, calculatePillCountsForDose, generateMultiplePillTaperingSteps } from '@/utils/helpers';
+import { formatDate, formatPillCountsForTapering, calculatePillCountsForDose } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 
 interface TaperingPlanModalProps {
@@ -21,7 +21,6 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
   const [customReduction, setCustomReduction] = React.useState(25);
   const [customMethod, setCustomMethod] = React.useState<'linear' | 'exponential' | 'hyperbolic'>('hyperbolic');
   const [includeStabilization, setIncludeStabilization] = React.useState(false);
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const [startDate, setStartDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [doctorApproval, setDoctorApproval] = React.useState(false);
   const [understanding, setUnderstanding] = React.useState(false);
@@ -115,11 +114,12 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
   // Update display plan when selection changes
   React.useEffect(() => {
     if (selectedPlan === 'custom' || selectedPlan === 'advanced') {
-      setCurrentDisplayPlan(generateCustomPlan());
+      const customPlan = generateCustomPlan();
+      setCurrentDisplayPlan(customPlan);
     } else {
       setCurrentDisplayPlan(taperingPlan);
     }
-  }, [selectedPlan, customDuration, customReduction, customMethod, includeStabilization, taperingPlan]);
+  }, [selectedPlan, customDuration, customReduction, customMethod, includeStabilization, taperingPlan, medication]);
 
   const getDisplayPlan = () => {
     return currentDisplayPlan || taperingPlan;
@@ -256,7 +256,28 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <span className="text-sm font-medium text-gray-700">Current Dose:</span>
-                    <p className="text-lg font-semibold text-gray-900">{medication.dosage} {medication.unit}</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {medication.useMultiplePills && medication.doseConfigurations ? (() => {
+                        const defaultConfig = medication.doseConfigurations.find(
+                          config => config.id === medication.defaultDoseConfigurationId
+                        ) || medication.doseConfigurations[0];
+                        return defaultConfig ? `${defaultConfig.totalDoseAmount} ${defaultConfig.totalDoseUnit}` : `${medication.dosage} ${medication.unit}`;
+                      })() : `${medication.dosage} ${medication.unit}`}
+                    </p>
+                    {medication.useMultiplePills && medication.doseConfigurations && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Multiple pills: {(() => {
+                          const defaultConfig = medication.doseConfigurations.find(
+                            config => config.id === medication.defaultDoseConfigurationId
+                          ) || medication.doseConfigurations[0];
+                          if (!defaultConfig || !medication.pillConfigurations) return 'Configuration not found';
+                          return defaultConfig.pillComponents.map(component => {
+                            const pillConfig = medication.pillConfigurations?.find(config => config.id === component.pillConfigurationId);
+                            return pillConfig ? `${component.quantity}x ${pillConfig.strength}${pillConfig.unit}` : '';
+                          }).filter(Boolean).join(' + ');
+                        })()}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <span className="text-sm font-medium text-gray-700">Risk Level:</span>
@@ -321,13 +342,19 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                     className={`border rounded-lg p-3 cursor-pointer transition-colors ${
                       selectedPlan === 'intelligent' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
                     }`}
-                    onClick={() => setSelectedPlan('intelligent')}
+                    onClick={() => {
+                      setSelectedPlan('intelligent');
+                      setCurrentDisplayPlan(taperingPlan);
+                    }}
                   >
                     <div className="flex items-center space-x-2 mb-2">
                       <input 
                         type="radio" 
                         checked={selectedPlan === 'intelligent'} 
-                        onChange={() => setSelectedPlan('intelligent')}
+                        onChange={() => {
+                          setSelectedPlan('intelligent');
+                          setCurrentDisplayPlan(taperingPlan);
+                        }}
                         className="text-blue-600"
                       />
                       <Brain className="h-4 w-4 text-blue-600" />
@@ -348,13 +375,19 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                     className={`border rounded-lg p-3 cursor-pointer transition-colors ${
                       selectedPlan === 'custom' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
                     }`}
-                    onClick={() => setSelectedPlan('custom')}
+                    onClick={() => {
+                      setSelectedPlan('custom');
+                      setCurrentDisplayPlan(generateCustomPlan());
+                    }}
                   >
                     <div className="flex items-center space-x-2 mb-2">
                       <input 
                         type="radio" 
                         checked={selectedPlan === 'custom'} 
-                        onChange={() => setSelectedPlan('custom')}
+                        onChange={() => {
+                          setSelectedPlan('custom');
+                          setCurrentDisplayPlan(generateCustomPlan());
+                        }}
                         className="text-blue-600"
                       />
                       <Settings className="h-4 w-4 text-gray-600" />
@@ -369,13 +402,19 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                     className={`border rounded-lg p-3 cursor-pointer transition-colors ${
                       selectedPlan === 'advanced' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
                     }`}
-                    onClick={() => setSelectedPlan('advanced')}
+                    onClick={() => {
+                      setSelectedPlan('advanced');
+                      setCurrentDisplayPlan(generateCustomPlan());
+                    }}
                   >
                     <div className="flex items-center space-x-2 mb-2">
                       <input 
                         type="radio" 
                         checked={selectedPlan === 'advanced'} 
-                        onChange={() => setSelectedPlan('advanced')}
+                        onChange={() => {
+                          setSelectedPlan('advanced');
+                          setCurrentDisplayPlan(generateCustomPlan());
+                        }}
                         className="text-blue-600"
                       />
                       <Settings className="h-4 w-4 text-purple-600" />
