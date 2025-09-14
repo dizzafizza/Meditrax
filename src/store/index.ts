@@ -999,6 +999,13 @@ export const useMedicationStore = create<MedicationStore>()(
           
           if (defaultConfig) {
             baseDose = defaultConfig.totalDoseAmount;
+            
+            // Calculate initial pill breakdown from default configuration
+            if (medication.pillConfigurations) {
+              defaultConfig.pillComponents.forEach(component => {
+                pillBreakdown[component.pillConfigurationId] = component.quantity;
+              });
+            }
           }
         }
         
@@ -1006,7 +1013,7 @@ export const useMedicationStore = create<MedicationStore>()(
         if (medication.tapering?.isActive) {
           const taperedDose = calculateTaperingDose(baseDose, medication.tapering, new Date(), medication);
           
-          // For multiple pills, calculate the pill breakdown
+          // For multiple pills, calculate the pill breakdown for the tapered dose
           if (medication.useMultiplePills && medication.pillConfigurations) {
             pillBreakdown = calculatePillCountsForDose(taperedDose, medication);
             // Recalculate actual dose based on available pill combinations
@@ -1026,6 +1033,11 @@ export const useMedicationStore = create<MedicationStore>()(
         );
         
         const cyclicResult = calculateCyclicDose(baseDose, pattern, new Date());
+        
+        // For multiple pills with cyclic dosing, recalculate pill breakdown
+        if (medication.useMultiplePills && medication.pillConfigurations && cyclicResult.dose !== baseDose) {
+          pillBreakdown = calculatePillCountsForDose(cyclicResult.dose, medication);
+        }
         
         // Return enhanced result with pill breakdown for multiple pill medications
         return {
@@ -1506,6 +1518,16 @@ export const useMedicationStore = create<MedicationStore>()(
           adherencePercentage,
         };
 
+        // Determine adherence status more accurately
+        let adherenceStatus: 'taken' | 'partial' | 'missed';
+        if (totalTaken === 0) {
+          adherenceStatus = 'missed';
+        } else if (totalTaken >= totalExpected) {
+          adherenceStatus = 'taken'; // Full or extra dose still counts as taken
+        } else {
+          adherenceStatus = 'partial';
+        }
+
         const log: MedicationLog = {
           id: generateId(),
           medicationId,
@@ -1514,7 +1536,7 @@ export const useMedicationStore = create<MedicationStore>()(
           unit: medication.unit, // For backward compatibility
           notes,
           sideEffectsReported: sideEffects,
-          adherence: adherencePercentage >= 100 ? 'taken' : partialDose ? 'partial' : 'missed',
+          adherence: adherenceStatus,
           createdAt: new Date(),
           pillsLogged: pillLogs,
           adherenceDetails,

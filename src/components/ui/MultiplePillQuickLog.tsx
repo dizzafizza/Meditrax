@@ -77,8 +77,11 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
       if (totalTaken === totalExpected) {
         toast.success(`✅ All pills logged for ${medication.name}!`, { icon: '💊' });
         onAction?.('taken');
+      } else if (totalTaken > totalExpected) {
+        toast.success(`📊 Extra dose logged for ${medication.name} (${totalTaken} of ${totalExpected} expected)`, { icon: '⬆️' });
+        onAction?.('taken'); // Still consider it as taken, just higher dose
       } else if (totalTaken > 0) {
-        toast.success(`📝 Partial dose logged for ${medication.name}`, { icon: '⚠️' });
+        toast.success(`📝 Partial dose logged for ${medication.name} (${totalTaken} of ${totalExpected} expected)`, { icon: '⚠️' });
         onAction?.('partial');
       } else {
         toast(`⏭️ Skipped ${medication.name}`, { icon: '💭' });

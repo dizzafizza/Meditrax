@@ -32,50 +32,37 @@ export function CyclicDosing() {
     if (patternType === 'tapering') {
       // Create tapering schedule
       const taperingSchedule: Omit<TaperingSchedule, 'id'> = {
-        medicationId,
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
         initialDose: parseFloat(medication.dosage),
         finalDose: parseFloat(medication.dosage) * 0.1, // 10% of initial
-        method: 'hyperbolic',
-        isActive: true,
-        steps: [],
-        currentStep: 0
+        taperingMethod: 'hyperbolic',
+        customSteps: [],
+        isActive: true
       };
 
       addTaperingSchedule(taperingSchedule);
       
       // Update medication to enable tapering
       updateMedication(medicationId, {
-        tapering: {
-          isActive: true,
-          scheduleId: 'temp-id', // Will be updated with actual ID
-          currentPhase: 'reduction',
-          nextReductionDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-        }
+        tapering: taperingSchedule
       });
 
       toast.success('Tapering schedule created');
     } else {
       // Create cyclic dosing pattern
       const pattern: Omit<CyclicDosingPattern, 'id'> = {
-        medicationId,
-        type: patternType,
-        schedule: patternType === 'on-off' ? {
-          onDays: 5,
-          offDays: 2,
-          currentPhase: 'on',
-          phaseStartDate: new Date(),
-          cycleCount: 0
-        } : {
-          patterns: [
-            { day: 'weekday', multiplier: 1.0 },
-            { day: 'weekend', multiplier: 0.5 }
-          ],
-          currentMultiplier: 1.0
-        },
-        isActive: true,
+        name: `${patternType} pattern for ${medication.name}`,
+        type: patternType === 'on-off' ? 'on-off-cycle' : 'variable-dose',
+        pattern: patternType === 'on-off' ? [
+          { phase: 'on', duration: 5, dosageMultiplier: 1.0, customMessage: 'Take medication as prescribed' },
+          { phase: 'off', duration: 2, dosageMultiplier: 0.0, customMessage: 'Break period - no medication' }
+        ] : [
+          { phase: 'maintenance', duration: 5, dosageMultiplier: 1.0, customMessage: 'Weekday dose' },
+          { phase: 'maintenance', duration: 2, dosageMultiplier: 0.5, customMessage: 'Weekend reduced dose' }
+        ],
         startDate: new Date(),
+        isActive: true,
         notes: `${patternType} cycling pattern for ${medication.name}`
       };
 
@@ -83,12 +70,7 @@ export function CyclicDosing() {
       
       // Update medication to enable cyclic dosing
       updateMedication(medicationId, {
-        cyclicDosing: {
-          isActive: true,
-          patternId: 'temp-id', // Will be updated with actual ID
-          currentPhase: 'on',
-          nextTransition: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
-        }
+        cyclicDosing: pattern
       });
 
       toast.success('Cyclic dosing pattern created');
@@ -208,10 +190,9 @@ export function CyclicDosing() {
                         <span className="text-sm font-medium text-gray-700">Cyclic Dosing</span>
                       </div>
                       <div className="text-sm text-gray-600">
-                        <p>Current Phase: <span className="font-medium">{medication.cyclicDosing.currentPhase}</span></p>
-                        {medication.cyclicDosing.nextTransition && (
-                          <p>Next Transition: {medication.cyclicDosing.nextTransition.toLocaleDateString()}</p>
-                        )}
+                        <p>Pattern: <span className="font-medium">{medication.cyclicDosing.name}</span></p>
+                        <p>Type: <span className="font-medium">{medication.cyclicDosing.type}</span></p>
+                        <p>Started: {medication.cyclicDosing.startDate.toLocaleDateString()}</p>
                       </div>
                     </div>
                   )}
@@ -223,10 +204,9 @@ export function CyclicDosing() {
                         <span className="text-sm font-medium text-gray-700">Tapering Schedule</span>
                       </div>
                       <div className="text-sm text-gray-600">
-                        <p>Current Phase: <span className="font-medium">{medication.tapering.currentPhase}</span></p>
-                        {medication.tapering.nextReductionDate && (
-                          <p>Next Reduction: {medication.tapering.nextReductionDate.toLocaleDateString()}</p>
-                        )}
+                        <p>Method: <span className="font-medium">{medication.tapering.taperingMethod}</span></p>
+                        <p>Started: {medication.tapering.startDate.toLocaleDateString()}</p>
+                        <p>Target End: {medication.tapering.endDate.toLocaleDateString()}</p>
                       </div>
                     </div>
                   )}
