@@ -110,11 +110,19 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
     };
   };
 
-  const getDisplayPlan = () => {
+  const [currentDisplayPlan, setCurrentDisplayPlan] = React.useState<any>(null);
+
+  // Update display plan when selection changes
+  React.useEffect(() => {
     if (selectedPlan === 'custom' || selectedPlan === 'advanced') {
-      return generateCustomPlan();
+      setCurrentDisplayPlan(generateCustomPlan());
+    } else {
+      setCurrentDisplayPlan(taperingPlan);
     }
-    return taperingPlan;
+  }, [selectedPlan, customDuration, customReduction, customMethod, includeStabilization, taperingPlan]);
+
+  const getDisplayPlan = () => {
+    return currentDisplayPlan || taperingPlan;
   };
 
   const handleStartTapering = () => {
@@ -126,17 +134,29 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
     const plan = getDisplayPlan();
     if (!plan) return;
 
+    // Get correct initial dose for multiple pill medications
+    let initialDose = parseFloat(medication.dosage);
+    if (medication.useMultiplePills && medication.doseConfigurations) {
+      const defaultConfig = medication.doseConfigurations.find(
+        config => config.id === medication.defaultDoseConfigurationId
+      ) || medication.doseConfigurations[0];
+      
+      if (defaultConfig) {
+        initialDose = defaultConfig.totalDoseAmount;
+      }
+    }
+
     // Create tapering schedule
     const taperingSchedule = {
       id: `tapering-${Date.now()}`,
       startDate: new Date(startDate),
       endDate: new Date(new Date(startDate).getTime() + plan.totalDuration * 24 * 60 * 60 * 1000),
-      initialDose: parseFloat(medication.dosage),
+      initialDose: initialDose,
       finalDose: 0,
       taperingMethod: plan.method as 'linear' | 'exponential' | 'hyperbolic' | 'custom',
       customSteps: plan.steps.map((step: any) => ({
         day: step.day,
-        dosageMultiplier: step.dose / parseFloat(medication.dosage),
+        dosageMultiplier: step.dose / initialDose,
         notes: step.notes
       })),
       isActive: true
