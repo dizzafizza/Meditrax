@@ -19,7 +19,8 @@ export function Calendar() {
     logs,
     reminders,
     markMedicationTaken,
-    markMedicationMissed
+    markMedicationMissed,
+    getCurrentDose
   } = useMedicationStore();
 
   const [selectedDate, setSelectedDate] = React.useState(new Date());
@@ -44,7 +45,7 @@ export function Calendar() {
             type: log.adherence === 'taken' ? 'taken' : 'missed',
             status: log.adherence,
             date: new Date(log.timestamp),
-          });
+          } as any);
       }
     });
 
@@ -65,16 +66,30 @@ export function Calendar() {
           );
 
           if (!existingLog) {
+            // Get current dose for this date (considering cyclic dosing)
+            const currentDose = getCurrentDose(reminder.medicationId);
+            let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
+            
+            // If cyclic dosing is active and dose is different, show adjusted dose
+            if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+              const adjustedDoseText = medication.useMultiplePills 
+                ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
+                : `${currentDose.dose} ${medication.unit}`;
+              dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+            }
+            
             events.push({
               id: `${reminder.id}-${format(date, 'yyyy-MM-dd')}`,
               medicationId: reminder.medicationId,
               medicationName: medication.name,
-              dosageInfo: medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`,
+              dosageInfo: dosageInfo,
               time: reminder.time,
               type: 'reminder',
               status: 'upcoming',
               date,
-            });
+              cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
+              cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
+            } as any);
           }
         }
       });
@@ -341,6 +356,16 @@ export function Calendar() {
                           <p className="text-xs text-gray-500">
                             {(event as any).dosageInfo} • {event.time}
                           </p>
+                          {(event as any).cyclicPhase && (event as any).cyclicPhase !== 'maintenance' && (
+                            <p className="text-xs text-indigo-600 font-medium">
+                              📊 Cyclic phase: {(event as any).cyclicPhase}
+                            </p>
+                          )}
+                          {(event as any).cyclicMessage && (
+                            <p className="text-xs text-indigo-500 italic">
+                              💡 {(event as any).cyclicMessage}
+                            </p>
+                          )}
                         </div>
                       </div>
                       {event.status === 'upcoming' && (
