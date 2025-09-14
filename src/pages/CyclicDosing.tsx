@@ -2,6 +2,7 @@ import React from 'react';
 import { Calendar, Activity, TrendingDown, CheckCircle } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { CyclicDosingPattern, TaperingSchedule } from '@/types';
+import { generateId } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 
 export function CyclicDosing() {
@@ -54,12 +55,16 @@ export function CyclicDosing() {
       notes: `Custom pattern for ${medication.name}`
     };
 
+    // Create the pattern first to get the generated ID
+    const patternId = generateId();
+    const patternWithId = { ...pattern, id: patternId };
+    
     addCyclicDosingPattern(pattern);
     
-    // Update medication to enable cyclic dosing - this will be handled by the store
-    // updateMedication(medicationId, {
-    //   cyclicDosing: pattern
-    // });
+    // Update medication to enable cyclic dosing
+    updateMedication(medicationId, {
+      cyclicDosing: patternWithId
+    });
 
     toast.success('Custom cyclic dosing pattern created');
     
@@ -87,12 +92,16 @@ export function CyclicDosing() {
         isActive: true
       };
 
+      // Create the tapering schedule first to get the generated ID
+      const scheduleId = generateId();
+      const scheduleWithId = { ...taperingSchedule, id: scheduleId };
+      
       addTaperingSchedule(taperingSchedule);
       
-      // Update medication to enable tapering - this will be handled by the store
-      // updateMedication(medicationId, {
-      //   tapering: taperingSchedule
-      // });
+      // Update medication to enable tapering
+      updateMedication(medicationId, {
+        tapering: scheduleWithId
+      });
 
       toast.success('Tapering schedule created');
     } else {
@@ -112,12 +121,16 @@ export function CyclicDosing() {
         notes: `${patternType} cycling pattern for ${medication.name}`
       };
 
+      // Create the pattern first to get the generated ID
+      const patternId = generateId();
+      const patternWithId = { ...pattern, id: patternId };
+      
       addCyclicDosingPattern(pattern);
       
-      // Update medication to enable cyclic dosing - this will be handled by the store
-      // updateMedication(medicationId, {
-      //   cyclicDosing: pattern
-      // });
+      // Update medication to enable cyclic dosing
+      updateMedication(medicationId, {
+        cyclicDosing: patternWithId
+      });
 
       toast.success('Cyclic dosing pattern created');
     }
