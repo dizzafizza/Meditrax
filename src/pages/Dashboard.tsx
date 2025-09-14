@@ -7,22 +7,20 @@ import {
   Plus,
   CheckCircle,
   XCircle,
-  Calendar as CalendarIcon,
   MessageSquare,
   ShieldAlert,
   Star,
   TrendingUp,
   Activity,
-  Brain,
-  Heart,
-  Zap
+  Brain
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
-import { formatTime, getAdherenceColor, formatPillDisplayShort } from '@/utils/helpers';
+import { getAdherenceColor, formatPillDisplayShort } from '@/utils/helpers';
 import { generateListItemKey } from '@/utils/reactKeyHelper';
 import { TodaysMedications } from '@/components/ui/TodaysMedications';
 import '@/utils/fixKratomData'; // Import the fix utility
 import { WithdrawalSymptomTracker } from '@/components/ui/WithdrawalSymptomTracker';
+import { Medication } from '@/types';
 
 export function Dashboard() {
   const {
@@ -37,10 +35,8 @@ export function Dashboard() {
     markMedicationMissed,
     smartMessages,
     getSmartInsights,
-    getHighRiskMedications,
     markMessageAsRead,
     getCurrentDose,
-    addSmartMessage,
     generatePsychologicalSafetyAlerts,
     getActivePsychologicalSafetyAlerts,
     acknowledgePsychologicalAlert
@@ -52,7 +48,6 @@ export function Dashboard() {
   const upcomingRefills = getUpcomingRefills();
   const activeMedications = medications.filter(med => med.isActive);
   const smartInsights = getSmartInsights();
-  const highRiskMedications = getHighRiskMedications();
   const priorityMessages = smartMessages.filter(msg => msg.priority === 'high' || msg.priority === 'urgent');
 
   // Enhanced dashboard data
@@ -61,7 +56,6 @@ export function Dashboard() {
     med.dependencePrevention?.withdrawalHistory.some(event => !event.endDate)
   );
   const cyclicDosingMedications = activeMedications.filter(med => med.cyclicDosing?.isActive);
-  const prnMedications = activeMedications.filter(med => med.frequency === 'as-needed');
   const recreationalMedications = activeMedications.filter(med => med.category === 'recreational');
 
   // Enhanced Psychological Safety Alerts (with 7-day minimum requirement)
@@ -259,20 +253,20 @@ export function Dashboard() {
       href: '/analytics',
     },
     {
+      name: 'Cyclic Dosing',
+      value: cyclicDosingMedications.length,
+      icon: Activity,
+      color: 'bg-indigo-500',
+      href: '/cyclic-dosing',
+      description: 'Active cycling patterns'
+    },
+    {
       name: 'Tapering Plans',
       value: taperingMedications.length,
       icon: TrendingUp,
       color: 'bg-purple-500',
       href: '/medications',
       description: 'Active withdrawal schedules'
-    },
-    {
-      name: 'PRN/As-Needed',
-      value: prnMedications.length,
-      icon: Zap,
-      color: 'bg-orange-500',
-      href: '/medications',
-      description: 'Flexible dosing medications'
     },
     {
       name: 'Dose Warnings',
@@ -469,7 +463,7 @@ export function Dashboard() {
                           <div className="mt-3">
                             <h5 className="text-xs font-medium text-gray-700 mb-1">Recommended Actions:</h5>
                             <ul className="text-xs text-gray-600 list-disc list-inside space-y-1">
-                              {alert.recommendedActions.map((action, actionIndex) => (
+                              {alert.recommendedActions.map((action: string, actionIndex: number) => (
                                 <li key={`action-${alert.id}-${actionIndex}`}>{action}</li>
                               ))}
                             </ul>
@@ -553,6 +547,105 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cyclic Dosing Progress Section */}
+      {cyclicDosingMedications.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <Activity className="h-5 w-5 text-indigo-600 mr-2" />
+                Cyclic Dosing Patterns
+              </h3>
+              <span className="badge badge-primary">{cyclicDosingMedications.length}</span>
+            </div>
+          </div>
+          <div className="card-content">
+            <div className="space-y-4">
+              {cyclicDosingMedications.map((medication, index) => {
+                const currentDose = getCurrentDose(medication.id);
+                const cyclicPattern = medication.cyclicDosing;
+                
+                // Calculate cycle progress
+                let cycleProgress = 0;
+                let currentPhaseDay = 0;
+                let totalPhaseDuration = 0;
+                
+                if (cyclicPattern && cyclicPattern.pattern) {
+                  const startDate = new Date(cyclicPattern.startDate);
+                  const daysSinceStart = Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                  
+                  let totalCycleDuration = cyclicPattern.pattern.reduce((sum, phase) => sum + phase.duration, 0);
+                  let cyclePosition = daysSinceStart % totalCycleDuration;
+                  let dayCount = 0;
+                  
+                  for (const phase of cyclicPattern.pattern) {
+                    if (cyclePosition >= dayCount && cyclePosition < dayCount + phase.duration) {
+                      currentPhaseDay = cyclePosition - dayCount + 1;
+                      totalPhaseDuration = phase.duration;
+                      cycleProgress = (currentPhaseDay / totalPhaseDuration) * 100;
+                      break;
+                    }
+                    dayCount += phase.duration;
+                  }
+                }
+                
+                return (
+                  <div key={generateListItemKey(medication, index, 'cyclic-med')} className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: medication.color }}
+                        />
+                        <div>
+                          <h4 className="font-medium text-gray-900">{medication.name}</h4>
+                          <p className="text-sm text-gray-600">
+                            Current: {currentDose.dose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Pattern: {cyclicPattern?.name || 'Custom pattern'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-indigo-600">{currentDose.phase}</div>
+                        <div className="text-xs text-gray-500">Day {currentPhaseDay}/{totalPhaseDuration}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                      <div 
+                        className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(cycleProgress, 100)}%` }}
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <span>Phase: {currentDose.phase}</span>
+                      <span>{Math.round(cycleProgress)}% through phase</span>
+                    </div>
+                    
+                    {currentDose.message && (
+                      <div className="mt-2 p-2 bg-indigo-100 border border-indigo-200 rounded text-xs text-indigo-800">
+                        💡 {currentDose.message}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 text-center">
+              <Link
+                to="/cyclic-dosing"
+                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+              >
+                Manage Cyclic Dosing Patterns →
+              </Link>
             </div>
           </div>
         </div>

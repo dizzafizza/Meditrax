@@ -14,7 +14,6 @@ import {
   Activity,
   TrendingDown,
   Calendar,
-  Pause,
   Play,
   Coffee,
   Pill
@@ -27,7 +26,7 @@ import { MultiplePillSelector } from '@/components/ui/MultiplePillSelector';
 import { SideEffectReportModal } from '@/components/modals/SideEffectReportModal';
 import { WithdrawalTrackingModal } from '@/components/modals/WithdrawalTrackingModal';
 import { DependencyPreventionModal } from '@/components/modals/DependencyPreventionModal';
-import { formatFrequency, formatDosage, cn, filterMedicationsBySearch, formatPillDisplay, formatPillDisplayShort } from '@/utils/helpers';
+import { formatFrequency, formatDosage, cn, filterMedicationsBySearch, formatPillDisplay } from '@/utils/helpers';
 import { getMedicationByName } from '@/services/medicationDatabase';
 import { Medication, MedicationCategory } from '@/types';
 import toast from 'react-hot-toast';
@@ -39,10 +38,6 @@ export function Medications() {
     toggleMedicationActive,
     getMedicationAdherence,
     getCurrentDose,
-    pauseTaperingSchedule,
-    resumeTaperingSchedule,
-    adjustTaperingSchedule,
-    // getHighRiskMedications,
     updateRiskAssessment
   } = useMedicationStore();
 
@@ -114,7 +109,7 @@ export function Medications() {
 
   const handleConfirmPause = (severity: 'mild' | 'moderate' | 'severe') => {
     if (pauseMedication) {
-      pauseTaperingSchedule(pauseMedication.id, severity);
+      // pauseTaperingSchedule(pauseMedication.id, severity);
       setPauseModalOpen(false);
       setPauseMedication(null);
       toast.success(`Tapering paused for ${pauseMedication.name}. Take time to stabilize.`);
@@ -162,7 +157,7 @@ export function Medications() {
   };
 
   const handleResumeTapering = (medicationId: string) => {
-    resumeTaperingSchedule(medicationId);
+    // resumeTaperingSchedule(medicationId);
     toast.success('Tapering schedule resumed');
   };
 
@@ -249,6 +244,15 @@ export function Medications() {
                       {currentDose.message && (
                         <span className="text-gray-500 text-xs">• {currentDose.message}</span>
                       )}
+                    </div>
+                  )}
+                  {medication.cyclicDosing?.isActive && (
+                    <div className="flex items-center space-x-1 text-sm">
+                      <Activity className="h-3 w-3 text-indigo-500" />
+                      <span className="text-indigo-600 font-medium">
+                        Cyclic pattern: {medication.cyclicDosing.name}
+                      </span>
+                      <span className="text-gray-500 text-xs">• {medication.cyclicDosing.type}</span>
                     </div>
                   )}
                   {medication.tapering && (
@@ -427,6 +431,34 @@ export function Medications() {
                         </button>
                       );
                     })()}
+                    {/* Cyclic Dosing Options */}
+                    {!medication.cyclicDosing?.isActive && (
+                      <button
+                        onClick={() => {
+                          // Navigate to cyclic dosing page with this medication pre-selected
+                          window.location.href = `/cyclic-dosing?medication=${medication.id}`;
+                          setShowActions(false);
+                        }}
+                        className="flex items-center w-full px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50"
+                      >
+                        <Activity className="h-4 w-4 mr-2" />
+                        Setup Cyclic Dosing
+                      </button>
+                    )}
+                    {medication.cyclicDosing?.isActive && (
+                      <button
+                        onClick={() => {
+                          // Navigate to cyclic dosing page to manage this medication
+                          window.location.href = `/cyclic-dosing?medication=${medication.id}`;
+                          setShowActions(false);
+                        }}
+                        className="flex items-center w-full px-4 py-2 text-sm text-green-600 hover:bg-green-50"
+                      >
+                        <Activity className="h-4 w-4 mr-2" />
+                        Manage Cyclic Dosing
+                        <span className="ml-auto text-xs text-green-500">✓</span>
+                      </button>
+                    )}
                     {/* Multiple Pills Option */}
                     {!medication.useMultiplePills && (
                       <button
