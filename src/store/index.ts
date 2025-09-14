@@ -39,7 +39,9 @@ import {
   formatDate,
   formatTime,
   calculateTaperingDose,
-  calculatePillCountsForDose
+  calculatePillCountsForDose,
+  isHeavyDose,
+  generateDoseSafetyMessage
 } from '@/utils/helpers';
 import { DependencePreventionService } from '@/services/dependencePreventionService';
 import { suggestPauseDuration } from '@/services/medicationDatabase';
@@ -278,13 +280,29 @@ export const useMedicationStore = create<MedicationStore>()(
         const medication = get().medications.find((med) => med.id === medicationId);
         if (!medication) return;
 
+        const dosageTaken = dosage || parseFloat(medication.dosage);
+        const prescribedDose = parseFloat(medication.dosage);
+
+        // Generate dose safety message
+        const safetyMessage = generateDoseSafetyMessage(
+          medication.name,
+          dosageTaken,
+          prescribedDose,
+          medication.unit
+        );
+
+        // Add safety message to notes if present
+        const enhancedNotes = safetyMessage 
+          ? (notes ? `${notes}\n\n${safetyMessage}` : safetyMessage)
+          : notes;
+
         const log: MedicationLog = {
           id: generateId(),
           medicationId,
           timestamp: new Date(),
-          dosageTaken: dosage || parseFloat(medication.dosage),
+          dosageTaken: dosageTaken,
           unit: medication.unit,
-          notes,
+          notes: enhancedNotes,
           sideEffectsReported: sideEffects,
           adherence: 'taken',
           createdAt: new Date(),
@@ -293,6 +311,87 @@ export const useMedicationStore = create<MedicationStore>()(
         set((state) => ({
           logs: [...state.logs, log],
         }));
+
+        // Generate psychological messages based on dose taken and current schedule
+        const currentDoseInfo = get().getCurrentDose(medicationId);
+        
+        // Check for cyclic dosing messages
+        if (medication.cyclicDosing?.isActive) {
+          const cyclicMessage = generatePsychologicalMessage(
+            'cyclic-dosing',
+            medication.name,
+            {
+              cyclicPhase: currentDoseInfo.phase,
+              adjustedDose: `${currentDoseInfo.dose}${medication.unit}`,
+              cyclicMessage: currentDoseInfo.message
+            }
+          );
+
+          get().addSmartMessage({
+            medicationId,
+            type: 'cyclic-dosing' as any,
+            priority: 'low',
+            title: cyclicMessage.title,
+            message: cyclicMessage.message,
+            psychologicalApproach: cyclicMessage.approach as any,
+            scheduledTime: new Date(),
+            expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 hours
+          });
+        }
+
+        // Check for tapering messages
+        if (medication.tapering?.isActive) {
+          const taperingMessage = generatePsychologicalMessage(
+            'tapering-support',
+            medication.name,
+            {
+              taperPhase: medication.tapering.isPaused ? 'stabilization' : 'reduction',
+              taperingProgress: Math.round(((new Date().getTime() - new Date(medication.tapering.startDate).getTime()) / 
+                                          (new Date(medication.tapering.endDate).getTime() - new Date(medication.tapering.startDate).getTime())) * 100)
+            }
+          );
+
+          get().addSmartMessage({
+            medicationId,
+            type: 'tapering-support' as any,
+            priority: 'medium',
+            title: taperingMessage.title,
+            message: taperingMessage.message,
+            psychologicalApproach: taperingMessage.approach as any,
+            scheduledTime: new Date(),
+            expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours
+          });
+        }
+
+        // Generate safety messages for dose deviations
+        if (safetyMessage) {
+          const messageType = isHeavyDose(medication.name, dosageTaken, medication.unit) 
+            ? 'heavy-dose-warning' 
+            : 'dose-adjustment';
+          
+          const psychMessage = generatePsychologicalMessage(
+            messageType,
+            medication.name,
+            {
+              currentDose: `${dosageTaken}${medication.unit}`,
+              adjustmentType: dosageTaken > prescribedDose ? 'increase' : 'decrease',
+              scheduleType: medication.cyclicDosing?.isActive ? 'cyclic' : 
+                         medication.tapering?.isActive ? 'tapering' : 'prescribed'
+            }
+          );
+
+          // Add as smart message
+          get().addSmartMessage({
+            medicationId,
+            type: messageType as any,
+            priority: messageType === 'heavy-dose-warning' ? 'high' : 'medium',
+            title: psychMessage.title,
+            message: psychMessage.message,
+            psychologicalApproach: psychMessage.approach as any,
+            scheduledTime: new Date(),
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          });
+        }
 
         // Update inventory for single dose medications (legacy system)
         if (!medication.useMultiplePills && medication.pillsRemaining !== undefined) {
@@ -545,7 +644,7 @@ export const useMedicationStore = create<MedicationStore>()(
       // Enhanced Export/Import methods
       exportDataWithOptions: async (options) => {
         const state = get();
-        let filteredData: any = {};
+        const filteredData: any = {};
 
         // Apply date range filtering if specified
         if (options.dateRange) {
@@ -774,7 +873,7 @@ export const useMedicationStore = create<MedicationStore>()(
               notes: med.notes || ''
             })));
 
-          case 'logs':
+          case 'logs': {
             let logs = state.logs;
             if (dateRange) {
               logs = logs.filter(log => {
@@ -795,8 +894,9 @@ export const useMedicationStore = create<MedicationStore>()(
                 sideEffects: log.sideEffectsReported?.join('; ') || ''
               };
             }));
+          }
 
-          case 'reminders':
+          case 'reminders': {
             return generateCSV(state.reminders.map(reminder => {
               const medication = state.medications.find(med => med.id === reminder.medicationId);
               return {
@@ -808,8 +908,9 @@ export const useMedicationStore = create<MedicationStore>()(
                 notificationSound: reminder.notificationSound || false
               };
             }));
+          }
 
-          case 'all':
+          case 'all': {
             // Comprehensive export with all data
             const allData = {
               medications: state.medications,
@@ -828,6 +929,7 @@ export const useMedicationStore = create<MedicationStore>()(
               }
             };
             return JSON.stringify(allData, null, 2);
+          }
 
           default:
             return '';
@@ -1225,6 +1327,14 @@ export const useMedicationStore = create<MedicationStore>()(
             medications
           );
           allAlerts.push(...result.alerts);
+          
+          // Add cyclic dosing specific alerts
+          const cyclicAlerts = PsychologicalSafetyService.generateCyclicDosingAlerts(medication, logs);
+          allAlerts.push(...cyclicAlerts);
+          
+          // Add tapering specific alerts
+          const taperingAlerts = PsychologicalSafetyService.generateTaperingAlerts(medication, logs);
+          allAlerts.push(...taperingAlerts);
         });
 
         // Deduplicate alerts by medicationId and type
@@ -1528,13 +1638,38 @@ export const useMedicationStore = create<MedicationStore>()(
           adherenceStatus = 'partial';
         }
 
+        // Calculate total dose for safety checking
+        const totalDoseAmount = pillLogs.reduce((sum, pillLog) => {
+          const pillConfig = medication.pillConfigurations?.find(
+            config => config.id === pillLog.pillConfigurationId
+          );
+          return sum + (pillConfig ? pillConfig.strength * pillLog.quantityTaken : 0);
+        }, 0);
+
+        // Generate dose safety message for multiple pills
+        const prescribedDose = medication.doseConfigurations?.find(
+          config => config.id === medication.defaultDoseConfigurationId
+        )?.totalDoseAmount || parseFloat(medication.dosage);
+        
+        const safetyMessage = generateDoseSafetyMessage(
+          medication.name,
+          totalDoseAmount,
+          prescribedDose,
+          medication.unit
+        );
+
+        // Add safety message to notes if present
+        const enhancedNotes = safetyMessage 
+          ? (notes ? `${notes}\n\n${safetyMessage}` : safetyMessage)
+          : notes;
+
         const log: MedicationLog = {
           id: generateId(),
           medicationId,
           timestamp: new Date(),
           dosageTaken: totalTaken, // For backward compatibility
           unit: medication.unit, // For backward compatibility
-          notes,
+          notes: enhancedNotes,
           sideEffectsReported: sideEffects,
           adherence: adherenceStatus,
           createdAt: new Date(),
@@ -1546,6 +1681,62 @@ export const useMedicationStore = create<MedicationStore>()(
         set((state) => ({
           logs: [...state.logs, log],
         }));
+
+        // Generate psychological messages for multiple pill dosing
+        const currentDoseInfo = get().getCurrentDose(medicationId);
+        
+        // Check for cyclic dosing messages
+        if (medication.cyclicDosing?.isActive) {
+          const cyclicMessage = generatePsychologicalMessage(
+            'cyclic-dosing',
+            medication.name,
+            {
+              cyclicPhase: currentDoseInfo.phase,
+              adjustedDose: `${totalDoseAmount}${medication.unit}`,
+              cyclicMessage: currentDoseInfo.message
+            }
+          );
+
+          get().addSmartMessage({
+            medicationId,
+            type: 'cyclic-dosing' as any,
+            priority: 'low',
+            title: cyclicMessage.title,
+            message: cyclicMessage.message,
+            psychologicalApproach: cyclicMessage.approach as any,
+            scheduledTime: new Date(),
+            expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 hours
+          });
+        }
+
+        // Generate safety messages for dose deviations
+        if (safetyMessage) {
+          const messageType = isHeavyDose(medication.name, totalDoseAmount, medication.unit) 
+            ? 'heavy-dose-warning' 
+            : 'dose-adjustment';
+          
+          const psychMessage = generatePsychologicalMessage(
+            messageType,
+            medication.name,
+            {
+              currentDose: `${totalDoseAmount}${medication.unit}`,
+              adjustmentType: totalDoseAmount > prescribedDose ? 'increase' : 'decrease',
+              scheduleType: medication.cyclicDosing?.isActive ? 'cyclic' : 
+                         medication.tapering?.isActive ? 'tapering' : 'prescribed'
+            }
+          );
+
+          get().addSmartMessage({
+            medicationId,
+            type: messageType as any,
+            priority: messageType === 'heavy-dose-warning' ? 'high' : 'medium',
+            title: psychMessage.title,
+            message: psychMessage.message,
+            psychologicalApproach: psychMessage.approach as any,
+            scheduledTime: new Date(),
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          });
+        }
 
         // Update pill inventory if available
         if (medication.pillInventory) {

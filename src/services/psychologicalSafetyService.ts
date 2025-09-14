@@ -439,7 +439,119 @@ export class PsychologicalSafetyService {
       recommendations.push('Consider non-pharmacological alternatives or adjunct therapies');
     }
 
+    // Cyclic dosing specific recommendations
+    if (medication.cyclicDosing?.isActive) {
+      recommendations.push('Follow your cyclic dosing schedule to maintain effectiveness and reduce tolerance');
+      recommendations.push('Track how you feel during different phases to optimize your pattern');
+      recommendations.push('Consider adjusting cycle length if experiencing tolerance or withdrawal');
+    }
+
+    // Tapering specific recommendations
+    if (medication.tapering?.isActive) {
+      recommendations.push('Go slow with tapering - your comfort and safety are more important than timeline');
+      recommendations.push('Keep a withdrawal symptom diary to track your progress');
+      recommendations.push('Have support systems in place during challenging phases');
+      recommendations.push('Consider non-pharmacological coping strategies during reduction');
+    }
+
     return recommendations;
+  }
+
+  /**
+   * Generate cyclic dosing specific alerts
+   */
+  static generateCyclicDosingAlerts(
+    medication: Medication,
+    logs: MedicationLog[]
+  ): PsychologicalSafetyAlert[] {
+    const alerts: PsychologicalSafetyAlert[] = [];
+    
+    if (!medication.cyclicDosing?.isActive) return alerts;
+
+    const recentLogs = this.getRecentLogs(logs.filter(log => log.medicationId === medication.id), 14);
+    
+    // Check for pattern violations
+    const patternViolations = recentLogs.filter(log => {
+      // This would need more complex logic to detect when user took medication on "off" days
+      return false; // Placeholder
+    });
+
+    if (patternViolations.length > 2) {
+      alerts.push({
+        id: generateId(),
+        medicationId: medication.id,
+        type: 'dependency-pattern',
+        priority: 'medium',
+        title: 'Cyclic Pattern Deviation',
+        message: `You've taken ${medication.name} on scheduled break days multiple times recently. This may reduce the effectiveness of your cycling strategy.`,
+        detectedAt: new Date(),
+        psychologicalImpact: 'reduced cycling effectiveness',
+        recommendedActions: [
+          'Review your cyclic dosing schedule and adjust if needed',
+          'Consider if your current pattern is realistic for your lifestyle',
+          'Discuss pattern modifications with your healthcare provider'
+        ]
+      });
+    }
+
+    return alerts;
+  }
+
+  /**
+   * Generate tapering specific alerts
+   */
+  static generateTaperingAlerts(
+    medication: Medication,
+    logs: MedicationLog[]
+  ): PsychologicalSafetyAlert[] {
+    const alerts: PsychologicalSafetyAlert[] = [];
+    
+    if (!medication.tapering?.isActive) return alerts;
+
+    const recentLogs = this.getRecentLogs(logs.filter(log => log.medicationId === medication.id), 7);
+    
+    // Check for dose increases during tapering
+    const doseIncreases = recentLogs.filter(log => {
+      const expectedDose = medication.tapering ? 
+        this.calculateExpectedTaperingDose(medication.tapering, new Date(log.timestamp)) :
+        parseFloat(medication.dosage);
+      return (log.dosageTaken || 0) > expectedDose * 1.2; // 20% above expected
+    });
+
+    if (doseIncreases.length > 0) {
+      alerts.push({
+        id: generateId(),
+        medicationId: medication.id,
+        type: 'dose-escalation',
+        priority: 'high',
+        title: 'Tapering Schedule Deviation',
+        message: `You've taken higher doses than your tapering schedule recently. This can make future reductions more difficult and may indicate withdrawal distress.`,
+        detectedAt: new Date(),
+        psychologicalImpact: 'tapering plan disruption',
+        recommendedActions: [
+          'Consider pausing your taper if experiencing severe withdrawal',
+          'Discuss dose adjustments with your healthcare provider',
+          'Implement additional withdrawal comfort measures'
+        ]
+      });
+    }
+
+    return alerts;
+  }
+
+  /**
+   * Calculate expected tapering dose for a given date
+   */
+  private static calculateExpectedTaperingDose(tapering: any, date: Date): number {
+    // Simplified calculation - would need full tapering calculation logic
+    const daysSinceStart = Math.floor((date.getTime() - new Date(tapering.startDate).getTime()) / (1000 * 60 * 60 * 24));
+    const totalDays = Math.floor((new Date(tapering.endDate).getTime() - new Date(tapering.startDate).getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysSinceStart <= 0) return tapering.initialDose;
+    if (daysSinceStart >= totalDays) return tapering.finalDose;
+    
+    const progress = daysSinceStart / totalDays;
+    return tapering.initialDose + (tapering.finalDose - tapering.initialDose) * progress;
   }
 
   /**

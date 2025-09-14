@@ -260,12 +260,32 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
                           onChange={(e) =>
                             updatePillConfig(index, { unit: e.target.value as any })
                           }
-                          className="input-field w-20"
+                          className="input-field w-24"
                         >
-                          <option value="mg">mg</option>
-                          <option value="mcg">mcg</option>
-                          <option value="g">g</option>
-                          <option value="iu">IU</option>
+                          <optgroup label="Weight">
+                            <option value="mg">mg</option>
+                            <option value="g">g</option>
+                            <option value="mcg">mcg</option>
+                            <option value="μg">μg</option>
+                            <option value="ng">ng</option>
+                          </optgroup>
+                          <optgroup label="Volume">
+                            <option value="ml">ml</option>
+                            <option value="L">L</option>
+                            <option value="fl oz">fl oz</option>
+                          </optgroup>
+                          <optgroup label="Units">
+                            <option value="iu">iu</option>
+                            <option value="IU">IU</option>
+                            <option value="units">units</option>
+                            <option value="mEq">mEq</option>
+                            <option value="mmol">mmol</option>
+                          </optgroup>
+                          <optgroup label="Specialized">
+                            <option value="mg THC">mg THC</option>
+                            <option value="mg CBD">mg CBD</option>
+                            <option value="billion CFU">billion CFU</option>
+                          </optgroup>
                         </select>
                       </div>
                     </div>

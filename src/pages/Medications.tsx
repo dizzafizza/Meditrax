@@ -550,7 +550,7 @@ export function Medications() {
         <div className="mt-4 sm:mt-0">
           <button
             onClick={handleAddMedication}
-            className="btn-primary inline-flex items-center space-x-2"
+            className="btn-primary mobile-button inline-flex items-center space-x-2"
           >
             <Plus className="h-4 w-4" />
             <span>Add Medication</span>
@@ -567,7 +567,7 @@ export function Medications() {
             placeholder="Search medications..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="input pl-10"
+            className="mobile-input pl-10"
           />
         </div>
         
@@ -576,7 +576,7 @@ export function Medications() {
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value as MedicationCategory | 'all')}
-            className="input w-auto"
+            className="mobile-input w-auto min-w-[140px]"
           >
             <option value="all">All Categories</option>
             <option value="prescription">Prescription</option>
@@ -625,7 +625,7 @@ export function Medications() {
               <h2 className="text-lg font-medium text-gray-900 mb-4">
                 Active Medications ({activeMedications.length})
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="mobile-grid">
                 {activeMedications.map((medication) => (
                   <MedicationCard key={medication.id} medication={medication} />
                 ))}
@@ -639,7 +639,7 @@ export function Medications() {
               <h2 className="text-lg font-medium text-gray-900 mb-4">
                 Inactive Medications ({inactiveMedications.length})
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="mobile-grid">
                 {inactiveMedications.map((medication) => (
                   <MedicationCard key={medication.id} medication={medication} />
                 ))}

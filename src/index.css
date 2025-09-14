@@ -78,7 +78,7 @@
   
   /* Mobile-specific utilities */
   .touch-target {
-    @apply min-h-[44px] min-w-[44px];
+    @apply min-h-[48px] min-w-[48px] touch-manipulation;
   }
   
   .mobile-safe-area {
@@ -88,13 +88,57 @@
   }
   
   .mobile-modal {
-    @apply max-h-[85vh] sm:max-h-[90vh];
+    @apply max-h-[85vh] sm:max-h-[90vh] touch-manipulation;
   }
   
   /* Better mobile scrolling */
   .mobile-scroll {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+  }
+  
+  /* Mobile-first responsive design improvements */
+  .mobile-card {
+    @apply p-4 sm:p-6 rounded-lg border border-gray-200 bg-white shadow-sm;
+  }
+  
+  .mobile-button {
+    @apply h-12 sm:h-10 px-4 py-3 sm:py-2 text-base sm:text-sm font-medium rounded-lg touch-manipulation;
+  }
+  
+  .mobile-input {
+    @apply h-12 sm:h-10 px-4 py-3 sm:py-2 text-base sm:text-sm rounded-lg border border-gray-300 bg-white touch-manipulation;
+  }
+  
+  .mobile-text {
+    @apply text-base sm:text-sm leading-relaxed;
+  }
+  
+  .mobile-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
+  }
+  
+  /* Better tap targets for mobile */
+  @media (max-width: 640px) {
+    .btn {
+      @apply min-h-[48px] px-6 py-3 text-base;
+    }
+    
+    .input {
+      @apply h-12 px-4 py-3 text-base;
+    }
+    
+    select {
+      @apply h-12 px-4 py-3 text-base;
+    }
+    
+    button {
+      @apply touch-manipulation;
+    }
+    
+    a {
+      @apply touch-manipulation;
+    }
   }
 }
 

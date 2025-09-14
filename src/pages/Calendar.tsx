@@ -13,6 +13,24 @@ import { formatTime, formatDate, isSameDay, formatPillDisplayShort } from '@/uti
 import { CalendarEvent, AdherenceStatus } from '@/types';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isToday } from 'date-fns';
 
+// Helper function to get default times for different frequencies
+const getFrequencyTimes = (frequency: string): string[] => {
+  switch (frequency) {
+    case 'once-daily':
+      return ['09:00'];
+    case 'twice-daily':
+      return ['09:00', '21:00'];
+    case 'three-times-daily':
+      return ['08:00', '14:00', '20:00'];
+    case 'four-times-daily':
+      return ['08:00', '12:00', '16:00', '20:00'];
+    case 'every-other-day':
+      return ['09:00'];
+    default:
+      return ['09:00'];
+  }
+};
+
 export function Calendar() {
   const {
     medications,
@@ -92,6 +110,52 @@ export function Calendar() {
               cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
             } as any);
           }
+        }
+      });
+      
+      // Add frequency-based events for medications without reminders but with regular schedules
+      activeMedications.forEach(medication => {
+        const hasReminder = reminders.some(r => r.medicationId === medication.id && r.isActive);
+        
+        if (!hasReminder && medication.frequency !== 'as-needed') {
+          // Generate events based on frequency
+          const frequencyTimes = getFrequencyTimes(medication.frequency);
+          
+          frequencyTimes.forEach((time, index) => {
+            // Check if this dose was already logged
+            const existingLog = logs.find(log => 
+              log.medicationId === medication.id && 
+              isSameDay(new Date(log.timestamp), date) &&
+              Math.abs(new Date(log.timestamp).getHours() - parseInt(time.split(':')[0])) <= 1
+            );
+
+            if (!existingLog) {
+              // Get current dose for this date (considering cyclic dosing)
+              const currentDose = getCurrentDose(medication.id);
+              let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
+              
+              // If cyclic dosing is active and dose is different, show adjusted dose
+              if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                const adjustedDoseText = medication.useMultiplePills 
+                  ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
+                  : `${currentDose.dose} ${medication.unit}`;
+                dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+              }
+              
+              events.push({
+                id: `freq-${medication.id}-${format(date, 'yyyy-MM-dd')}-${index}`,
+                medicationId: medication.id,
+                medicationName: medication.name,
+                dosageInfo: dosageInfo,
+                time: time,
+                type: 'reminder',
+                status: 'upcoming',
+                date,
+                cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
+                cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
+              } as any);
+            }
+          });
         }
       });
       
@@ -251,7 +315,7 @@ export function Calendar() {
           <select
             value={selectedMedication}
             onChange={(e) => setSelectedMedication(e.target.value)}
-            className="input"
+            className="mobile-input"
           >
             <option value="all">All Medications</option>
             {medications.filter(med => med.isActive).map(med => (
@@ -261,7 +325,7 @@ export function Calendar() {
           <div className="flex rounded-md shadow-sm">
             <button
               onClick={() => setViewMode('week')}
-              className={`px-3 py-2 text-sm font-medium rounded-l-md border ${
+              className={`mobile-button px-4 py-3 sm:px-3 sm:py-2 text-base sm:text-sm font-medium rounded-l-md border ${
                 viewMode === 'week' 
                   ? 'bg-primary-600 text-white border-primary-600' 
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -271,7 +335,7 @@ export function Calendar() {
             </button>
             <button
               onClick={() => setViewMode('month')}
-              className={`px-3 py-2 text-sm font-medium rounded-r-md border-t border-r border-b ${
+              className={`mobile-button px-4 py-3 sm:px-3 sm:py-2 text-base sm:text-sm font-medium rounded-r-md border-t border-r border-b ${
                 viewMode === 'month' 
                   ? 'bg-primary-600 text-white border-primary-600' 
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -414,13 +478,13 @@ export function Calendar() {
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleMedicationAction(event.medicationId, 'taken')}
-                            className="btn-success text-xs px-2 py-1"
+                            className="btn-success mobile-button text-xs sm:text-xs px-3 py-2 sm:px-2 sm:py-1"
                           >
                             Take
                           </button>
                           <button
                             onClick={() => handleMedicationAction(event.medicationId, 'missed')}
-                            className="btn-secondary text-xs px-2 py-1"
+                            className="btn-secondary mobile-button text-xs sm:text-xs px-3 py-2 sm:px-2 sm:py-1"
                           >
                             Skip
                           </button>

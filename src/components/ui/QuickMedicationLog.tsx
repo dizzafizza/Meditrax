@@ -36,6 +36,12 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
   const currentDose = getCurrentDose(medication.id);
   const displayDose = currentDose.phase !== 'maintenance' ? currentDose.dose : parseFloat(medication.dosage);
   
+  // Check if this is a cyclic dosing "off" day
+  const isCyclicOffDay = medication.cyclicDosing?.isActive && currentDose.phase === 'off';
+  
+  // Generate cyclic dosing message if applicable
+  const cyclicMessage = medication.cyclicDosing?.isActive && currentDose.message ? currentDose.message : null;
+  
   // For multiple pills with tapering, use the current tapered dose
   const getDisplayDoseForMultiplePills = () => {
     if (medication.useMultiplePills && medication.tapering?.isActive) {
@@ -287,8 +293,48 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
   }
   
 
+  // Show different UI for cyclic dosing off days
+  if (isCyclicOffDay) {
+    return (
+      <div className="bg-gray-50 rounded-lg border border-gray-300 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-start space-x-3">
+            <div
+              className="w-4 h-4 rounded-full mt-1 flex-shrink-0 opacity-50"
+              style={{ backgroundColor: medication.color }}
+            />
+            <div className="flex-1">
+              <div className="flex items-center space-x-2">
+                <h3 className="font-medium text-gray-600">{medication.name}</h3>
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  🔄 Break Day
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                Today is a break day in your cyclic dosing schedule.
+              </p>
+              {cyclicMessage && (
+                <p className="text-sm text-blue-600 italic mt-1">
+                  💡 {cyclicMessage}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-2xl">😌</span>
+            <span className="text-sm text-green-600 font-medium">No dose needed</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+    <div className={`rounded-lg border p-4 hover:shadow-md transition-shadow ${
+      medication.cyclicDosing?.isActive 
+        ? 'bg-indigo-50 border-indigo-200' 
+        : 'bg-white border-gray-200'
+    }`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start space-x-3">
           <div
@@ -298,6 +344,11 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
           <div className="flex-1">
             <div className="flex items-center space-x-2">
               <h3 className="font-medium text-gray-900">{medication.name}</h3>
+              {medication.cyclicDosing?.isActive && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                  🔄 {currentDose.phase}
+                </span>
+              )}
               {getPsychologicalIcon()}
             </div>
             <p className="text-sm text-gray-600 mt-1">
@@ -305,6 +356,11 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
                 ? formatPillDisplayShort(medication) 
                 : formatDosage(displayDose.toString(), medication.unit)}
             </p>
+            {cyclicMessage && (
+              <p className="text-sm text-indigo-600 italic mt-1">
+                💡 {cyclicMessage}
+              </p>
+            )}
             {medication.tapering?.isActive && (
               <p className="text-xs text-purple-600 font-medium mt-1">
                 📉 Tapering: {currentDose.dose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}

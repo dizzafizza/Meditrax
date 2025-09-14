@@ -125,7 +125,7 @@ export function isValidEmail(email: string): boolean {
  * Validate phone number format
  */
 export function isValidPhone(phone: string): boolean {
-  const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+  const phoneRegex = /^\+?[\d\s\-()]{10,}$/;
   return phoneRegex.test(phone);
 }
 
@@ -894,9 +894,9 @@ export function generateMultiplePillTaperingSteps(
   return steps;
 }
 
-// Psychological Messaging
+// Enhanced Psychological Messaging with Cyclic Dosing and Tapering Support
 export function generatePsychologicalMessage(
-  type: 'adherence-reminder' | 'dependency-warning' | 'motivation' | 'celebration' | 'risk-alert',
+  type: 'adherence-reminder' | 'dependency-warning' | 'motivation' | 'celebration' | 'risk-alert' | 'cyclic-dosing' | 'tapering-support' | 'heavy-dose-warning' | 'dose-adjustment',
   medicationName: string,
   personalizedData?: Record<string, any>
 ): { title: string; message: string; approach: string } {
@@ -905,7 +905,11 @@ export function generatePsychologicalMessage(
     'dependency-warning': 'factual-warning',
     'motivation': 'positive-reinforcement',
     'celebration': 'positive-reinforcement',
-    'risk-alert': 'empathetic-support'
+    'risk-alert': 'empathetic-support',
+    'cyclic-dosing': 'gentle-reminder',
+    'tapering-support': 'empathetic-support',
+    'heavy-dose-warning': 'factual-warning',
+    'dose-adjustment': 'empathetic-support'
   };
   
   const messages = {
@@ -928,20 +932,163 @@ export function generatePsychologicalMessage(
     'risk-alert': {
       title: 'Supportive Check-In',
       message: `We care about your well-being. If you're finding it challenging to stick to your ${medicationName} schedule, remember that this is normal and you're not alone. Consider reaching out to your healthcare provider for support.`
+    },
+    'cyclic-dosing': {
+      title: 'Cyclic Dosing Update',
+      message: `Your ${medicationName} is on a cyclic schedule. ${personalizedData?.cyclicPhase === 'off' ? 'Today is a break day - no dose needed.' : `Today's dose: ${personalizedData?.adjustedDose || 'as scheduled'}.`} This cycling helps maintain effectiveness and reduce tolerance. 🔄`
+    },
+    'tapering-support': {
+      title: 'Tapering Progress',
+      message: `You're doing great with your ${medicationName} tapering! ${personalizedData?.taperPhase ? `Currently in ${personalizedData.taperPhase} phase.` : ''} Remember, going slow is safe and reduces withdrawal symptoms. Your body is adapting well. 📉💪`
+    },
+    'heavy-dose-warning': {
+      title: 'Dose Safety Check',
+      message: `The amount of ${medicationName} you're taking (${personalizedData?.currentDose}) is considered a heavy dose according to safety guidelines. Please ensure you have proper supervision and consider harm reduction strategies. Your safety is our priority. ⚠️`
+    },
+    'dose-adjustment': {
+      title: 'Dose Adjustment Notice',
+      message: `${personalizedData?.adjustmentType === 'increase' ? 'You took more' : 'You took less'} ${medicationName} than your ${personalizedData?.scheduleType || 'prescribed'} dose. ${personalizedData?.adjustmentType === 'increase' ? 'Taking more than prescribed can increase risk - consider discussing with your healthcare provider.' : 'Taking less is okay, but try to maintain consistency when possible.'}`
     }
   };
   
   const baseMessage = messages[type];
   
-  // Personalize with data if available
-  if (personalizedData?.adherenceStreak) {
+  // Enhanced personalization
+  if (personalizedData?.adherenceStreak && personalizedData.adherenceStreak > 0) {
     baseMessage.message += ` You're on a ${personalizedData.adherenceStreak}-day streak!`;
+  }
+  
+  if (personalizedData?.cyclicMessage && type === 'cyclic-dosing') {
+    baseMessage.message += ` Note: ${personalizedData.cyclicMessage}`;
+  }
+  
+  if (personalizedData?.taperingProgress && type === 'tapering-support') {
+    baseMessage.message += ` You've completed ${personalizedData.taperingProgress}% of your tapering schedule.`;
+  }
+  
+  // Add encouragement for challenging phases
+  if (personalizedData?.isWithdrawal && type === 'tapering-support') {
+    baseMessage.message += ' If you\'re experiencing withdrawal symptoms, it\'s okay to pause or slow down. Listen to your body.';
   }
   
   return {
     ...baseMessage,
     approach: approaches[type]
   };
+}
+
+// Heavy Dose Detection based on Psychonaut Wiki standards
+export function isHeavyDose(medicationName: string, dose: number, unit: string): boolean {
+  const name = medicationName.toLowerCase();
+  
+  // Convert dose to standard units for comparison
+  let standardDose = dose;
+  if (unit === 'g') standardDose = dose * 1000; // Convert to mg
+  if (unit === 'mcg' || unit === 'μg') standardDose = dose / 1000; // Convert to mg
+  
+  // Heavy dose thresholds based on psychonaut wiki data
+  const heavyDoseThresholds: Record<string, number> = {
+    // Opioids (mg)
+    'oxycodone': 30,
+    'morphine': 60,
+    'tramadol': 300,
+    'kratom': 8000, // 8g
+    
+    // Benzodiazepines (mg)
+    'alprazolam': 2,
+    'xanax': 2,
+    'lorazepam': 2,
+    'ativan': 2,
+    'clonazepam': 2,
+    'klonopin': 2,
+    'diazepam': 20,
+    'valium': 20,
+    
+    // Stimulants (mg)
+    'adderall': 40,
+    'amphetamine': 50,
+    'methylphenidate': 60,
+    'ritalin': 60,
+    'cocaine': 90,
+    'methamphetamine': 50,
+    
+    // Psychedelics (mg or mcg)
+    'lsd': 0.2, // 200mcg
+    'psilocybin': 5000, // 5g mushrooms
+    'dmt': 50,
+    '2c-b': 25,
+    '4-aco-dmt': 35,
+    
+    // Dissociatives (mg)
+    'ketamine': 150,
+    'dxm': 400,
+    'pcp': 15,
+    
+    // GABAergics (mg or g)
+    'phenibut': 2000,
+    'ghb': 3000,
+    
+    // Cannabinoids (mg)
+    'thc': 50,
+    'cbd': 200,
+    
+    // Other recreational substances
+    'mdma': 180,
+    'ecstasy': 180,
+    'alcohol': 60000, // ~6 drinks in mg equivalent
+    'nitrous oxide': 16000, // 16g (multiple cartridges)
+    
+    // Nootropics and supplements (mg)
+    'modafinil': 400,
+    'piracetam': 4800,
+    'phenylpiracetam': 200,
+    'noopept': 30,
+    
+    // Prescription medications (mg)
+    'gabapentin': 3600,
+    'pregabalin': 600,
+    'quetiapine': 800,
+    'seroquel': 800,
+    'lithium': 1800,
+    
+    // Antidepressants (mg)
+    'sertraline': 200,
+    'fluoxetine': 80,
+    'venlafaxine': 375,
+    'paroxetine': 60,
+    'citalopram': 60,
+    'escitalopram': 30
+  };
+  
+  // Check if medication matches any known substance
+  for (const [substance, threshold] of Object.entries(heavyDoseThresholds)) {
+    if (name.includes(substance)) {
+      return standardDose >= threshold;
+    }
+  }
+  
+  return false;
+}
+
+// Generate dose safety message based on amount taken
+export function generateDoseSafetyMessage(medicationName: string, doseTaken: number, prescribedDose: number, unit: string): string | null {
+  const isHeavy = isHeavyDose(medicationName, doseTaken, unit);
+  const isOverPrescribed = doseTaken > prescribedDose * 1.5; // 50% over prescribed
+  const isUnderPrescribed = doseTaken < prescribedDose * 0.5; // 50% under prescribed
+  
+  if (isHeavy) {
+    return `⚠️ Heavy dose detected: ${doseTaken}${unit} of ${medicationName} is considered a heavy dose. Please ensure you have proper supervision and consider harm reduction strategies.`;
+  }
+  
+  if (isOverPrescribed) {
+    return `⚠️ Above prescribed dose: You took ${doseTaken}${unit} but your prescribed dose is ${prescribedDose}${unit}. Taking more than prescribed can increase risks.`;
+  }
+  
+  if (isUnderPrescribed) {
+    return `ℹ️ Below prescribed dose: You took ${doseTaken}${unit} but your prescribed dose is ${prescribedDose}${unit}. This is generally safer, but consistency is important for effectiveness.`;
+  }
+  
+  return null;
 }
 
 // Enhanced dose calculation functions for dashboard
