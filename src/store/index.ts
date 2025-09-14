@@ -532,16 +532,18 @@ export const useMedicationStore = create<MedicationStore>()(
       getMedicationAdherence: (medicationId, days) => {
         const medication = get().medications.find((med) => med.id === medicationId);
         
-        // Don't calculate adherence for as-needed medications
-        if (medication?.frequency === 'as-needed') {
-          return 100; // As-needed medications are always "100% adherent" when taken as needed
-        }
-
         const logs = get().logs.filter((log) => {
           const logDate = new Date(log.timestamp);
           const daysDiff = Math.floor((Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24));
           return log.medicationId === medicationId && daysDiff <= days;
         });
+
+        // For as-needed medications, calculate based on actual usage
+        if (medication?.frequency === 'as-needed') {
+          if (logs.length === 0) return 0; // No logs = 0% adherence
+          const takenLogs = logs.filter((log) => log.adherence === 'taken');
+          return Math.round((takenLogs.length / logs.length) * 100);
+        }
 
         if (logs.length === 0) return 0;
 
@@ -1118,11 +1120,9 @@ export const useMedicationStore = create<MedicationStore>()(
           // For multiple pills, calculate the pill breakdown for the tapered dose
           if (medication.useMultiplePills && medication.pillConfigurations) {
             pillBreakdown = calculatePillCountsForDose(taperedDose, medication);
-            // Recalculate actual dose based on available pill combinations
-            baseDose = Object.entries(pillBreakdown).reduce((total, [pillId, count]) => {
-              const pillConfig = medication.pillConfigurations?.find(config => config.id === pillId);
-              return total + (pillConfig ? pillConfig.strength * count : 0);
-            }, 0);
+            // Keep the tapered dose - don't recalculate based on pill combinations
+            // The pill breakdown is for inventory tracking, not dose adjustment
+            baseDose = taperedDose;
           } else {
             baseDose = taperedDose;
           }

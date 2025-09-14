@@ -4,7 +4,7 @@ import { Layout } from '@/components/layout/Layout';
 import { Dashboard } from '@/pages/Dashboard';
 import { Medications } from '@/pages/Medications';
 import { Inventory } from '@/pages/Inventory';
-import { Calendar } from '@/pages/Calendar';
+// import { Calendar } from '@/pages/Calendar';  // DISABLED
 import { Analytics } from '@/pages/Analytics';
 import { Settings } from '@/pages/Settings';
 import { Reminders } from '@/pages/Reminders';
@@ -34,7 +34,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/medications" element={<Medications />} />
           <Route path="/inventory" element={<Inventory />} />
-          <Route path="/calendar" element={<Calendar />} />
+          {/* <Route path="/calendar" element={<Calendar />} /> */}
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/reminders" element={<Reminders />} />

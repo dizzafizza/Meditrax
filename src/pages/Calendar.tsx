@@ -6,38 +6,17 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { formatTime, formatDate, isSameDay, formatPillDisplayShort } from '@/utils/helpers';
-import { CalendarEvent, AdherenceStatus } from '@/types';
+import { CalendarEvent } from '@/types';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isToday } from 'date-fns';
-
-// Helper function to get default times for different frequencies
-const getFrequencyTimes = (frequency: string): string[] => {
-  switch (frequency) {
-    case 'once-daily':
-      return ['09:00'];
-    case 'twice-daily':
-      return ['09:00', '21:00'];
-    case 'three-times-daily':
-      return ['08:00', '14:00', '20:00'];
-    case 'four-times-daily':
-      return ['08:00', '12:00', '16:00', '20:00'];
-    case 'every-other-day':
-      return ['09:00'];
-    default:
-      return ['09:00'];
-  }
-};
 
 export function Calendar() {
   const {
     medications,
     logs,
     reminders,
-    markMedicationTaken,
-    markMedicationMissed,
     getCurrentDose
   } = useMedicationStore();
 
@@ -45,7 +24,25 @@ export function Calendar() {
   const [viewMode, setViewMode] = React.useState<'week' | 'month'>('week');
   const [selectedMedication, setSelectedMedication] = React.useState<string | 'all'>('all');
 
-  // Generate calendar events
+  // Helper function to get default times for different frequencies
+  const getFrequencyTimes = (frequency: string): string[] => {
+    switch (frequency) {
+      case 'once-daily':
+        return ['09:00'];
+      case 'twice-daily':
+        return ['09:00', '21:00'];
+      case 'three-times-daily':
+        return ['08:00', '14:00', '20:00'];
+      case 'four-times-daily':
+        return ['08:00', '12:00', '16:00', '20:00'];
+      case 'every-other-day':
+        return ['09:00'];
+      default:
+        return ['09:00'];
+    }
+  };
+
+  // Generate calendar events - show both logged medications and upcoming doses
   const generateCalendarEvents = React.useCallback((): CalendarEvent[] => {
     const events: CalendarEvent[] = [];
     const activeMedications = medications.filter(med => med.isActive);
@@ -54,94 +51,318 @@ export function Calendar() {
     logs.forEach(log => {
       const medication = medications.find(med => med.id === log.medicationId);
       if (medication) {
-          events.push({
-            id: log.id,
-            medicationId: log.medicationId,
-            medicationName: medication.name,
-            dosageInfo: medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`,
-            time: formatTime(new Date(log.timestamp)),
-            type: log.adherence === 'taken' ? 'taken' : 'missed',
-            status: log.adherence,
-            date: new Date(log.timestamp),
-          } as any);
+        // Calculate proper dosage display for logged medications
+        let dosageInfo;
+        if (medication.useMultiplePills && log.pillsLogged && log.pillsLogged.length > 0) {
+          // Show pill breakdown for multiple-pill medications
+          const totalDose = log.pillsLogged.reduce((sum, pill) => sum + (pill.quantity * (parseFloat(pill.strength) || 0)), 0);
+          const pillBreakdown = log.pillsLogged.map(pill => `${pill.quantity}×${pill.strength}`).join(' + ');
+          dosageInfo = `${pillBreakdown} (${totalDose}${medication.unit})`;
+        } else if (medication.useMultiplePills) {
+          // Fallback for multiple-pill medications without pill logs
+          dosageInfo = formatPillDisplayShort(medication);
+        } else {
+          // Single pill medications - show the logged dose
+          dosageInfo = `${log.dosageTaken} ${log.unit}`;
+        }
+        
+        events.push({
+          id: log.id,
+          medicationId: log.medicationId,
+          medicationName: medication.name,
+          dosageInfo: dosageInfo,
+          time: formatTime(new Date(log.timestamp)),
+          type: log.adherence === 'taken' ? 'taken' : 'missed',
+          status: log.adherence,
+          date: new Date(log.timestamp),
+          notes: log.notes,
+        } as any);
       }
     });
 
-    // Add reminders as upcoming events
+    // Add events for the calendar view range (including past days in current view)
     const today = new Date();
-    const endDate = viewMode === 'week' ? addDays(today, 7) : addDays(today, 30);
+    let startDate, endDate;
     
-    for (let date = today; date <= endDate; date = addDays(date, 1)) {
+    if (viewMode === 'week') {
+      // For week view, show the full week containing today
+      startDate = startOfWeek(selectedDate);
+      endDate = endOfWeek(selectedDate);
+    } else {
+      // For month view, show the full month containing today plus some future days
+      startDate = startOfWeek(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+      endDate = endOfWeek(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0));
+    }
+    
+    for (let date = startDate; date <= endDate; date = addDays(date, 1)) {
       const dayName = format(date, 'EEEE').toLowerCase();
       
       // Process medications with reminders
       reminders.forEach(reminder => {
         const medication = activeMedications.find(med => med.id === reminder.medicationId);
         if (medication && reminder.isActive && reminder.days.includes(dayName as any)) {
-          // Check if this reminder was already logged
-          const existingLog = logs.find(log => 
+          // Count how many reminders exist for this medication on this day
+          const medicationRemindersToday = reminders.filter(r => 
+            r.medicationId === reminder.medicationId && 
+            r.isActive && 
+            r.days.includes(dayName as any)
+          );
+          
+          // Count how many times this medication was logged on this day
+          const dailyLogs = logs.filter(log => 
             log.medicationId === reminder.medicationId && 
             isSameDay(new Date(log.timestamp), date)
           );
-
-          if (!existingLog) {
-            // Get current dose for this specific date (considering cyclic dosing)
-            const currentDose = getCurrentDose(reminder.medicationId, date);
-            let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
-            
-            // If cyclic dosing is active, show adjusted dose with phase info
-            if (medication.cyclicDosing?.isActive) {
-              const adjustedDoseText = medication.useMultiplePills 
-                ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
-                : `${currentDose.dose} ${medication.unit}`;
-              dosageInfo = currentDose.phase !== 'maintenance' 
-                ? `${adjustedDoseText} (${currentDose.phase})` 
-                : adjustedDoseText;
-            }
-            
-            events.push({
-              id: `${reminder.id}-${format(date, 'yyyy-MM-dd')}`,
-              medicationId: reminder.medicationId,
-              medicationName: medication.name,
-              dosageInfo: dosageInfo,
-              time: reminder.time,
-              type: 'reminder',
-              status: 'upcoming',
-              date,
-              cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
-              cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
-            } as any);
+          
+          // Get the index of this reminder among the day's reminders (sorted by time)
+          const sortedReminders = medicationRemindersToday.sort((a, b) => a.time.localeCompare(b.time));
+          const reminderIndex = sortedReminders.findIndex(r => r.id === reminder.id);
+          
+          // Skip this reminder if we have enough logs already
+          if (dailyLogs.length > reminderIndex) {
+            return;
           }
+          
+          // Get current dose for this date
+          const currentDose = getCurrentDose(reminder.medicationId, date);
+          
+          
+          // Only skip if this is clearly a cyclic dosing "off" day
+          if (currentDose.dose === 0 && medication.cyclicDosing?.isActive && currentDose.phase === 'off') {
+            return;
+          }
+          
+          // Calculate dosage info with tapering/cyclic adjustments
+          let dosageInfo;
+          if (medication.tapering?.isActive || medication.cyclicDosing?.isActive) {
+            if (medication.useMultiplePills && currentDose.pillBreakdown) {
+              // Show pill breakdown for tapered multiple-pill medications
+              const pillEntries = Object.entries(currentDose.pillBreakdown).filter(([_, quantity]) => quantity > 0);
+              
+              if (pillEntries.length > 0) {
+                // Check if all pill quantities are whole numbers
+                const hasWholePills = pillEntries.every(([_, quantity]) => quantity % 1 === 0);
+                
+                if (hasWholePills) {
+                  // Show pill breakdown for whole pills
+                  const pillBreakdown = pillEntries
+                    .map(([pillId, quantity]) => {
+                      const pillConfig = medication.pillConfigurations?.find(p => p.id === pillId);
+                      return `${quantity}×${pillConfig?.strength || '?'}mg`;
+                    })
+                    .join(' + ');
+                  const adjustedDoseText = `${pillBreakdown} (${currentDose.dose}${medication.unit})`;
+                  
+                  if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                    dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+                  } else if (medication.tapering?.isActive) {
+                    dosageInfo = `${adjustedDoseText} (tapering)`;
+                  } else {
+                    dosageInfo = adjustedDoseText;
+                  }
+                } else {
+                  // For fractional pills, just show the total dose with note about partial pills
+                  const adjustedDoseText = `~${currentDose.dose}${medication.unit}`;
+                  
+                  if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                    dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+                  } else if (medication.tapering?.isActive) {
+                    dosageInfo = `${adjustedDoseText} (tapering)`;
+                  } else {
+                    dosageInfo = adjustedDoseText;
+                  }
+                }
+              } else {
+                // No pills to take today, but show the tapering/cyclic status
+                if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                  dosageInfo = `0${medication.unit} (${currentDose.phase})`;
+                } else if (medication.tapering?.isActive) {
+                  // Check if we're actually past the tapering end date
+                  const taperingEndDate = new Date(medication.tapering.endDate);
+                  const isActuallyComplete = date >= taperingEndDate;
+                  dosageInfo = isActuallyComplete 
+                    ? `0${medication.unit} (tapering complete)` 
+                    : `0${medication.unit} (skipped during taper)`;
+                } else {
+                  dosageInfo = `0${medication.unit}`;
+                }
+              }
+            } else {
+              // Single pill or fallback for multiple pills
+              if (currentDose.dose === 0) {
+                // Show 0 dose with context
+                if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                  dosageInfo = `0${medication.unit} (${currentDose.phase})`;
+                } else if (medication.tapering?.isActive) {
+                  // Check if we're actually past the tapering end date
+                  const taperingEndDate = new Date(medication.tapering.endDate);
+                  const isActuallyComplete = date >= taperingEndDate;
+                  dosageInfo = isActuallyComplete 
+                    ? `0${medication.unit} (tapering complete)` 
+                    : `0${medication.unit} (skipped during taper)`;
+                } else {
+                  dosageInfo = `0${medication.unit}`;
+                }
+              } else {
+                const adjustedDoseText = `${currentDose.dose} ${medication.unit}`;
+                
+                if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                  dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+                } else if (medication.tapering?.isActive) {
+                  dosageInfo = `${adjustedDoseText} (tapering)`;
+                } else {
+                  dosageInfo = adjustedDoseText;
+                }
+              }
+            }
+          } else {
+            // For new medications, use their base dosage or a default if not set
+            if (medication.useMultiplePills) {
+              dosageInfo = formatPillDisplayShort(medication);
+            } else if (medication.dosage && parseFloat(medication.dosage) > 0) {
+              dosageInfo = `${medication.dosage} ${medication.unit}`;
+            } else {
+              dosageInfo = `TBD ${medication.unit || 'mg'}`; // Show something for new medications
+            }
+          }
+          
+          events.push({
+            id: `${reminder.id}-${format(date, 'yyyy-MM-dd')}`,
+            medicationId: reminder.medicationId,
+            medicationName: medication.name,
+            dosageInfo: dosageInfo,
+            time: reminder.time,
+            type: 'upcoming',
+            status: 'upcoming',
+            date: date,
+            cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
+            cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
+          } as any);
         }
       });
-      
-      // Add frequency-based events for medications without reminders but with regular schedules
-      activeMedications.forEach(medication => {
-        const hasReminder = reminders.some(r => r.medicationId === medication.id && r.isActive);
-        
-        if (!hasReminder && medication.frequency !== 'as-needed') {
-          // Generate events based on frequency
-          const frequencyTimes = getFrequencyTimes(medication.frequency);
-          
-          frequencyTimes.forEach((time, index) => {
-            // Check if this dose was already logged
-            const existingLog = logs.find(log => 
-              log.medicationId === medication.id && 
-              isSameDay(new Date(log.timestamp), date) &&
-              Math.abs(new Date(log.timestamp).getHours() - parseInt(time.split(':')[0])) <= 1
-            );
 
-            if (!existingLog) {
-              // Get current dose for this specific date (considering cyclic dosing)
+      // Process medications with frequency but no specific reminders
+      activeMedications
+        .filter(med => !reminders.some(reminder => reminder.medicationId === med.id && reminder.isActive))
+        .forEach(medication => {
+          // Include all medications with frequency, or medications with no frequency at all (new medications)
+          if ((medication.frequency && medication.frequency !== 'as-needed') || !medication.frequency) {
+            const frequencyTimes = getFrequencyTimes(medication.frequency || 'once-daily');
+            
+            // Count how many times this medication was logged on this day
+            const dailyLogs = logs.filter(log => 
+              log.medicationId === medication.id && 
+              isSameDay(new Date(log.timestamp), date)
+            );
+            
+            frequencyTimes.forEach((time, index) => {
+              // Skip scheduled doses if we already have enough logs for the day
+              // For example, if twice-daily and 2 logs exist, don't show any scheduled
+              if (dailyLogs.length > index) {
+                return;
+              }
+
+              // Get current dose for this date
               const currentDose = getCurrentDose(medication.id, date);
-              let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
               
-              // If cyclic dosing is active and dose is different, show adjusted dose
-              if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
-                const adjustedDoseText = medication.useMultiplePills 
-                  ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
-                  : `${currentDose.dose} ${medication.unit}`;
-                dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+              
+              // Only skip if this is clearly a cyclic dosing "off" day
+              if (currentDose.dose === 0 && medication.cyclicDosing?.isActive && currentDose.phase === 'off') {
+                return;
+              }
+              
+              // Calculate dosage info
+              let dosageInfo;
+              if (medication.tapering?.isActive || medication.cyclicDosing?.isActive) {
+                if (medication.useMultiplePills && currentDose.pillBreakdown) {
+                  // Show pill breakdown for tapered multiple-pill medications
+                  const pillEntries = Object.entries(currentDose.pillBreakdown).filter(([_, quantity]) => quantity > 0);
+                  
+                  if (pillEntries.length > 0) {
+                    // Check if all pill quantities are whole numbers
+                    const hasWholePills = pillEntries.every(([_, quantity]) => quantity % 1 === 0);
+                    
+                    if (hasWholePills) {
+                      // Show pill breakdown for whole pills
+                      const pillBreakdown = pillEntries
+                        .map(([pillId, quantity]) => {
+                          const pillConfig = medication.pillConfigurations?.find(p => p.id === pillId);
+                          return `${quantity}×${pillConfig?.strength || '?'}mg`;
+                        })
+                        .join(' + ');
+                      const adjustedDoseText = `${pillBreakdown} (${currentDose.dose}${medication.unit})`;
+                      
+                      if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                        dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+                      } else if (medication.tapering?.isActive) {
+                        dosageInfo = `${adjustedDoseText} (tapering)`;
+                      } else {
+                        dosageInfo = adjustedDoseText;
+                      }
+                    } else {
+                      // For fractional pills, just show the total dose with note about partial pills
+                      const adjustedDoseText = `~${currentDose.dose}${medication.unit}`;
+                      
+                      if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                        dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+                      } else if (medication.tapering?.isActive) {
+                        dosageInfo = `${adjustedDoseText} (tapering)`;
+                      } else {
+                        dosageInfo = adjustedDoseText;
+                      }
+                    }
+                  } else {
+                    // No pills to take today, but show the tapering/cyclic status
+                    if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                      dosageInfo = `0${medication.unit} (${currentDose.phase})`;
+                    } else if (medication.tapering?.isActive) {
+                      // Check if we're actually past the tapering end date
+                      const taperingEndDate = new Date(medication.tapering.endDate);
+                      const isActuallyComplete = date >= taperingEndDate;
+                      dosageInfo = isActuallyComplete 
+                        ? `0${medication.unit} (tapering complete)` 
+                        : `0${medication.unit} (skipped during taper)`;
+                    } else {
+                      dosageInfo = `0${medication.unit}`;
+                    }
+                  }
+                } else {
+                  // Single pill or fallback for multiple pills
+                  if (currentDose.dose === 0) {
+                    // Show 0 dose with context
+                    if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                      dosageInfo = `0${medication.unit} (${currentDose.phase})`;
+                    } else if (medication.tapering?.isActive) {
+                      // Check if we're actually past the tapering end date
+                      const taperingEndDate = new Date(medication.tapering.endDate);
+                      const isActuallyComplete = date >= taperingEndDate;
+                      dosageInfo = isActuallyComplete 
+                        ? `0${medication.unit} (tapering complete)` 
+                        : `0${medication.unit} (skipped during taper)`;
+                    } else {
+                      dosageInfo = `0${medication.unit}`;
+                    }
+                  } else {
+                    const adjustedDoseText = `${currentDose.dose} ${medication.unit}`;
+                    
+                    if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+                      dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+                    } else if (medication.tapering?.isActive) {
+                      dosageInfo = `${adjustedDoseText} (tapering)`;
+                    } else {
+                      dosageInfo = adjustedDoseText;
+                    }
+                  }
+                }
+              } else {
+                // For new medications, use their base dosage or a default if not set
+                if (medication.useMultiplePills) {
+                  dosageInfo = formatPillDisplayShort(medication);
+                } else if (medication.dosage && parseFloat(medication.dosage) > 0) {
+                  dosageInfo = `${medication.dosage} ${medication.unit}`;
+                } else {
+                  dosageInfo = `TBD ${medication.unit || 'mg'}`; // Show something for new medications
+                }
               }
               
               events.push({
@@ -150,61 +371,29 @@ export function Calendar() {
                 medicationName: medication.name,
                 dosageInfo: dosageInfo,
                 time: time,
-                type: 'reminder',
+                type: 'upcoming',
                 status: 'upcoming',
-                date,
+                date: date,
                 cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
                 cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
               } as any);
-            }
-          });
-        }
-      });
-      
-      // Add medications without reminders as informational entries (for today only to avoid clutter)
-      if (isSameDay(date, today)) {
-        const medicationsWithReminders = new Set(reminders.map(r => r.medicationId));
-        activeMedications.forEach(medication => {
-          if (!medicationsWithReminders.has(medication.id)) {
-            // Check if this medication was already logged today
-            const existingLog = logs.find(log => 
-              log.medicationId === medication.id && 
-              isSameDay(new Date(log.timestamp), date)
-            );
-
-            if (!existingLog) {
-              // Get current dose for this specific date (considering cyclic dosing)
-              const currentDose = getCurrentDose(medication.id, date);
-              let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
-              
-              // If cyclic dosing is active and dose is different, show adjusted dose
-              if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
-                const adjustedDoseText = medication.useMultiplePills 
-                  ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
-                  : `${currentDose.dose} ${medication.unit}`;
-                dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
-              }
-              
-              events.push({
-                id: `no-reminder-${medication.id}-${format(date, 'yyyy-MM-dd')}`,
-                medicationId: medication.id,
-                medicationName: medication.name,
-                dosageInfo: dosageInfo,
-                time: 'No reminder set',
-                type: 'reminder',
-                status: 'upcoming',
-                date,
-                cyclicPhase: medication.cyclicDosing?.isActive ? currentDose.phase : undefined,
-                cyclicMessage: medication.cyclicDosing?.isActive ? currentDose.message : undefined,
-              } as any);
-            }
+            });
           }
         });
-      }
     }
 
-    return events.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [medications, logs, reminders, viewMode]);
+    // Remove exact duplicates while preserving legitimate multiple daily doses
+    const uniqueEvents = events.filter((event, index, self) => {
+      return index === self.findIndex(e => 
+        e.medicationId === event.medicationId &&
+        e.time === event.time &&
+        format(e.date, 'yyyy-MM-dd') === format(event.date, 'yyyy-MM-dd') &&
+        e.type === event.type
+      );
+    });
+
+    return uniqueEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [medications, logs, reminders, viewMode, getCurrentDose]);
 
   const calendarEvents = generateCalendarEvents();
 
@@ -236,23 +425,18 @@ export function Calendar() {
     setSelectedDate(date);
   };
 
-  const handleMedicationAction = (medicationId: string, action: 'taken' | 'missed') => {
-    if (action === 'taken') {
-      markMedicationTaken(medicationId);
-    } else {
-      markMedicationMissed(medicationId);
-    }
-  };
-
   const navigateCalendar = (direction: 'prev' | 'next') => {
     if (viewMode === 'week') {
       setSelectedDate(prev => addDays(prev, direction === 'next' ? 7 : -7));
     } else {
-      setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() + (direction === 'next' ? 1 : -1), 1));
+      setSelectedDate(prev => {
+        const newMonth = direction === 'next' ? prev.getMonth() + 1 : prev.getMonth() - 1;
+        return new Date(prev.getFullYear(), newMonth, 1);
+      });
     }
   };
 
-  const EventIcon = ({ status }: { status: AdherenceStatus | 'upcoming' }) => {
+  const EventIcon = ({ status }: { status: string }) => {
     switch (status) {
       case 'taken':
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
@@ -261,7 +445,7 @@ export function Calendar() {
       case 'upcoming':
         return <Clock className="h-4 w-4 text-blue-500" />;
       default:
-        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+        return <Clock className="h-4 w-4 text-gray-400" />;
     }
   };
 
@@ -283,19 +467,19 @@ export function Calendar() {
         <div className="font-medium text-sm mb-1">
           {format(date, 'd')}
         </div>
-        <div className="space-y-1">
-          {dayEvents.slice(0, 2).map((event) => (
+        <div className="space-y-0">
+          {dayEvents.slice(0, 4).map((event) => (
             <div
               key={event.id}
-              className="flex items-center space-x-1 text-xs"
+              className="flex items-center space-x-1 text-xs leading-tight"
             >
               <EventIcon status={event.status} />
               <span className="truncate">{event.medicationName}</span>
             </div>
           ))}
-          {dayEvents.length > 2 && (
+          {dayEvents.length > 4 && (
             <div className="text-xs text-gray-500">
-              +{dayEvents.length - 2} more
+              +{dayEvents.length - 4} more
             </div>
           )}
         </div>
@@ -310,55 +494,60 @@ export function Calendar() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
           <p className="mt-1 text-sm text-gray-500">
-            View and manage your medication schedule
+            View your medication history
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 flex items-center space-x-3">
+
+        {/* Medication Filter */}
+        <div className="mt-4 sm:mt-0">
           <select
             value={selectedMedication}
             onChange={(e) => setSelectedMedication(e.target.value)}
-            className="mobile-input"
+            className="block w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           >
             <option value="all">All Medications</option>
-            {medications.filter(med => med.isActive).map(med => (
-              <option key={med.id} value={med.id}>{med.name}</option>
+            {medications.filter(med => med.isActive).map((med) => (
+              <option key={med.id} value={med.id}>
+                {med.name}
+              </option>
             ))}
           </select>
-          <div className="flex rounded-md shadow-sm">
-            <button
-              onClick={() => setViewMode('week')}
-              className={`mobile-button px-4 py-3 sm:px-3 sm:py-2 text-base sm:text-sm font-medium rounded-l-md border ${
-                viewMode === 'week' 
-                  ? 'bg-primary-600 text-white border-primary-600' 
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Week
-            </button>
-            <button
-              onClick={() => setViewMode('month')}
-              className={`mobile-button px-4 py-3 sm:px-3 sm:py-2 text-base sm:text-sm font-medium rounded-r-md border-t border-r border-b ${
-                viewMode === 'month' 
-                  ? 'bg-primary-600 text-white border-primary-600' 
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Month
-            </button>
-          </div>
         </div>
       </div>
 
+      {/* Main Calendar Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Calendar Grid */}
         <div className="lg:col-span-2">
           <div className="card">
             <div className="card-header">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-gray-900">
+                <h2 className="text-lg font-medium text-gray-900">
                   {format(selectedDate, 'MMMM yyyy')}
-                </h3>
+                </h2>
                 <div className="flex items-center space-x-2">
+                  <div className="flex rounded-md border border-gray-300">
+                    <button
+                      onClick={() => setViewMode('week')}
+                      className={`px-3 py-1 text-sm font-medium ${
+                        viewMode === 'week'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-700 hover:text-gray-900'
+                      }`}
+                    >
+                      Week
+                    </button>
+                    <button
+                      onClick={() => setViewMode('month')}
+                      className={`px-3 py-1 text-sm font-medium ${
+                        viewMode === 'month'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-gray-700 hover:text-gray-900'
+                      }`}
+                    >
+                      Month
+                    </button>
+                  </div>
                   <button
                     onClick={() => navigateCalendar('prev')}
                     className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
@@ -393,9 +582,9 @@ export function Calendar() {
                   </div>
                   {/* Calendar Body */}
                   <div className="grid grid-cols-7">
-                    {monthDays.map((date, index) => (
+                    {monthDays.map((date) => (
                       <CalendarDay
-                        key={index}
+                        key={date.toISOString()}
                         date={date}
                         isCurrentMonth={isSameMonth(date, selectedDate)}
                       />
@@ -445,53 +634,51 @@ export function Calendar() {
                   <CalendarIcon className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-2 text-sm font-medium text-gray-900">No events</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    No medications scheduled for this day.
+                    No medications scheduled or logged for this day.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1">
                   {selectedDateEvents.map((event) => (
                     <div
                       key={event.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className={`px-2 py-1 rounded ${
+                        event.status === 'taken' ? 'bg-green-50 border border-green-200' :
+                        event.status === 'missed' ? 'bg-red-50 border border-red-200' :
+                        'bg-blue-50 border border-blue-200'
+                      }`}
                     >
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-start space-x-2">
                         <EventIcon status={event.status} />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
                             {event.medicationName}
                           </p>
                           <p className="text-xs text-gray-500">
                             {(event as any).dosageInfo} • {event.time}
                           </p>
-                          {(event as any).cyclicPhase && (
-                            <p className="text-xs text-indigo-600 font-medium">
-                              📊 Cyclic phase: {(event as any).cyclicPhase}
+                          {event.status === 'upcoming' && (
+                            <p className="text-xs text-blue-600 font-medium leading-tight">
+                              📅 Scheduled
+                            </p>
+                          )}
+                          {(event as any).cyclicPhase && (event as any).cyclicPhase !== 'maintenance' && (
+                            <p className="text-xs text-indigo-600 font-medium leading-tight">
+                              📊 Cyclic: {(event as any).cyclicPhase}
                             </p>
                           )}
                           {(event as any).cyclicMessage && (
-                            <p className="text-xs text-indigo-500 italic">
+                            <p className="text-xs text-indigo-500 italic leading-tight">
                               💡 {(event as any).cyclicMessage}
+                            </p>
+                          )}
+                          {(event as any).notes && (
+                            <p className="text-xs text-gray-600 leading-tight">
+                              📝 {(event as any).notes}
                             </p>
                           )}
                         </div>
                       </div>
-                      {event.status === 'upcoming' && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleMedicationAction(event.medicationId, 'taken')}
-                            className="btn-success mobile-button text-xs sm:text-xs px-3 py-2 sm:px-2 sm:py-1"
-                          >
-                            Take
-                          </button>
-                          <button
-                            onClick={() => handleMedicationAction(event.medicationId, 'missed')}
-                            className="btn-secondary mobile-button text-xs sm:text-xs px-3 py-2 sm:px-2 sm:py-1"
-                          >
-                            Skip
-                          </button>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -516,7 +703,7 @@ export function Calendar() {
                 </div>
                 <div className="flex items-center space-x-2">
                   <Clock className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm text-gray-700">Upcoming</span>
+                  <span className="text-sm text-gray-700">Scheduled</span>
                 </div>
               </div>
             </div>

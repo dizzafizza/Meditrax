@@ -45,6 +45,7 @@ export interface Medication {
   name: string;
   dosage: string;              // @deprecated - kept for backward compatibility
   unit: MedicationUnit;        // @deprecated - kept for backward compatibility
+  inventoryUnit?: MedicationUnit; // Unit for inventory tracking (can differ from dosage unit)
   frequency: MedicationFrequency;
   category: MedicationCategory;
   color: string;

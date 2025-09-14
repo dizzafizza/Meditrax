@@ -1,5 +1,4 @@
 import { 
-  PharmacyInfo,
   PersonalMedicationTracking,
   PersonalUsagePattern,
   MedicationAlert,
@@ -104,7 +103,7 @@ export class PersonalRefillService {
     }
 
     // Find coordination opportunities (medications from same pharmacy)
-    const pharmacyGroups = this.groupMedicationsByPharmacy(medications, pharmacyPreferences);
+    const pharmacyGroups = this.groupMedicationsByPharmacy(medications);
     for (const [pharmacy, meds] of pharmacyGroups.entries()) {
       if (meds.length > 1) {
         const medsNeedingRefill = meds.filter(med => {
@@ -297,8 +296,7 @@ export class PersonalRefillService {
   }
 
   private static groupMedicationsByPharmacy(
-    medications: Medication[],
-    pharmacyPreferences: PharmacyInfo[]
+    medications: Medication[]
   ): Map<string, Medication[]> {
     const groups = new Map<string, Medication[]>();
 

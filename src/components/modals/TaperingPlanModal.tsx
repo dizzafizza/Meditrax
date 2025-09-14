@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, AlertTriangle, Calendar, TrendingDown, Clock, Heart, Settings, Brain, Lightbulb } from 'lucide-react';
-import { generateEnhancedTaperingPlan, generateIntelligentTaperingRecommendation } from '@/services/medicationDatabase';
+import { generateEnhancedTaperingPlan, generateIntelligentTaperingRecommendation, generateCustomTaperingPlan, getMedicationByName } from '@/services/medicationDatabase';
 import { useMedicationStore } from '@/store';
 import { Medication } from '@/types';
 import { formatDate, formatPillCountsForTapering, calculatePillCountsForDose } from '@/utils/helpers';
@@ -19,11 +19,39 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
   const [selectedPlan, setSelectedPlan] = React.useState<'intelligent' | 'custom' | 'advanced'>('intelligent');
   const [customDuration, setCustomDuration] = React.useState(4);
   const [customReduction, setCustomReduction] = React.useState(25);
-  const [customMethod, setCustomMethod] = React.useState<'linear' | 'exponential' | 'hyperbolic'>('hyperbolic');
+  const [customMethod, setCustomMethod] = React.useState<'linear' | 'exponential' | 'hyperbolic' | 'custom'>('hyperbolic');
   const [includeStabilization, setIncludeStabilization] = React.useState(false);
+  const [breakBetweenDoses, setBreakBetweenDoses] = React.useState(7); // Default 7 days between dose reductions
   const [startDate, setStartDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [doctorApproval, setDoctorApproval] = React.useState(false);
   const [understanding, setUnderstanding] = React.useState(false);
+  const [dangerousSettingsAck, setDangerousSettingsAck] = React.useState(false);
+
+  // Helper functions to detect dangerous settings
+  const isDangerousReduction = () => {
+    if (customMethod === 'hyperbolic' && customReduction > 15) return true;
+    if (customMethod === 'linear' && customReduction > 40) return true;
+    if (customMethod === 'exponential' && customReduction > 35) return true;
+    if (customMethod === 'custom' && customReduction > 30) return true;
+    return false;
+  };
+
+  const isDangerousDuration = () => {
+    return customDuration < 2; // Less than 2 weeks is dangerous for most medications
+  };
+
+  const isDangerousInterval = () => {
+    return breakBetweenDoses < 3; // Less than 3 days between reductions is dangerous
+  };
+
+  const hasDangerousSettings = () => {
+    return isDangerousReduction() || isDangerousDuration() || isDangerousInterval();
+  };
+
+  // Reset dangerous settings acknowledgment when settings change
+  React.useEffect(() => {
+    setDangerousSettingsAck(false);
+  }, [customMethod, customReduction, customDuration, breakBetweenDoses]);
 
   React.useEffect(() => {
     if (isOpen && medication) {
@@ -60,10 +88,36 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
         setCustomReduction(intelligent.adjustedPlan.reductionPercent);
         setCustomMethod(intelligent.adjustedPlan.method);
       }
+      
+      // Set medication-specific default break between doses
+      const medicationData = getMedicationByName(medication.name);
+      if (medicationData?.taperingRecommendations?.daysBetweenReductions) {
+        setBreakBetweenDoses(medicationData.taperingRecommendations.daysBetweenReductions);
+      } else {
+        // Default based on medication dependency risk category
+        const defaultBreaks = {
+          'benzodiazepine': 14,
+          'opioid': 10,
+          'antidepressant': 14,
+          'stimulant': 7,
+          'sleep-aid': 10,
+          'muscle-relaxant': 7,
+          'anticonvulsant': 14,
+          'antipsychotic': 21,
+          'low-risk': 7
+        };
+        setBreakBetweenDoses(defaultBreaks[medication.dependencyRiskCategory] || 7);
+      }
     }
   }, [isOpen, medication]);
 
   const generateCustomPlan = () => {
+    // Check for dangerous settings and require acknowledgment
+    if (hasDangerousSettings() && !dangerousSettingsAck) {
+      toast.error('Please acknowledge the dangerous settings warning before proceeding');
+      return;
+    }
+
     // Get current dose - handle multiple pills vs single dosage
     let currentDose = parseFloat(medication.dosage);
     let currentUnit = medication.unit;
@@ -79,21 +133,19 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
       }
     }
     
-    // Use enhanced plan generation with custom options
-    const enhancedPlan = generateEnhancedTaperingPlan(
-      medication.name, 
-      currentDose, 
-      currentUnit, 
-      medication,
-      {
-        preferredMethod: customMethod,
-        preferredDuration: customDuration,
-        preferredReduction: customReduction,
-        includeStabilizationPeriods: includeStabilization
-      }
+    // Use direct custom plan generation for immediate response to user changes
+    const customPlan = generateCustomTaperingPlan(
+      medication.name,
+      currentDose,
+      currentUnit,
+      customMethod,
+      customDuration,
+      customReduction,
+      includeStabilization,
+      breakBetweenDoses
     );
     
-    return enhancedPlan || {
+    return customPlan || {
       medicationName: medication.name,
       method: customMethod,
       totalDuration: customDuration * 7,
@@ -114,12 +166,25 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
   // Update display plan when selection changes
   React.useEffect(() => {
     if (selectedPlan === 'custom' || selectedPlan === 'advanced') {
-      const customPlan = generateCustomPlan();
-      setCurrentDisplayPlan(customPlan);
+      // Only generate plan if dangerous settings are acknowledged or not present
+      if (!hasDangerousSettings() || dangerousSettingsAck) {
+        const customPlan = generateCustomPlan();
+        setCurrentDisplayPlan(customPlan);
+      } else {
+        // Show placeholder when dangerous settings need acknowledgment
+        setCurrentDisplayPlan({
+          medicationName: medication?.name || '',
+          method: customMethod,
+          totalDuration: customDuration * 7,
+          steps: [],
+          warnings: ['Please acknowledge dangerous settings to view tapering schedule'],
+          riskLevel: 'High'
+        });
+      }
     } else {
       setCurrentDisplayPlan(taperingPlan);
     }
-  }, [selectedPlan, customDuration, customReduction, customMethod, includeStabilization, taperingPlan, medication]);
+  }, [selectedPlan, customDuration, customReduction, customMethod, includeStabilization, breakBetweenDoses, dangerousSettingsAck, taperingPlan, medication]);
 
   const getDisplayPlan = () => {
     return currentDisplayPlan || taperingPlan;
@@ -450,7 +515,8 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Reduction Rate (%)
+                          Reduction Intensity (%) 
+                          <span className="text-xs text-gray-500 font-normal">- Higher = faster taper</span>
                         </label>
                         <input
                           type="number"
@@ -507,35 +573,95 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                           </label>
                           <select
                             value={customMethod}
-                            onChange={(e) => setCustomMethod(e.target.value as 'linear' | 'exponential' | 'hyperbolic')}
+                            onChange={(e) => setCustomMethod(e.target.value as 'linear' | 'exponential' | 'hyperbolic' | 'custom')}
                             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                           >
                             <option value="hyperbolic">Hyperbolic (Recommended)</option>
                             <option value="linear">Linear</option>
                             <option value="exponential">Exponential</option>
+                            <option value="custom">Custom (Advanced)</option>
                           </select>
                         </div>
                       </div>
                       
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="stabilization"
-                          checked={includeStabilization}
-                          onChange={(e) => setIncludeStabilization(e.target.checked)}
-                          className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="stabilization" className="text-sm text-gray-700">
-                          Include stabilization periods between reductions
-                        </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="stabilization"
+                            checked={includeStabilization}
+                            onChange={(e) => setIncludeStabilization(e.target.checked)}
+                            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="stabilization" className="text-sm text-gray-700">
+                            Include stabilization periods
+                          </label>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Days Between Dose Reductions
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={breakBetweenDoses}
+                            onChange={(e) => setBreakBetweenDoses(parseInt(e.target.value) || 7)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Time to adjust to each dose level before the next reduction
+                          </p>
+                        </div>
                       </div>
                       
                       <div className="text-xs text-gray-600 bg-white p-2 rounded border">
-                        <strong>Method Explanations:</strong><br/>
-                        • <strong>Hyperbolic:</strong> Reduces by % of current dose (e.g., 10% of whatever you're taking now)<br/>
-                        • <strong>Linear:</strong> Reduces by fixed amount each step<br/>
-                        • <strong>Exponential:</strong> Larger reductions early, smaller reductions later
+                        <strong>Tapering Method Explanations:</strong><br/>
+                        • <strong>Hyperbolic:</strong> Consistent percentage of current dose each step (e.g., 10% of whatever you're currently taking)<br/>
+                        • <strong>Linear:</strong> Fixed amount reduction each step calculated to reach zero over duration (reduction % affects pacing)<br/>
+                        • <strong>Exponential:</strong> Large reductions early, progressively smaller reductions later<br/>
+                        • <strong>Custom:</strong> Hybrid approach - aggressive first 50% of duration, then gentle final 50%<br/>
+                        <em>All methods reach complete elimination (0mg) over your specified duration</em>
                       </div>
+
+                      {/* Dangerous Settings Warning */}
+                      {hasDangerousSettings() && (
+                        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                          <div className="flex items-start space-x-3">
+                            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <h4 className="text-sm font-medium text-red-800 mb-2">⚠️ Potentially Dangerous Tapering Settings Detected</h4>
+                              <div className="text-xs text-red-700 space-y-1 mb-3">
+                                {isDangerousReduction() && (
+                                  <p>• <strong>High reduction rate:</strong> {customReduction}% per step for {customMethod} method may cause severe withdrawal symptoms</p>
+                                )}
+                                {isDangerousDuration() && (
+                                  <p>• <strong>Too rapid duration:</strong> {customDuration} weeks may not allow adequate adjustment time</p>
+                                )}
+                                {isDangerousInterval() && (
+                                  <p>• <strong>Too frequent reductions:</strong> Every {breakBetweenDoses} days may not allow stabilization</p>
+                                )}
+                              </div>
+                              <div className="text-xs text-red-800 mb-3">
+                                <strong>Medical Risks Include:</strong> Seizures, severe anxiety, rebound symptoms, cardiovascular stress, psychological distress
+                              </div>
+                              <label className="flex items-start space-x-2 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={dangerousSettingsAck}
+                                  onChange={(e) => setDangerousSettingsAck(e.target.checked)}
+                                  className="mt-0.5 rounded border-red-300 text-red-600 focus:ring-red-500"
+                                />
+                                <span className="text-red-800">
+                                  I understand these settings may be medically dangerous and I accept full responsibility. 
+                                  I have consulted with my healthcare provider or am willing to proceed at my own risk.
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -19,6 +19,7 @@ export interface MedicationDatabaseEntry {
     method: 'linear' | 'exponential' | 'hyperbolic' | 'custom';
     durationWeeks: number;
     reductionPercent: number;
+    daysBetweenReductions?: number; // Research-based interval between dose reductions
     notes?: string;
   };
   psychologicalSupport?: {
@@ -48,6 +49,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       method: "hyperbolic",
       durationWeeks: 8,
       reductionPercent: 10,
+      daysBetweenReductions: 10, // 10 days between reductions for opioids per AAFP guidelines
       notes: "Use hyperbolic tapering: 10% reduction of current dose every 1-2 weeks. Monitor for withdrawal symptoms. Medical supervision essential."
     },
     psychologicalSupport: {
@@ -119,6 +121,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       method: "hyperbolic",
       durationWeeks: 16,
       reductionPercent: 10,
+      daysBetweenReductions: 14, // 14 days minimum for alprazolam due to severe withdrawal risk
       notes: "Extremely slow hyperbolic taper required following Ashton Manual principles. Consider switching to diazepam first. 10% of current dose every 2-3 weeks. Medical supervision essential."
     },
     psychologicalSupport: {
@@ -147,6 +150,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       method: "hyperbolic",
       durationWeeks: 12,
       reductionPercent: 10,
+      daysBetweenReductions: 12, // 12 days for lorazepam intermediate half-life
       notes: "Gradual hyperbolic reduction essential. Risk of seizures if stopped abruptly. 10% of current dose every 2 weeks."
     }
   },
@@ -166,6 +170,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       method: "hyperbolic",
       durationWeeks: 20,
       reductionPercent: 10,
+      daysBetweenReductions: 21, // 21 days for clonazepam due to long half-life
       notes: "Very long hyperbolic taper due to long half-life and high potency. 10% of current dose every 3-4 weeks. Monitor for seizure risk."
     }
   },
@@ -267,6 +272,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       method: "linear",
       durationWeeks: 4,
       reductionPercent: 25,
+      daysBetweenReductions: 14, // 14 days for SSRIs to prevent discontinuation syndrome
       notes: "Gradual reduction to prevent discontinuation syndrome."
     },
     psychologicalSupport: {
@@ -1094,6 +1100,7 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       method: "hyperbolic",
       durationWeeks: 16,
       reductionPercent: 5,
+      daysBetweenReductions: 21, // 21 days for paroxetine due to notorious withdrawal symptoms
       notes: "Notorious for severe withdrawal. Extremely slow hyperbolic taper required due to short half-life. 5% of current dose every 2-3 weeks. Consider switching to fluoxetine first."
     }
   },
@@ -2144,6 +2151,348 @@ export function generateIntelligentTaperingRecommendation(
   };
 }
 
+// Generate custom tapering plan with user-specified parameters
+export function generateCustomTaperingPlan(
+  medicationName: string,
+  currentDose: number,
+  currentUnit: string,
+  method: 'linear' | 'exponential' | 'hyperbolic' | 'custom',
+  durationWeeks: number,
+  reductionPercent: number,
+  includeStabilizationPeriods: boolean = false,
+  daysBetweenReductions: number = 7
+) {
+  const medication = getMedicationByName(medicationName);
+  
+  // Use medication-specific default if no custom value provided
+  const effectiveDaysBetweenReductions = daysBetweenReductions === 7 && medication?.taperingRecommendations?.daysBetweenReductions
+    ? medication.taperingRecommendations.daysBetweenReductions
+    : daysBetweenReductions;
+  
+  const totalDays = durationWeeks * 7;
+  const steps: Array<{day: number, dose: number, notes: string}> = [];
+  
+  // For most tapering, the target is complete elimination (0)
+  const finalTargetDose = 0;
+  
+  if (method === 'linear') {
+    // Linear tapering: reduce by fixed amount each step
+    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    let currentStepDose = currentDose;
+    
+    // Calculate how much to reduce each step to reach finalTargetDose within the timeframe
+    const totalReductionNeeded = currentDose - finalTargetDose;
+    const stepReductionAmount = totalReductionNeeded / totalReductionSteps;
+    
+    for (let step = 1; step <= totalReductionSteps; step++) {
+      const stepDay = step * effectiveDaysBetweenReductions;
+      
+      // Add stabilization periods if requested (every other step)
+      if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Stabilization period - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
+        });
+      } else {
+        // Apply linear reduction
+        currentStepDose = Math.max(finalTargetDose, currentStepDose - stepReductionAmount);
+        
+        // Ensure final step reaches exact target
+        if (step === totalReductionSteps) {
+          currentStepDose = finalTargetDose;
+        }
+        
+        const reductionAmountDisplay = Math.round(stepReductionAmount * 1000) / 1000;
+        const currentReductionPercent = Math.round((stepReductionAmount / (currentStepDose + stepReductionAmount)) * 100 * 10) / 10;
+        const isComplete = currentStepDose === finalTargetDose;
+        
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (-${reductionAmountDisplay} ${currentUnit} fixed reduction, ${currentReductionPercent}% of previous dose)${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
+        });
+        
+        // Stop when we reach the target
+        if (currentStepDose <= finalTargetDose) break;
+      }
+    }
+  } else if (method === 'exponential') {
+    // Exponential tapering: larger reductions early, progressively smaller reductions later
+    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    let currentStepDose = currentDose;
+    
+    // Calculate exponential reduction amounts that reach zero naturally within timeframe
+    // Use reduction percentage to influence aggressiveness (higher % = more front-loaded)
+    const aggressiveness = Math.max(1.5, Math.min(5.0, reductionPercent / 10)); // 1.5-5.0 range
+    
+    for (let step = 1; step <= totalReductionSteps; step++) {
+      const stepDay = step * effectiveDaysBetweenReductions;
+      
+      // Add stabilization periods if requested
+      if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Stabilization period - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
+        });
+      } else {
+        // Calculate exponential progression: larger reductions early, smaller later
+        // Formula ensures we reach finalTargetDose at the last step
+        const progress = step / totalReductionSteps; // 0 to 1
+        const exponentialProgress = 1 - Math.pow(1 - progress, aggressiveness); // Front-loaded curve
+        const targetDose = currentDose * (1 - exponentialProgress * ((currentDose - finalTargetDose) / currentDose));
+        
+        // Ensure final step reaches exact target
+        const newDose = step === totalReductionSteps ? finalTargetDose : Math.max(finalTargetDose, targetDose);
+        
+        const reductionAmount = currentStepDose - newDose;
+        const reductionPercent = currentStepDose > 0 ? (reductionAmount / currentStepDose) * 100 : 0;
+        
+        currentStepDose = newDose;
+        
+        const reductionAmountDisplay = Math.round(reductionAmount * 1000) / 1000;
+        const reductionPercentDisplay = Math.round(reductionPercent * 10) / 10;
+        const isComplete = currentStepDose === finalTargetDose;
+        
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (-${reductionAmountDisplay} ${currentUnit}, ${reductionPercentDisplay}% exponential reduction)${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
+        });
+        
+        // Stop when we reach the target
+        if (currentStepDose <= finalTargetDose) break;
+      }
+    }
+  } else if (method === 'hyperbolic') {
+    // Hyperbolic tapering: reduce by consistent percentage of current dose each step
+    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    let currentStepDose = currentDose;
+    
+    // Use the user's input directly as per-step percentage for hyperbolic method
+    // This gives users full control but they should be warned about high values
+    const reductionFactor = reductionPercent / 100;
+    
+    for (let step = 1; step <= totalReductionSteps; step++) {
+      const stepDay = step * effectiveDaysBetweenReductions;
+      
+      // Add stabilization periods if requested
+      if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Stabilization - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
+        });
+      } else {
+        // Apply hyperbolic reduction (consistent percentage of current dose)
+        const reductionAmount = currentStepDose * reductionFactor;
+        currentStepDose = Math.max(finalTargetDose, currentStepDose - reductionAmount);
+        
+        // If we're getting close to the end and still above target, ensure we reach zero
+        if (step >= totalReductionSteps - 2 && currentStepDose > 0.1) {
+          // Accelerate reduction in final steps to ensure elimination
+          const remainingSteps = totalReductionSteps - step + 1;
+          currentStepDose = Math.max(finalTargetDose, currentStepDose * Math.pow(0.3, 1/remainingSteps));
+        }
+        
+        // Ensure final step reaches exact target
+        if (step === totalReductionSteps) {
+          currentStepDose = finalTargetDose;
+        }
+        
+        const actualReductionPercent = Math.round(reductionPercent * 10) / 10;
+        const reductionAmountDisplay = Math.round(reductionAmount * 1000) / 1000;
+        const isComplete = currentStepDose === finalTargetDose;
+        
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (${actualReductionPercent}% reduction from current dose, -${reductionAmountDisplay} ${currentUnit})${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
+        });
+        
+        // Stop when we reach the target
+        if (currentStepDose <= finalTargetDose) break;
+      }
+    }
+  } else if (method === 'custom') {
+    // Custom method: hybrid approach - start with large reductions, then switch to small consistent reductions
+    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    let currentStepDose = currentDose;
+    
+    const baseReductionPercent = reductionPercent;
+    const halfwayPoint = Math.ceil(totalReductionSteps / 2);
+    
+    for (let step = 1; step <= totalReductionSteps; step++) {
+      const stepDay = step * effectiveDaysBetweenReductions;
+      
+      // Add stabilization periods if requested
+      if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
+        steps.push({
+          day: stepDay,
+          dose: currentStepDose,
+          notes: `Day ${stepDay}: Stabilization - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
+        });
+      } else {
+        let currentReductionPercent: number;
+        let phaseDescription: string;
+        
+        if (step <= halfwayPoint) {
+          // First half: larger reductions (1.5x the base rate)
+          currentReductionPercent = baseReductionPercent * 1.5;
+          phaseDescription = 'aggressive phase';
+        } else {
+          // Second half: smaller reductions (0.5x the base rate)
+          currentReductionPercent = baseReductionPercent * 0.5;
+          phaseDescription = 'gentle phase';
+        }
+        
+        // Calculate reduction to reach finalTargetDose properly
+        let reductionAmount: number;
+        const totalReductionNeeded = currentDose - finalTargetDose;
+        
+        if (step <= halfwayPoint) {
+          // First half: Aggressive exponential reduction (remove 75% of total reduction)
+          const targetReductionByHalfway = totalReductionNeeded * 0.75;
+          const phaseProgress = step / halfwayPoint;
+          const exponentialFactor = 1 - Math.exp(-2.5 * phaseProgress); // Exponential approach to 75%
+          const targetDoseAtStep = currentDose - (targetReductionByHalfway * exponentialFactor);
+          reductionAmount = currentStepDose - Math.max(finalTargetDose, targetDoseAtStep);
+        } else {
+          // Second half: Gentle linear reduction (remove remaining 25%)
+          const remainingSteps = totalReductionSteps - halfwayPoint;
+          const remainingReduction = totalReductionNeeded * 0.25;
+          reductionAmount = remainingSteps > 0 ? remainingReduction / remainingSteps : 0;
+        }
+        
+        // Apply the reduction
+        currentStepDose = Math.max(finalTargetDose, currentStepDose - reductionAmount);
+        
+        // Ensure final step reaches exact target
+        if (step === totalReductionSteps) {
+          currentStepDose = finalTargetDose;
+        }
+        
+        const reductionPercent = currentStepDose > 0 && reductionAmount > 0 ? 
+          (reductionAmount / (currentStepDose + reductionAmount)) * 100 : 0;
+        
+        const reductionAmountDisplay = Math.round(reductionAmount * 1000) / 1000;
+        const reductionPercentDisplay = Math.round(reductionPercent * 10) / 10;
+        const isComplete = currentStepDose === finalTargetDose;
+        
+        steps.push({
+          day: stepDay,
+          dose: Math.round(currentStepDose * 1000) / 1000,
+          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (${phaseDescription}, ${reductionPercentDisplay}% reduction, -${reductionAmountDisplay} ${currentUnit})${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
+        });
+        
+        // Stop when we reach the target
+        if (currentStepDose <= finalTargetDose) break;
+      }
+    }
+  }
+  
+  // Safety check: Only add final step if the target is 0 and we haven't reached it naturally
+  if (finalTargetDose === 0 && steps.length > 0 && steps[steps.length - 1].dose > 0.001) {
+    const lastStep = steps[steps.length - 1];
+    steps.push({
+      day: lastStep.day + effectiveDaysBetweenReductions,
+      dose: 0,
+      notes: `Day ${lastStep.day + effectiveDaysBetweenReductions}: Complete discontinuation (final elimination)`
+    });
+  }
+  
+  // Get warnings from medication database or provide defaults
+  const baseWarnings = [
+    "Custom tapering plan - consult with your healthcare provider",
+    "Monitor for withdrawal symptoms and adjust pace if necessary", 
+    "Never stop abruptly if experiencing severe withdrawal symptoms"
+  ];
+
+  // Add method-specific warnings
+  const methodWarnings = [];
+  if (method === 'linear') {
+    methodWarnings.push(
+      "Linear method: Fixed amount reduction each step - may feel abrupt near the end",
+      "Consider stabilization periods if you experience difficulty adjusting"
+    );
+  } else if (method === 'exponential') {
+    methodWarnings.push(
+      "Exponential method: Large early reductions may cause initial withdrawal symptoms",
+      "Reduction rate decreases over time - early steps will be more challenging"
+    );
+  } else if (method === 'hyperbolic') {
+    methodWarnings.push(
+      "Hyperbolic method: Consistent percentage reduction of current dose each step",
+      "Be prepared for withdrawal symptoms to persist throughout the taper"
+    );
+  } else if (method === 'custom') {
+    methodWarnings.push(
+      "Custom hybrid method: Aggressive early phase followed by gentle final phase",
+      "Initial reductions may be challenging but will ease in the second half"
+    );
+  }
+
+  // Add intensity-specific warnings
+  if (reductionPercent > 20) {
+    methodWarnings.push(
+      `⚠️ High reduction intensity (${reductionPercent}%) - monitor closely for severe withdrawal`,
+      "Consider medical supervision for reductions above 20%"
+    );
+  }
+
+  if (daysBetweenReductions < 5) {
+    methodWarnings.push(
+      `⚠️ Rapid reduction schedule (every ${daysBetweenReductions} days) - allows limited adjustment time`,
+      "Consider extending intervals if withdrawal symptoms are severe"
+    );
+  }
+
+  if (durationWeeks < 3) {
+    methodWarnings.push(
+      `⚠️ Short taper duration (${durationWeeks} weeks) - may not allow adequate physiological adjustment`,
+      "Longer tapers are generally safer for most medications"
+    );
+  }
+  
+  const riskSpecificWarnings = [];
+  if (medication?.dependencyRiskCategory === 'benzodiazepine') {
+    riskSpecificWarnings.push(
+      "Risk of seizures - medical supervision essential",
+      "Consider switching to longer-acting benzodiazepine first",
+      "Be prepared to pause or slow the taper if withdrawal symptoms are severe"
+    );
+  }
+  if (medication?.dependencyRiskCategory === 'opioid') {
+    riskSpecificWarnings.push(
+      "Monitor for pain flares and have backup pain management plan",
+      "Watch for signs of psychological distress during taper"
+    );
+  }
+  if (medication?.dependencyRiskCategory === 'antidepressant') {
+    riskSpecificWarnings.push(
+      "Monitor mood carefully during taper",
+      "Consider postponing taper during times of high stress",
+      "Discontinuation syndrome can mimic flu-like symptoms"
+    );
+  }
+  
+  return {
+    medicationName: medicationName,
+    method: method,
+    totalDuration: totalDays,
+    steps,
+    warnings: [
+      ...baseWarnings,
+      ...methodWarnings,
+      ...riskSpecificWarnings
+    ],
+    riskLevel: medication?.withdrawalRisk || 'moderate',
+    canPause: true,
+    flexibilityNotes: "This custom schedule can be paused or slowed at any point if withdrawal symptoms become problematic. Patient comfort and safety should always take priority over adherence to timeline."
+  };
+}
+
 // Enhanced tapering plan generation with intelligent recommendations
 export function generateEnhancedTaperingPlan(
   medicationName: string, 
@@ -2155,6 +2504,7 @@ export function generateEnhancedTaperingPlan(
     preferredDuration?: number;
     preferredReduction?: number;
     includeStabilizationPeriods?: boolean;
+    daysBetweenReductions?: number;
   }
 ) {
   const intelligentRec = generateIntelligentTaperingRecommendation(
@@ -2171,15 +2521,27 @@ export function generateEnhancedTaperingPlan(
     notes: intelligentRec.adjustedPlan.notes
   };
   
-  // Generate the actual tapering schedule
-  const schedule = generateTaperingPlan(medicationName, currentDose, currentUnit);
+  // Generate the actual tapering schedule using custom parameters
+  const schedule = customOptions ? 
+    generateCustomTaperingPlan(
+      medicationName, 
+      currentDose, 
+      currentUnit, 
+      finalPlan.method,
+      finalPlan.durationWeeks,
+      finalPlan.reductionPercent,
+      customOptions.includeStabilizationPeriods || false,
+      customOptions.daysBetweenReductions || 7
+    ) :
+    generateTaperingPlan(medicationName, currentDose, currentUnit);
   
   if (!schedule) return null;
   
-  // Override with intelligent recommendations
+  // Override with intelligent recommendations and custom options
   return {
     ...schedule,
     method: finalPlan.method,
+    totalDuration: finalPlan.durationWeeks * 7, // Ensure correct duration
     intelligentRecommendations: intelligentRec,
     customizationUsed: !!customOptions,
     includeStabilizationPeriods: customOptions?.includeStabilizationPeriods || false

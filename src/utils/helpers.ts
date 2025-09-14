@@ -681,18 +681,37 @@ export function calculateTaperingDose(
            (taperingSchedule.finalDose - taperingSchedule.initialDose) * exponentialProgress;
   }
   
-  // Custom steps
-  if (taperingSchedule.customSteps) {
+  if (taperingSchedule.taperingMethod === 'hyperbolic') {
+    // Hyperbolic tapering: Creates a curve that reduces doses more slowly at the beginning and faster at the end
+    const progress = daysDiff / totalDays;
+    
+    // Handle the case where final dose is 0 (can't use ratio method)
+    if (taperingSchedule.finalDose === 0) {
+      // Use exponential decay: dose = initialDose * (1 - progress)^2
+      // This creates the hyperbolic-like curve but works with final dose of 0
+      return taperingSchedule.initialDose * Math.pow(1 - progress, 2);
+    } else {
+      // Original hyperbolic method for non-zero final doses
+      const ratio = taperingSchedule.finalDose / taperingSchedule.initialDose;
+      return taperingSchedule.initialDose * Math.pow(ratio, progress);
+    }
+  }
+  
+  // Custom steps (this is duplicate code from above, keeping for backward compatibility)
+  if (taperingSchedule.customSteps && taperingSchedule.customSteps.length > 0) {
     const applicableStep = taperingSchedule.customSteps
       .filter((step: any) => step.day <= daysDiff)
       .sort((a: any, b: any) => b.day - a.day)[0];
     
     if (applicableStep) {
-      return baseDose * applicableStep.dosageMultiplier;
+      return taperingSchedule.initialDose * applicableStep.dosageMultiplier;
     }
   }
   
-  const taperedDose = baseDose;
+  // Default to linear tapering if no method specified or method not recognized
+  const progress = daysDiff / totalDays;
+  const taperedDose = taperingSchedule.initialDose + 
+                     (taperingSchedule.finalDose - taperingSchedule.initialDose) * progress;
   
   // If medication uses multiple pills, calculate the optimal pill combination for tapered dose
   if (medication?.useMultiplePills && medication?.pillConfigurations) {

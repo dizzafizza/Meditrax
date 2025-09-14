@@ -17,6 +17,7 @@ interface FormData {
   name: string;
   dosage: string;
   unit: MedicationUnit;
+  inventoryUnit: MedicationUnit;
   frequency: MedicationFrequency;
   category: MedicationCategory;
   notes?: string;
@@ -61,6 +62,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
       name: '',
       dosage: '',
       unit: 'mg',
+      inventoryUnit: 'tablets',
       frequency: 'once-daily',
       category: 'prescription',
       notes: '',
@@ -84,6 +86,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
   const medicationName = watch('name');
   const selectedCategory = watch('category');
   const selectedUnit = watch('unit');
+  const selectedInventoryUnit = watch('inventoryUnit');
 
   // Helper function to get appropriate inventory unit label
   const getInventoryUnitLabel = (unit: MedicationUnit): string => {
@@ -214,6 +217,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
           name: medication.name,
           dosage: medication.dosage,
           unit: medication.unit,
+          inventoryUnit: medication.inventoryUnit || 'tablets', // default to tablets if not set
           frequency: medication.frequency,
           category: medication.category,
           notes: medication.notes || '',
@@ -236,6 +240,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
           name: '',
           dosage: '',
           unit: 'mg',
+          inventoryUnit: 'tablets',
           frequency: 'once-daily',
           category: 'prescription',
           notes: '',
@@ -262,6 +267,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
       name: data.name.trim(),
       dosage: data.dosage.trim(),
       unit: data.unit,
+      inventoryUnit: data.inventoryUnit,
       frequency: data.frequency,
       category: data.category,
       color: data.color,
@@ -675,10 +681,60 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                 {/* Inventory Management */}
                 <div className="space-y-4">
                   <h4 className="text-md font-medium text-gray-900">Inventory Management</h4>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Inventory Unit
+                    </label>
+                    <select {...register('inventoryUnit')} className="input mt-1">
+                      <optgroup label="Common Tablet/Pill Forms">
+                        <option value="tablets">tablets</option>
+                        <option value="capsules">capsules</option>
+                        <option value="pills">pills</option>
+                        <option value="lozenges">lozenges</option>
+                        <option value="suppositories">suppositories</option>
+                        <option value="pessaries">pessaries</option>
+                      </optgroup>
+                      <optgroup label="Liquid Forms">
+                        <option value="drops">drops</option>
+                        <option value="ml">ml</option>
+                        <option value="L">L</option>
+                        <option value="fl oz">fl oz</option>
+                        <option value="tsp">tsp</option>
+                        <option value="tbsp">tbsp</option>
+                        <option value="cc">cc</option>
+                      </optgroup>
+                      <optgroup label="Application Forms">
+                        <option value="sprays">sprays</option>
+                        <option value="puffs">puffs</option>
+                        <option value="patches">patches</option>
+                        <option value="applications">applications</option>
+                        <option value="injections">injections</option>
+                        <option value="inhalations">inhalations</option>
+                      </optgroup>
+                      <optgroup label="Packaging">
+                        <option value="vials">vials</option>
+                        <option value="ampules">ampules</option>
+                        <option value="sachets">sachets</option>
+                        <option value="packets">packets</option>
+                        <option value="scoops">scoops</option>
+                        <option value="cartridges">cartridges</option>
+                      </optgroup>
+                      <optgroup label="General">
+                        <option value="doses">doses</option>
+                        <option value="units">units</option>
+                        <option value="hits">hits</option>
+                      </optgroup>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose the unit for tracking inventory (can be different from dosage unit)
+                    </p>
+                  </div>
+                  
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
-                        {getInventoryUnitLabel(selectedUnit)} Remaining
+                        {getInventoryUnitLabel(selectedInventoryUnit)} Remaining
                       </label>
                       <input
                         type="number"
@@ -691,7 +747,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
-                        Total {getInventoryUnitLabel(selectedUnit)}
+                        Total {getInventoryUnitLabel(selectedInventoryUnit)}
                       </label>
                       <input
                         type="number"

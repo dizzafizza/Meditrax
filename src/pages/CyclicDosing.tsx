@@ -1,8 +1,9 @@
 import React from 'react';
-import { Calendar, Activity, TrendingDown, CheckCircle } from 'lucide-react';
+import { Calendar, Activity, TrendingDown, CheckCircle, Edit } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { CyclicDosingPattern, TaperingSchedule } from '@/types';
 import { generateId } from '@/utils/helpers';
+import { TaperingPlanModal } from '@/components/modals/TaperingPlanModal';
 import toast from 'react-hot-toast';
 
 export function CyclicDosing() {
@@ -21,6 +22,10 @@ export function CyclicDosing() {
     { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
     { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
   ]);
+
+  // Tapering modal state
+  const [taperingModalOpen, setTaperingModalOpen] = React.useState(false);
+  const [editingMedication, setEditingMedication] = React.useState<any>(null);
 
   // Check for URL parameters to pre-select medication
   React.useEffect(() => {
@@ -157,6 +162,16 @@ export function CyclicDosing() {
     toast.success('Cycling pattern stopped');
   };
 
+  const handleEditTaperingPlan = (medication: any) => {
+    setEditingMedication(medication);
+    setTaperingModalOpen(true);
+  };
+
+  const handleCloseTaperingModal = () => {
+    setTaperingModalOpen(false);
+    setEditingMedication(null);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -259,21 +274,33 @@ export function CyclicDosing() {
                       <div className="text-sm text-gray-600">
                         <p>Pattern: <span className="font-medium">{medication.cyclicDosing.name}</span></p>
                         <p>Type: <span className="font-medium">{medication.cyclicDosing.type}</span></p>
-                        <p>Started: {medication.cyclicDosing.startDate.toLocaleDateString()}</p>
+                        <p>Started: {new Date(medication.cyclicDosing.startDate).toLocaleDateString()}</p>
                       </div>
                     </div>
                   )}
 
                   {medication.tapering?.isActive && (
                     <div className="mb-4">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <TrendingDown className="h-4 w-4 text-orange-500" />
-                        <span className="text-sm font-medium text-gray-700">Tapering Schedule</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2">
+                          <TrendingDown className="h-4 w-4 text-orange-500" />
+                          <span className="text-sm font-medium text-gray-700">Tapering Schedule</span>
+                        </div>
+                        <button
+                          onClick={() => handleEditTaperingPlan(medication)}
+                          className="text-orange-600 hover:text-orange-700 text-sm flex items-center space-x-1"
+                        >
+                          <Edit className="h-3 w-3" />
+                          <span>Edit</span>
+                        </button>
                       </div>
                       <div className="text-sm text-gray-600">
                         <p>Method: <span className="font-medium">{medication.tapering.taperingMethod}</span></p>
-                        <p>Started: {medication.tapering.startDate.toLocaleDateString()}</p>
-                        <p>Target End: {medication.tapering.endDate.toLocaleDateString()}</p>
+                        <p>Started: {new Date(medication.tapering.startDate).toLocaleDateString()}</p>
+                        <p>Target End: {new Date(medication.tapering.endDate).toLocaleDateString()}</p>
+                        {medication.tapering.isPaused && (
+                          <p className="text-amber-600 font-medium">⏸️ Paused</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -505,6 +532,15 @@ export function CyclicDosing() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tapering Plan Modal */}
+      {taperingModalOpen && editingMedication && (
+        <TaperingPlanModal
+          isOpen={taperingModalOpen}
+          onClose={handleCloseTaperingModal}
+          medication={editingMedication}
+        />
       )}
     </div>
   );

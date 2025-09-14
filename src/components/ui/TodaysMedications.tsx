@@ -10,12 +10,14 @@ export function TodaysMedications() {
     getTodaysLogs, 
     medications,
     smartMessages,
-    getCurrentDose
+    getCurrentDose,
+    markMessageAsRead
   } = useMedicationStore();
 
   const todaysReminders = getTodaysReminders();
   const todaysLogs = getTodaysLogs();
   const activeMedications = medications.filter(med => med.isActive);
+  
   
   // Separate medications that don't have reminders into scheduled and as-needed
   const medicationsWithoutReminders = activeMedications.filter(med => 
@@ -153,8 +155,18 @@ export function TodaysMedications() {
           <div className="space-y-2">
             {urgentMessages.map((message) => (
               <div key={message.id} className="bg-white p-3 rounded border border-red-200">
-                <h4 className="font-medium text-red-900 text-sm">{message.title}</h4>
-                <p className="text-red-700 text-sm mt-1">{message.message}</p>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-red-900 text-sm">{message.title}</h4>
+                    <p className="text-red-700 text-sm mt-1">{message.message}</p>
+                  </div>
+                  <button
+                    onClick={() => markMessageAsRead(message.id)}
+                    className="ml-4 text-xs text-red-400 hover:text-red-600"
+                  >
+                    Dismiss
+                  </button>
+                </div>
               </div>
             ))}
           </div>

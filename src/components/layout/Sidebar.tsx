@@ -3,7 +3,7 @@ import {
   X, 
   Home, 
   Pill, 
-  Calendar, 
+  // Calendar,  // DISABLED
   BarChart3, 
   Settings, 
   Heart,
@@ -24,13 +24,13 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Medications', href: '/medications', icon: Pill },
   { name: 'Inventory', href: '/inventory', icon: Package },
-  { name: 'Calendar', href: '/calendar', icon: Calendar },
+  // { name: 'Calendar', href: '/calendar', icon: Calendar },  // DISABLED
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 const secondaryNavigation = [
-  { name: 'Cyclic Dosing', href: '/cyclic-dosing', icon: Activity },
+  { name: 'Advanced Schedules', href: '/cyclic-dosing', icon: Activity },
   { name: 'Wiki', href: '/wiki', icon: Book },
   { name: 'Reminders', href: '/reminders', icon: Bell },
   { name: 'Reports', href: '/reports', icon: FileText },
