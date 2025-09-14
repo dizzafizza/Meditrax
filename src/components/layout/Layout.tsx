@@ -20,9 +20,11 @@ export function Layout({ children }: LayoutProps) {
         <Header onMenuClick={() => setSidebarOpen(true)} />
         
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 mobile-scroll mobile-safe-area">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 mobile-scroll mobile-safe-area">
           <div className="max-w-7xl mx-auto">
-            {children}
+            <div className="min-h-full">
+              {children}
+            </div>
           </div>
         </main>
       </div>

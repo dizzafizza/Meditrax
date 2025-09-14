@@ -359,17 +359,70 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                       Unit *
                     </label>
                     <select {...register('unit')} className="input mt-1">
-                      <option value="mg">mg</option>
-                      <option value="g">g</option>
-                      <option value="mcg">mcg</option>
-                      <option value="ml">ml</option>
-                      <option value="tablets">tablets</option>
-                      <option value="capsules">capsules</option>
-                      <option value="drops">drops</option>
-                      <option value="sprays">sprays</option>
-                      <option value="patches">patches</option>
-                      <option value="iu">IU</option>
-                      <option value="units">units</option>
+                      <optgroup label="Weight">
+                        <option value="mg">mg</option>
+                        <option value="g">g</option>
+                        <option value="mcg">mcg</option>
+                        <option value="μg">μg</option>
+                        <option value="ng">ng</option>
+                        <option value="kg">kg</option>
+                        <option value="lbs">lbs</option>
+                        <option value="oz">oz</option>
+                        <option value="ounces">ounces</option>
+                      </optgroup>
+                      <optgroup label="Volume">
+                        <option value="ml">ml</option>
+                        <option value="L">L</option>
+                        <option value="fl oz">fl oz</option>
+                        <option value="tsp">tsp</option>
+                        <option value="tbsp">tbsp</option>
+                      </optgroup>
+                      <optgroup label="Pills & Tablets">
+                        <option value="tablets">tablets</option>
+                        <option value="capsules">capsules</option>
+                        <option value="pills">pills</option>
+                      </optgroup>
+                      <optgroup label="Applications">
+                        <option value="drops">drops</option>
+                        <option value="sprays">sprays</option>
+                        <option value="puffs">puffs</option>
+                        <option value="patches">patches</option>
+                        <option value="applications">applications</option>
+                        <option value="injections">injections</option>
+                        <option value="inhalations">inhalations</option>
+                      </optgroup>
+                      <optgroup label="Units & Measurements">
+                        <option value="iu">iu</option>
+                        <option value="IU">IU</option>
+                        <option value="units">units</option>
+                        <option value="mEq">mEq</option>
+                        <option value="mmol">mmol</option>
+                        <option value="%">%</option>
+                      </optgroup>
+                      <optgroup label="Specialized">
+                        <option value="mg THC">mg THC</option>
+                        <option value="mg CBD">mg CBD</option>
+                        <option value="billion CFU">billion CFU</option>
+                        <option value="million CFU">million CFU</option>
+                      </optgroup>
+                      <optgroup label="Beverages">
+                        <option value="drinks">drinks</option>
+                        <option value="shots">shots</option>
+                        <option value="beers">beers</option>
+                        <option value="glasses">glasses</option>
+                      </optgroup>
+                      <optgroup label="Packaging">
+                        <option value="vials">vials</option>
+                        <option value="ampules">ampules</option>
+                        <option value="sachets">sachets</option>
+                        <option value="packets">packets</option>
+                        <option value="scoops">scoops</option>
+                        <option value="cartridges">cartridges</option>
+                      </optgroup>
+                      <optgroup label="General">
+                        <option value="doses">doses</option>
+                        <option value="hits">hits</option>
+                      </optgroup>
                     </select>
                   </div>
 

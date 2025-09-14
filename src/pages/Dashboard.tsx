@@ -579,8 +579,8 @@ export function Dashboard() {
                   const startDate = new Date(cyclicPattern.startDate);
                   const daysSinceStart = Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24));
                   
-                  let totalCycleDuration = cyclicPattern.pattern.reduce((sum, phase) => sum + phase.duration, 0);
-                  let cyclePosition = daysSinceStart % totalCycleDuration;
+                  const totalCycleDuration = cyclicPattern.pattern.reduce((sum, phase) => sum + phase.duration, 0);
+                  const cyclePosition = daysSinceStart % totalCycleDuration;
                   let dayCount = 0;
                   
                   for (const phase of cyclicPattern.pattern) {
