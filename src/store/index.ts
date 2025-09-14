@@ -1129,12 +1129,12 @@ export const useMedicationStore = create<MedicationStore>()(
         }
         
         // Apply cyclic dosing if active
-        const pattern = cyclicDosingPatterns.find(p => 
-          p.isActive && 
-          medication.cyclicDosing?.id === p.id
-        );
+        let cyclicResult = { dose: baseDose, phase: 'maintenance' };
         
-        const cyclicResult = calculateCyclicDose(baseDose, pattern, new Date());
+        if (medication.cyclicDosing?.isActive) {
+          // Use the medication's cyclicDosing directly instead of looking it up
+          cyclicResult = calculateCyclicDose(baseDose, medication.cyclicDosing, new Date());
+        }
         
         // For multiple pills with cyclic dosing, recalculate pill breakdown
         if (medication.useMultiplePills && medication.pillConfigurations && cyclicResult.dose !== baseDose) {

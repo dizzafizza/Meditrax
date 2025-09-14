@@ -46,7 +46,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   });
 
   return (
-    <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+    <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
       {/* Left side */}
       <div className="flex items-center space-x-4">
         <button
@@ -78,7 +78,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           <input
             type="text"
             placeholder="Search medications..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="mobile-search"
             data-testid="search-button"
           />
         </div>
