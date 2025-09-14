@@ -41,98 +41,122 @@ export function CyclicDosing() {
     const medication = medications.find(m => m.id === medicationId);
     if (!medication || !customPatternName.trim()) return;
 
-    const pattern: Omit<CyclicDosingPattern, 'id'> = {
-      name: customPatternName.trim(),
-      type: 'variable-dose',
-      pattern: customPhases.map(phase => ({
-        phase: phase.phase as any,
-        duration: phase.duration,
-        dosageMultiplier: phase.multiplier,
-        customMessage: phase.message
-      })),
-      startDate: new Date(customStartDate),
-      isActive: true,
-      notes: `Custom pattern for ${medication.name}`
-    };
+    try {
+      const pattern: Omit<CyclicDosingPattern, 'id'> = {
+        name: customPatternName.trim(),
+        type: 'variable-dose',
+        pattern: customPhases.map(phase => ({
+          phase: phase.phase as any,
+          duration: phase.duration,
+          dosageMultiplier: phase.multiplier,
+          customMessage: phase.message
+        })),
+        startDate: new Date(customStartDate),
+        isActive: true,
+        notes: `Custom pattern for ${medication.name}`
+      };
 
-    // Create the pattern first to get the generated ID
-    const patternId = generateId();
-    const patternWithId = { ...pattern, id: patternId };
-    
-    addCyclicDosingPattern(pattern);
-    
-    // Update medication to enable cyclic dosing
-    updateMedication(medicationId, {
-      cyclicDosing: patternWithId
-    });
+      // Add the pattern to the store first
+      addCyclicDosingPattern(pattern);
+      
+      // Get the pattern ID from the store after it's added
+      setTimeout(() => {
+        const { cyclicDosingPatterns } = useMedicationStore.getState();
+        const createdPattern = cyclicDosingPatterns.find(p => p.name === pattern.name);
+        
+        if (createdPattern) {
+          // Update medication to reference the created pattern
+          updateMedication(medicationId, {
+            cyclicDosing: createdPattern
+          });
 
-    toast.success('Custom cyclic dosing pattern created');
-    
-    // Reset form
-    setCustomPatternName('');
-    setCustomPhases([
-      { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
-      { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
-    ]);
+          toast.success('Custom cyclic dosing pattern created');
+          
+          // Reset form
+          setCustomPatternName('');
+          setCustomPhases([
+            { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
+            { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
+          ]);
+          
+          // Switch to active tab to show the new pattern
+          setActiveTab('active');
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error creating custom cyclic dosing pattern:', error);
+      toast.error('Failed to create cyclic dosing pattern. Please try again.');
+    }
   };
 
   const handleCreateCyclicPattern = (medicationId: string, patternType: 'on-off' | 'tapering' | 'variable') => {
     const medication = medications.find(m => m.id === medicationId);
     if (!medication) return;
 
-    if (patternType === 'tapering') {
-      // Create tapering schedule
-      const taperingSchedule: Omit<TaperingSchedule, 'id'> = {
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        initialDose: parseFloat(medication.dosage),
-        finalDose: parseFloat(medication.dosage) * 0.1, // 10% of initial
-        taperingMethod: 'hyperbolic',
-        customSteps: [],
-        isActive: true
-      };
+    try {
+      if (patternType === 'tapering') {
+        // Create tapering schedule
+        const taperingSchedule: Omit<TaperingSchedule, 'id'> = {
+          startDate: new Date(),
+          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          initialDose: parseFloat(medication.dosage),
+          finalDose: parseFloat(medication.dosage) * 0.1, // 10% of initial
+          taperingMethod: 'hyperbolic',
+          customSteps: [],
+          isActive: true
+        };
 
-      // Create the tapering schedule first to get the generated ID
-      const scheduleId = generateId();
-      const scheduleWithId = { ...taperingSchedule, id: scheduleId };
-      
-      addTaperingSchedule(taperingSchedule);
-      
-      // Update medication to enable tapering
-      updateMedication(medicationId, {
-        tapering: scheduleWithId
-      });
+        addTaperingSchedule(taperingSchedule);
+        
+        // Get the created schedule and update medication
+        setTimeout(() => {
+          const { taperingSchedules } = useMedicationStore.getState();
+          const createdSchedule = taperingSchedules[taperingSchedules.length - 1];
+          
+          if (createdSchedule) {
+            updateMedication(medicationId, {
+              tapering: createdSchedule
+            });
+            toast.success('Tapering schedule created');
+            setActiveTab('active');
+          }
+        }, 100);
+      } else {
+        // Create cyclic dosing pattern
+        const pattern: Omit<CyclicDosingPattern, 'id'> = {
+          name: `${patternType} pattern for ${medication.name}`,
+          type: patternType === 'on-off' ? 'on-off-cycle' : 'variable-dose',
+          pattern: patternType === 'on-off' ? [
+            { phase: 'on', duration: 5, dosageMultiplier: 1.0, customMessage: 'Take medication as prescribed' },
+            { phase: 'off', duration: 2, dosageMultiplier: 0.0, customMessage: 'Break period - no medication' }
+          ] : [
+            { phase: 'maintenance', duration: 5, dosageMultiplier: 1.0, customMessage: 'Weekday dose' },
+            { phase: 'maintenance', duration: 2, dosageMultiplier: 0.5, customMessage: 'Weekend reduced dose' }
+          ],
+          startDate: new Date(),
+          isActive: true,
+          notes: `${patternType} cycling pattern for ${medication.name}`
+        };
 
-      toast.success('Tapering schedule created');
-    } else {
-      // Create cyclic dosing pattern
-      const pattern: Omit<CyclicDosingPattern, 'id'> = {
-        name: `${patternType} pattern for ${medication.name}`,
-        type: patternType === 'on-off' ? 'on-off-cycle' : 'variable-dose',
-        pattern: patternType === 'on-off' ? [
-          { phase: 'on', duration: 5, dosageMultiplier: 1.0, customMessage: 'Take medication as prescribed' },
-          { phase: 'off', duration: 2, dosageMultiplier: 0.0, customMessage: 'Break period - no medication' }
-        ] : [
-          { phase: 'maintenance', duration: 5, dosageMultiplier: 1.0, customMessage: 'Weekday dose' },
-          { phase: 'maintenance', duration: 2, dosageMultiplier: 0.5, customMessage: 'Weekend reduced dose' }
-        ],
-        startDate: new Date(),
-        isActive: true,
-        notes: `${patternType} cycling pattern for ${medication.name}`
-      };
-
-      // Create the pattern first to get the generated ID
-      const patternId = generateId();
-      const patternWithId = { ...pattern, id: patternId };
-      
-      addCyclicDosingPattern(pattern);
-      
-      // Update medication to enable cyclic dosing
-      updateMedication(medicationId, {
-        cyclicDosing: patternWithId
-      });
-
-      toast.success('Cyclic dosing pattern created');
+        addCyclicDosingPattern(pattern);
+        
+        // Get the created pattern and update medication
+        setTimeout(() => {
+          const { cyclicDosingPatterns } = useMedicationStore.getState();
+          const createdPattern = cyclicDosingPatterns.find(p => p.name === pattern.name);
+          
+          if (createdPattern) {
+            updateMedication(medicationId, {
+              cyclicDosing: createdPattern
+            });
+            toast.success('Cyclic dosing pattern created');
+            setActiveTab('active');
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error creating cyclic pattern:', error);
+      toast.error('Failed to create pattern. Please try again.');
     }
   };
 
@@ -226,9 +250,9 @@ export function CyclicDosing() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mobile-grid">
               {activeCyclicMedications.map((medication) => (
-                <div key={medication.id} className="bg-white p-6 rounded-lg border border-gray-200">
+                <div key={medication.id} className="mobile-card">
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">{medication.name}</h3>
@@ -306,10 +330,10 @@ export function CyclicDosing() {
                   <div>
                     <h3 className="text-md font-medium text-gray-900 mb-4">Quick Setup Templates</h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <button
                         onClick={() => handleCreateCyclicPattern(selectedMedication, 'on-off')}
-                        className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                        className="mobile-button p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
                       >
                         <Activity className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                         <h4 className="font-medium text-gray-900">On/Off Cycling</h4>
@@ -320,7 +344,7 @@ export function CyclicDosing() {
 
                       <button
                         onClick={() => handleCreateCyclicPattern(selectedMedication, 'variable')}
-                        className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors"
+                        className="mobile-button p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors text-left"
                       >
                         <Calendar className="h-6 w-6 text-green-500 mx-auto mb-2" />
                         <h4 className="font-medium text-gray-900">Variable Dosing</h4>
@@ -331,7 +355,7 @@ export function CyclicDosing() {
 
                       <button
                         onClick={() => handleCreateCyclicPattern(selectedMedication, 'tapering')}
-                        className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-colors"
+                        className="mobile-button p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-colors text-left"
                       >
                         <TrendingDown className="h-6 w-6 text-orange-500 mx-auto mb-2" />
                         <h4 className="font-medium text-gray-900">Tapering Schedule</h4>
