@@ -756,7 +756,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div className="flex items-center">
                       <input
                         type="checkbox"
@@ -767,8 +767,40 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                         Enable cyclic dosing patterns
                       </label>
                     </div>
+                    
+                    {watch('enableCyclicDosing') && (
+                      <div className="ml-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+                        <p className="text-sm font-medium text-indigo-900">Quick Setup Options</p>
+                        <p className="text-xs text-indigo-700">
+                          You can set up detailed patterns after saving the medication
+                        </p>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="p-3 bg-white border border-indigo-200 rounded-md text-center">
+                            <div className="text-sm font-medium text-gray-900">On/Off Cycle</div>
+                            <div className="text-xs text-gray-600 mt-1">5 days on, 2 days off</div>
+                          </div>
+                          <div className="p-3 bg-white border border-indigo-200 rounded-md text-center">
+                            <div className="text-sm font-medium text-gray-900">Variable Dose</div>
+                            <div className="text-xs text-gray-600 mt-1">Different weekend dose</div>
+                          </div>
+                          <div className="p-3 bg-white border border-indigo-200 rounded-md text-center">
+                            <div className="text-sm font-medium text-gray-900">Holiday Schedule</div>
+                            <div className="text-xs text-gray-600 mt-1">Break during holidays</div>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                          <p className="text-xs text-blue-800">
+                            <strong>💡 Tip:</strong> After saving this medication, visit the "Cyclic Dosing" page to create custom patterns, 
+                            set specific start dates, and configure detailed phase messages.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
                     <p className="text-xs text-gray-500 ml-6">
-                      Support for on/off cycles, tapering schedules, and variable dosing
+                      Support for on/off cycles, variable dosing, and holiday schedules
                     </p>
 
                     <div className="flex items-center">
