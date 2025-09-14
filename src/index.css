@@ -95,6 +95,7 @@
   .mobile-scroll {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    scroll-behavior: smooth;
   }
   
   /* Mobile-first responsive design improvements */
@@ -116,6 +117,27 @@
   
   .mobile-grid {
     @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
+  }
+  
+  /* Enhanced mobile navigation */
+  .mobile-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Better mobile form spacing */
+  .mobile-form {
+    @apply space-y-6 p-4;
+  }
+  
+  /* Improved mobile table */
+  .mobile-table {
+    @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+  }
+  
+  /* Mobile-optimized sidebar */
+  .mobile-sidebar {
+    @apply fixed inset-y-0 left-0 z-50 w-full sm:w-64 transform transition-transform duration-300 ease-in-out;
   }
   
   /* Improved search bar for mobile */
@@ -143,6 +165,26 @@
     
     a {
       @apply touch-manipulation;
+    }
+    
+    /* Improve text readability on mobile */
+    body {
+      font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    /* Better modal sizing on mobile */
+    .modal-content {
+      @apply max-h-[90vh] overflow-y-auto;
+    }
+    
+    /* Improve dropdown positioning on mobile */
+    .dropdown-container {
+      @apply relative;
+    }
+    
+    /* Better calendar grid on mobile */
+    .calendar-day {
+      @apply min-h-[60px] p-2;
     }
   }
 }

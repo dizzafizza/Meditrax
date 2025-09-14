@@ -46,7 +46,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   });
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
+    <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm backdrop-blur-sm bg-white/95 supports-[backdrop-filter]:bg-white/95">
       {/* Left side */}
       <div className="flex items-center space-x-4">
         <button
