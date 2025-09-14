@@ -43,6 +43,7 @@ export function Analytics() {
   const [activeTab, setActiveTab] = React.useState<'adherence' | 'withdrawal' | 'side-effects' | 'risk'>('adherence');
 
   const activeMedications = medications.filter(med => med.isActive);
+  const allMedications = medications; // Include inactive medications for log analysis
 
   // Calculate adherence data
   const adherenceData = React.useMemo(() => {
@@ -85,7 +86,12 @@ export function Analytics() {
   const medicationAdherence: AdherenceReport[] = React.useMemo(() => {
     const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
     
-    return activeMedications.map(medication => {
+    // Include all medications with logs, not just active ones
+    const medicationsWithLogs = allMedications.filter(medication => 
+      logs.some(log => log.medicationId === medication.id)
+    );
+    
+    return medicationsWithLogs.map(medication => {
       const medicationLogs = logs.filter(log => {
         try {
           const logDate = new Date(log.timestamp);
@@ -392,8 +398,10 @@ export function Analytics() {
             className="input"
           >
             <option value="all">All Medications</option>
-            {activeMedications.map(med => (
-              <option key={med.id} value={med.id}>{med.name}</option>
+            {allMedications.map(med => (
+              <option key={med.id} value={med.id}>
+                {med.name} {!med.isActive && '(Inactive)'}
+              </option>
             ))}
           </select>
           <select
@@ -710,6 +718,14 @@ export function Analytics() {
                     <tr key={report.medicationId}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {report.medicationName}
+                        {(() => {
+                          const medication = allMedications.find(med => med.id === report.medicationId);
+                          return !medication?.isActive ? (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              Inactive
+                            </span>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">

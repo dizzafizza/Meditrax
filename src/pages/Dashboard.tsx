@@ -70,10 +70,19 @@ export function Dashboard() {
     generatePsychologicalSafetyAlerts();
   }, [medications, logs, generatePsychologicalSafetyAlerts]);
 
-  // Legacy dose deviation warnings (for backward compatibility)
+  // Enhanced dose deviation warnings with improved accuracy
   const getDoseDeviationWarnings = () => {
     const warnings: Array<{id: string; medication: string; message: string; severity: 'warning' | 'critical'}> = [];
     const processedLogIds = new Set(); // Track which logs we've already processed
+    const medicationHistory = new Map(); // Track medication history for better context
+    
+    // Build medication history for better context
+    medications.forEach(medication => {
+      const medLogs = logs
+        .filter(l => l.medicationId === medication.id && l.adherence === 'taken')
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      medicationHistory.set(medication.id, medLogs);
+    });
     
     todaysLogs.forEach(log => {
       // Skip if we've already processed this log
@@ -83,16 +92,19 @@ export function Dashboard() {
       const medication = medications.find(med => med.id === log.medicationId);
       if (!medication) return;
 
-      // Skip warnings for first doses - check if this is the first log for this medication
-      const medicationLogs = logs.filter(l => l.medicationId === log.medicationId && l.adherence === 'taken');
-      if (medicationLogs.length <= 1) return; // First dose, no warnings
+      // Skip warnings for first few doses - need at least 3 doses for pattern recognition
+      const medicationLogs = medicationHistory.get(medication.id) || [];
+      if (medicationLogs.length <= 3) return; // Need more history for accurate warnings
+
+      // Skip as-needed medications - they don't have fixed doses
+      if (medication.frequency === 'as-needed') return;
 
       const expectedDose = getCurrentDose(medication.id);
       let actualDose = log.dosageTaken;
       
       // For multiple pill medications, calculate equivalent dose from pill logs if available
-      if (medication.useMultiplePills && log.pillLogs && log.pillLogs.length > 0) {
-        actualDose = log.pillLogs.reduce((total, pillLog) => {
+      if (medication.useMultiplePills && log.pillsLogged && log.pillsLogged.length > 0) {
+        actualDose = log.pillsLogged.reduce((total, pillLog) => {
           const pillConfig = medication.pillConfigurations?.find(config => 
             config.id === pillLog.pillConfigurationId
           );
@@ -112,45 +124,95 @@ export function Dashboard() {
       // Only check for deviations if we have meaningful dose values
       if (expectedDose.dose <= 0 || actualDose <= 0) return;
       
-      const deviation = ((actualDose - expectedDose.dose) / expectedDose.dose) * 100;
+      // Calculate baseline from recent doses to account for gradual changes
+      const recentLogs = medicationLogs
+        .filter(recentLog => 
+          new Date(recentLog.timestamp).getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000) // Last 7 days
+        )
+        .slice(-5); // Last 5 doses
+      
+      if (recentLogs.length < 2) return; // Need at least 2 recent doses for comparison
+      
+      const recentDoses = recentLogs.map(recentLog => {
+        if (medication.useMultiplePills && recentLog.pillsLogged) {
+          return recentLog.pillsLogged.reduce((total, pillLog) => {
+            const pillConfig = medication.pillConfigurations?.find(config => 
+              config.id === pillLog.pillConfigurationId
+            );
+            return total + (pillConfig ? pillConfig.strength * pillLog.quantityTaken : 0);
+          }, 0);
+        }
+        return recentLog.dosageTaken || 0;
+      });
+      
+      const averageRecentDose = recentDoses.reduce((a, b) => a + b, 0) / recentDoses.length;
+      const recentDoseVariation = Math.max(...recentDoses) - Math.min(...recentDoses);
+      
+      // Use recent average as baseline instead of theoretical expected dose
+      const baselineDose = Math.abs(averageRecentDose - expectedDose.dose) < expectedDose.dose * 0.1 
+        ? expectedDose.dose  // Use expected if recent doses are close
+        : averageRecentDose; // Use recent average if there's been a pattern change
+      
+      const deviation = ((actualDose - baselineDose) / baselineDose) * 100;
       const absDeviation = Math.abs(deviation);
       
-      // Only report significant deviations (more than 15% threshold)
-      if (absDeviation < 15) return;
+      // Adaptive threshold based on recent variation and medication type
+      let warningThreshold = 20; // Base threshold
+      
+      // Increase threshold if recent doses have been variable (patient adjusting)
+      if (recentDoseVariation > baselineDose * 0.15) {
+        warningThreshold = 30;
+      }
+      
+      // Decrease threshold for tapering medications (more sensitive)
+      if (medication.tapering?.isActive) {
+        warningThreshold = 15;
+      }
+      
+      // Only report significant deviations above adaptive threshold
+      if (absDeviation < warningThreshold) return;
 
-      // Check for tapering medications
+      // Check for tapering medications with more context-aware warnings
       if (medication.tapering?.isActive) {
         if (deviation > 25) {
           warnings.push({
             id: log.id,
             medication: medication.name,
-            message: `You took ${Math.round(deviation)}% more than your tapering schedule. This can disrupt your withdrawal plan.`,
+            message: `Dose ${Math.round(deviation)}% higher than tapering schedule (${actualDose} vs ${baselineDose} expected). This may disrupt your withdrawal plan.`,
             severity: 'critical'
           });
         } else if (deviation < -25) {
           warnings.push({
             id: log.id,
             medication: medication.name,
-            message: `You took ${Math.round(Math.abs(deviation))}% less than scheduled. Sudden reductions can cause withdrawal symptoms.`,
+            message: `Dose ${Math.round(Math.abs(deviation))}% lower than schedule (${actualDose} vs ${baselineDose} expected). Sudden reductions can cause withdrawal symptoms.`,
             severity: 'critical'
           });
         }
       }
 
-      // Check for high-risk medications with more stringent thresholds
-      if (medication.riskLevel === 'high' && absDeviation > 30) {
-        // Check if this is a pattern (more than one significant deviation in recent days)
-        const recentLogs = logs.filter(recentLog => 
-          recentLog.medicationId === medication.id &&
-          recentLog.id !== log.id && // Don't include current log
-          new Date(recentLog.timestamp).getTime() > Date.now() - (3 * 24 * 60 * 60 * 1000) // Last 3 days
-        );
+      // Check for high-risk medications with pattern-based warnings
+      else if (medication.riskLevel === 'high' && absDeviation > 35) {
+        // Check for concerning patterns in recent history
+        const significantDeviations = recentLogs.filter(recentLog => {
+          const recentActualDose = medication.useMultiplePills && recentLog.pillsLogged 
+            ? recentLog.pillsLogged.reduce((total, pillLog) => {
+                const pillConfig = medication.pillConfigurations?.find(config => 
+                  config.id === pillLog.pillConfigurationId
+                );
+                return total + (pillConfig ? pillConfig.strength * pillLog.quantityTaken : 0);
+              }, 0)
+            : recentLog.dosageTaken || 0;
+          
+          const recentDeviation = Math.abs((recentActualDose - baselineDose) / baselineDose * 100);
+          return recentDeviation > 25;
+        });
         
-        if (recentLogs.length > 0) {
+        if (significantDeviations.length > 1) {
           warnings.push({
             id: log.id,
             medication: medication.name,
-            message: `Significant dose variation pattern detected (${Math.round(absDeviation)}% deviation). This high-risk medication requires careful monitoring.`,
+            message: `Pattern of dose variations detected (${Math.round(absDeviation)}% deviation). High-risk medications require consistent dosing.`,
             severity: 'warning'
           });
         }

@@ -133,12 +133,31 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
       isDefault: true,
     };
 
-    // Create initial pill inventory
-    const pillInventory = newPillConfigs.map(config => ({
-      pillConfigurationId: config.id,
-      currentCount: medication.pillsRemaining || 30, // Use existing pills or default to 30
-      lastUpdated: new Date()
-    }));
+    // Create or preserve pill inventory
+    const pillInventory = newPillConfigs.map((config, index) => {
+      // Try to find existing inventory for this pill configuration
+      const existingInventory = medication.pillInventory?.find(inv => {
+        // Match by index for existing configurations
+        const existingConfig = medication.pillConfigurations?.[index];
+        return existingConfig && inv.pillConfigurationId === existingConfig.id;
+      });
+      
+      return {
+        pillConfigurationId: config.id,
+        currentCount: existingInventory?.currentCount ?? medication.pillsRemaining ?? 30,
+        lastUpdated: new Date(),
+        // Preserve other inventory properties if they exist
+        ...(existingInventory ? {
+          expirationDate: existingInventory.expirationDate,
+          batchNumber: existingInventory.batchNumber,
+          costPerPill: existingInventory.costPerPill,
+          supplier: existingInventory.supplier,
+          lotNumber: existingInventory.lotNumber,
+          reorderPoint: existingInventory.reorderPoint,
+          safetyStock: existingInventory.safetyStock,
+        } : {})
+      };
+    });
 
     // Update the medication with new configuration
     updateMedication(medicationId, {
