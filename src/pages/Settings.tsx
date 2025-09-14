@@ -61,28 +61,50 @@ export function Settings() {
   //   }
   // };
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, formState: { errors }, reset } = useForm({
     defaultValues: {
-      name: userProfile?.name || '',
-      dateOfBirth: userProfile?.dateOfBirth?.toISOString().split('T')[0] || '',
-      allergies: userProfile?.allergies?.join(', ') || '',
-      conditions: userProfile?.conditions?.join(', ') || '',
-      emergencyContactName: userProfile?.emergencyContact?.name || '',
-      emergencyContactRelationship: userProfile?.emergencyContact?.relationship || '',
-      emergencyContactPhone: userProfile?.emergencyContact?.phone || '',
-      emergencyContactEmail: userProfile?.emergencyContact?.email || '',
-      theme: userProfile?.preferences?.theme || 'system',
-      pushNotifications: userProfile?.preferences?.notifications?.push ?? true,
-      soundNotifications: userProfile?.preferences?.notifications?.sound ?? true,
-      vibrationNotifications: userProfile?.preferences?.notifications?.vibration ?? true,
-      reminderAdvance: userProfile?.preferences?.notifications?.reminderAdvance ?? 15,
-      // shareData: userProfile?.preferences?.privacy?.shareData ?? false, // DISABLED
-      // analytics: userProfile?.preferences?.privacy?.analytics ?? true, // DISABLED
-      timeFormat: userProfile?.preferences?.display?.timeFormat || '12h',
-      dateFormat: userProfile?.preferences?.display?.dateFormat || 'MM/DD/YYYY',
-      defaultView: userProfile?.preferences?.display?.defaultView || 'dashboard',
+      name: '',
+      dateOfBirth: '',
+      allergies: '',
+      conditions: '',
+      emergencyContactName: '',
+      emergencyContactRelationship: '',
+      emergencyContactPhone: '',
+      emergencyContactEmail: '',
+      theme: 'system',
+      pushNotifications: true,
+      soundNotifications: true,
+      vibrationNotifications: true,
+      reminderAdvance: 15,
+      timeFormat: '12h',
+      dateFormat: 'MM/DD/YYYY',
+      defaultView: 'dashboard',
     }
   });
+
+  // Update form values when userProfile changes
+  React.useEffect(() => {
+    if (userProfile) {
+      reset({
+        name: userProfile.name || '',
+        dateOfBirth: userProfile.dateOfBirth?.toISOString().split('T')[0] || '',
+        allergies: userProfile.allergies?.join(', ') || '',
+        conditions: userProfile.conditions?.join(', ') || '',
+        emergencyContactName: userProfile.emergencyContact?.name || '',
+        emergencyContactRelationship: userProfile.emergencyContact?.relationship || '',
+        emergencyContactPhone: userProfile.emergencyContact?.phone || '',
+        emergencyContactEmail: userProfile.emergencyContact?.email || '',
+        theme: userProfile.preferences?.theme || 'system',
+        pushNotifications: userProfile.preferences?.notifications?.push ?? true,
+        soundNotifications: userProfile.preferences?.notifications?.sound ?? true,
+        vibrationNotifications: userProfile.preferences?.notifications?.vibration ?? true,
+        reminderAdvance: userProfile.preferences?.notifications?.reminderAdvance ?? 15,
+        timeFormat: userProfile.preferences?.display?.timeFormat || '12h',
+        dateFormat: userProfile.preferences?.display?.dateFormat || 'MM/DD/YYYY',
+        defaultView: userProfile.preferences?.display?.defaultView || 'dashboard',
+      });
+    }
+  }, [userProfile, reset]);
 
   const onSubmit = (data: any) => {
     const profileData: Partial<UserProfile> = {
@@ -104,24 +126,24 @@ export function Settings() {
           vibration: data.vibrationNotifications,
           reminderAdvance: data.reminderAdvance,
         },
-        // privacy: { // DISABLED
-        //   shareData: data.shareData,
-        //   analytics: data.analytics,
-        //   anonymousReporting: anonymousReportingPrefs || {
-        //     enabled: false,
-        //     consentGiven: false,
-        //     dataTypesAllowed: [],
-        //     privacyLevel: 'minimal',
-        //     granularControls: {
-        //       includeAdherence: false,
-        //       includeSideEffects: false,
-        //       includeMedicationPatterns: false,
-        //       includeRiskAssessments: false,
-        //       allowTemporalAnalysis: false,
-        //       allowDemographicAnalysis: false
-        //     }
-        //   }
-        // },
+        privacy: {
+          shareData: false,
+          analytics: true,
+          anonymousReporting: {
+            enabled: false,
+            consentGiven: false,
+            dataTypesAllowed: [],
+            privacyLevel: 'minimal',
+            granularControls: {
+              includeAdherence: false,
+              includeSideEffects: false,
+              includeMedicationPatterns: false,
+              includeRiskAssessments: false,
+              allowTemporalAnalysis: false,
+              allowDemographicAnalysis: false
+            }
+          }
+        },
         display: {
           timeFormat: data.timeFormat,
           dateFormat: data.dateFormat,
