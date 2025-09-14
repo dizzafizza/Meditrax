@@ -231,7 +231,33 @@ export type MedicationUnit =
   | 'inhalations'
   | 'billion CFU'
   | 'million CFU'
-  | '%';
+  | '%'
+  // Enhanced Cannabis and substance units
+  | 'mg THC/CBD'
+  | 'g flower'
+  | 'g concentrate'
+  | 'g edible'
+  | 'mg/ml'
+  | 'drops (tincture)'
+  | 'puffs (vape)'
+  | 'bowls'
+  | 'joints'
+  | 'dabs'
+  | 'edibles'
+  // Additional medical units
+  | 'cc'
+  | 'mL/hr'
+  | 'mcg/hr'
+  | 'mg/hr'
+  | 'units/hr'
+  | 'metered doses'
+  | 'actuations'
+  | 'lozenges'
+  | 'suppositories'
+  | 'pessaries'
+  | 'implants'
+  | 'rings'
+  | 'discs';
 
 export type MedicationCategory = 
   | 'prescription'

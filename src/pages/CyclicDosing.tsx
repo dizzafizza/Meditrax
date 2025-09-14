@@ -56,33 +56,27 @@ export function CyclicDosing() {
         notes: `Custom pattern for ${medication.name}`
       };
 
-      // Add the pattern to the store first
-      addCyclicDosingPattern(pattern);
+      // Add the pattern to the store and get the ID
+      const patternId = generateId();
+      const patternWithId = { ...pattern, id: patternId };
+      addCyclicDosingPattern(patternWithId);
       
-      // Get the pattern ID from the store after it's added
-      setTimeout(() => {
-        const { cyclicDosingPatterns } = useMedicationStore.getState();
-        const createdPattern = cyclicDosingPatterns.find(p => p.name === pattern.name);
-        
-        if (createdPattern) {
-          // Update medication to reference the created pattern
-          updateMedication(medicationId, {
-            cyclicDosing: createdPattern
-          });
+      // Update medication to reference the created pattern
+      updateMedication(medicationId, {
+        cyclicDosing: patternWithId
+      });
 
-          toast.success('Custom cyclic dosing pattern created');
-          
-          // Reset form
-          setCustomPatternName('');
-          setCustomPhases([
-            { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
-            { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
-          ]);
-          
-          // Switch to active tab to show the new pattern
-          setActiveTab('active');
-        }
-      }, 100);
+      toast.success('Custom cyclic dosing pattern created');
+      
+      // Reset form
+      setCustomPatternName('');
+      setCustomPhases([
+        { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
+        { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
+      ]);
+      
+      // Switch to active tab to show the new pattern
+      setActiveTab('active');
     } catch (error) {
       console.error('Error creating custom cyclic dosing pattern:', error);
       toast.error('Failed to create cyclic dosing pattern. Please try again.');
@@ -106,21 +100,16 @@ export function CyclicDosing() {
           isActive: true
         };
 
-        addTaperingSchedule(taperingSchedule);
+        const scheduleId = generateId();
+        const scheduleWithId = { ...taperingSchedule, id: scheduleId };
+        addTaperingSchedule(scheduleWithId);
         
-        // Get the created schedule and update medication
-        setTimeout(() => {
-          const { taperingSchedules } = useMedicationStore.getState();
-          const createdSchedule = taperingSchedules[taperingSchedules.length - 1];
-          
-          if (createdSchedule) {
-            updateMedication(medicationId, {
-              tapering: createdSchedule
-            });
-            toast.success('Tapering schedule created');
-            setActiveTab('active');
-          }
-        }, 100);
+        // Update medication to reference the created schedule
+        updateMedication(medicationId, {
+          tapering: scheduleWithId
+        });
+        toast.success('Tapering schedule created');
+        setActiveTab('active');
       } else {
         // Create cyclic dosing pattern
         const pattern: Omit<CyclicDosingPattern, 'id'> = {
@@ -138,21 +127,16 @@ export function CyclicDosing() {
           notes: `${patternType} cycling pattern for ${medication.name}`
         };
 
-        addCyclicDosingPattern(pattern);
+        const patternId = generateId();
+        const patternWithId = { ...pattern, id: patternId };
+        addCyclicDosingPattern(patternWithId);
         
-        // Get the created pattern and update medication
-        setTimeout(() => {
-          const { cyclicDosingPatterns } = useMedicationStore.getState();
-          const createdPattern = cyclicDosingPatterns.find(p => p.name === pattern.name);
-          
-          if (createdPattern) {
-            updateMedication(medicationId, {
-              cyclicDosing: createdPattern
-            });
-            toast.success('Cyclic dosing pattern created');
-            setActiveTab('active');
-          }
-        }, 100);
+        // Update medication to reference the created pattern
+        updateMedication(medicationId, {
+          cyclicDosing: patternWithId
+        });
+        toast.success('Cyclic dosing pattern created');
+        setActiveTab('active');
       }
     } catch (error) {
       console.error('Error creating cyclic pattern:', error);
