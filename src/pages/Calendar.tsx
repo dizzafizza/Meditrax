@@ -85,16 +85,18 @@ export function Calendar() {
           );
 
           if (!existingLog) {
-            // Get current dose for this date (considering cyclic dosing)
-            const currentDose = getCurrentDose(reminder.medicationId);
+            // Get current dose for this specific date (considering cyclic dosing)
+            const currentDose = getCurrentDose(reminder.medicationId, date);
             let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
             
-            // If cyclic dosing is active and dose is different, show adjusted dose
-            if (medication.cyclicDosing?.isActive && currentDose.phase !== 'maintenance') {
+            // If cyclic dosing is active, show adjusted dose with phase info
+            if (medication.cyclicDosing?.isActive) {
               const adjustedDoseText = medication.useMultiplePills 
                 ? `${currentDose.dose} ${medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}`
                 : `${currentDose.dose} ${medication.unit}`;
-              dosageInfo = `${adjustedDoseText} (${currentDose.phase})`;
+              dosageInfo = currentDose.phase !== 'maintenance' 
+                ? `${adjustedDoseText} (${currentDose.phase})` 
+                : adjustedDoseText;
             }
             
             events.push({
@@ -130,8 +132,8 @@ export function Calendar() {
             );
 
             if (!existingLog) {
-              // Get current dose for this date (considering cyclic dosing)
-              const currentDose = getCurrentDose(medication.id);
+              // Get current dose for this specific date (considering cyclic dosing)
+              const currentDose = getCurrentDose(medication.id, date);
               let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
               
               // If cyclic dosing is active and dose is different, show adjusted dose
@@ -171,8 +173,8 @@ export function Calendar() {
             );
 
             if (!existingLog) {
-              // Get current dose for this date (considering cyclic dosing)
-              const currentDose = getCurrentDose(medication.id);
+              // Get current dose for this specific date (considering cyclic dosing)
+              const currentDose = getCurrentDose(medication.id, date);
               let dosageInfo = medication.useMultiplePills ? formatPillDisplayShort(medication) : `${medication.dosage} ${medication.unit}`;
               
               // If cyclic dosing is active and dose is different, show adjusted dose
@@ -462,7 +464,7 @@ export function Calendar() {
                           <p className="text-xs text-gray-500">
                             {(event as any).dosageInfo} • {event.time}
                           </p>
-                          {(event as any).cyclicPhase && (event as any).cyclicPhase !== 'maintenance' && (
+                          {(event as any).cyclicPhase && (
                             <p className="text-xs text-indigo-600 font-medium">
                               📊 Cyclic phase: {(event as any).cyclicPhase}
                             </p>

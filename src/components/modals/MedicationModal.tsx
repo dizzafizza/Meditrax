@@ -83,6 +83,67 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
   const selectedColor = watch('color');
   const medicationName = watch('name');
   const selectedCategory = watch('category');
+  const selectedUnit = watch('unit');
+
+  // Helper function to get appropriate inventory unit label
+  const getInventoryUnitLabel = (unit: MedicationUnit): string => {
+    // For most units, we can use the plural form for inventory
+    const unitMappings: Record<string, string> = {
+      'tablets': 'Tablets',
+      'capsules': 'Capsules', 
+      'pills': 'Pills',
+      'drops': 'Drops',
+      'sprays': 'Sprays',
+      'puffs': 'Puffs',
+      'patches': 'Patches',
+      'doses': 'Doses',
+      'applications': 'Applications',
+      'injections': 'Injections',
+      'inhalations': 'Inhalations',
+      'vials': 'Vials',
+      'ampules': 'Ampules',
+      'sachets': 'Sachets',
+      'packets': 'Packets',
+      'scoops': 'Scoops',
+      'cartridges': 'Cartridges',
+      'lozenges': 'Lozenges',
+      'suppositories': 'Suppositories',
+      'pessaries': 'Pessaries',
+      'implants': 'Implants',
+      'rings': 'Rings',
+      'discs': 'Discs',
+      'drinks': 'Drinks',
+      'shots': 'Shots',
+      'beers': 'Beers',
+      'glasses': 'Glasses',
+      'hits': 'Hits',
+      'joints': 'Joints',
+      'dabs': 'Dabs',
+      'edibles': 'Edibles',
+      'bowls': 'Bowls',
+      'metered doses': 'Metered Doses',
+      'actuations': 'Actuations'
+    };
+
+    // If we have a direct mapping, use it
+    if (unitMappings[unit]) {
+      return unitMappings[unit];
+    }
+
+    // For volume/weight units, use "Units" as a generic term
+    const volumeWeightUnits = ['mg', 'g', 'mcg', 'μg', 'ng', 'kg', 'lbs', 'oz', 'ounces', 
+                               'ml', 'L', 'fl oz', 'tsp', 'tbsp', 'cc', 'iu', 'IU', 'units', 
+                               'mEq', 'mmol', '%', 'mg THC', 'mg CBD', 'billion CFU', 'million CFU',
+                               'mg THC/CBD', 'g flower', 'g concentrate', 'g edible', 'mg/ml',
+                               'drops (tincture)', 'puffs (vape)', 'mL/hr', 'mcg/hr', 'mg/hr', 'units/hr'];
+    
+    if (volumeWeightUnits.includes(unit)) {
+      return 'Units';
+    }
+
+    // Fallback to generic "Items"
+    return 'Items';
+  };
 
   // Handle medication search and suggestions
   const handleMedicationSearch = (searchTerm: string) => {
@@ -617,7 +678,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
-                        Pills Remaining
+                        {getInventoryUnitLabel(selectedUnit)} Remaining
                       </label>
                       <input
                         type="number"
@@ -630,7 +691,7 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
-                        Total Pills
+                        Total {getInventoryUnitLabel(selectedUnit)}
                       </label>
                       <input
                         type="number"

@@ -143,7 +143,7 @@ interface MedicationStore {
   addCyclicDosingPattern: (pattern: Omit<CyclicDosingPattern, 'id'>) => void;
   updateCyclicDosingPattern: (id: string, updates: Partial<CyclicDosingPattern>) => void;
   deleteCyclicDosingPattern: (id: string) => void;
-  getCurrentDose: (medicationId: string) => { dose: number; phase: string; message?: string };
+  getCurrentDose: (medicationId: string, date?: Date) => { dose: number; phase: string; message?: string };
 
   // Tapering schedules
   addTaperingSchedule: (schedule: Omit<TaperingSchedule, 'id'>) => void;
@@ -1084,7 +1084,7 @@ export const useMedicationStore = create<MedicationStore>()(
         }));
       },
 
-      getCurrentDose: (medicationId) => {
+      getCurrentDose: (medicationId, date = new Date()) => {
         const { medications, cyclicDosingPatterns } = get();
         const medication = medications.find(med => med.id === medicationId);
         
@@ -1111,9 +1111,9 @@ export const useMedicationStore = create<MedicationStore>()(
           }
         }
         
-        // Apply tapering if active
+        // Apply tapering if active (use the provided date for calculation)
         if (medication.tapering?.isActive) {
-          const taperedDose = calculateTaperingDose(baseDose, medication.tapering, new Date(), medication);
+          const taperedDose = calculateTaperingDose(baseDose, medication.tapering, date, medication);
           
           // For multiple pills, calculate the pill breakdown for the tapered dose
           if (medication.useMultiplePills && medication.pillConfigurations) {
@@ -1128,12 +1128,12 @@ export const useMedicationStore = create<MedicationStore>()(
           }
         }
         
-        // Apply cyclic dosing if active
+        // Apply cyclic dosing if active (use the provided date for calculation)
         let cyclicResult = { dose: baseDose, phase: 'maintenance' };
         
         if (medication.cyclicDosing?.isActive) {
-          // Use the medication's cyclicDosing directly instead of looking it up
-          cyclicResult = calculateCyclicDose(baseDose, medication.cyclicDosing, new Date());
+          // Use the medication's cyclicDosing directly and the provided date
+          cyclicResult = calculateCyclicDose(baseDose, medication.cyclicDosing, date);
         }
         
         // For multiple pills with cyclic dosing, recalculate pill breakdown
