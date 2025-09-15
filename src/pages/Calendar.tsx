@@ -31,9 +31,41 @@ export function Calendar() {
     getCurrentDose
   } = useMedicationStore();
 
+  // Handle search navigation parameters
+  const searchParams = new URLSearchParams(window.location.search);
+  const highlightLogId = searchParams.get('highlight');
+  const dateParam = searchParams.get('date');
+
   const [selectedDate, setSelectedDate] = React.useState(new Date());
   const [viewMode, setViewMode] = React.useState<'week' | 'month'>('month');
   const [selectedMedication, setSelectedMedication] = React.useState<string | 'all'>('all');
+  const [highlightedLogId, setHighlightedLogId] = React.useState<string | null>(null);
+
+  // Handle navigation from search results
+  React.useEffect(() => {
+    if (dateParam) {
+      const parsedDate = new Date(dateParam);
+      if (!isNaN(parsedDate.getTime())) {
+        setSelectedDate(parsedDate);
+      }
+    }
+    
+    if (highlightLogId) {
+      setHighlightedLogId(highlightLogId);
+      // Auto-clear highlight after 5 seconds
+      const timer = setTimeout(() => {
+        setHighlightedLogId(null);
+      }, 5000);
+      
+      // Clear URL parameters
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('date');
+      newUrl.searchParams.delete('highlight');
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.hash);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [dateParam, highlightLogId]);
 
   // Helper function to get reminders for a specific date (based on getTodaysReminders pattern)
   const getRemindersForDate = React.useCallback((date: Date) => {
@@ -654,13 +686,17 @@ export function Calendar() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {selectedDateEvents.map((event) => (
+                  {selectedDateEvents.map((event) => {
+                    const isHighlighted = highlightedLogId && event.id.includes(highlightedLogId);
+                    return (
                     <div
                       key={event.id}
-                      className={`p-3 rounded-lg border ${
-                        event.status === 'taken' ? 'bg-green-50 border-green-200' :
-                        event.status === 'missed' || event.status === 'skipped' ? 'bg-red-50 border-red-200' :
-                        'bg-blue-50 border-blue-200'
+                      className={`p-3 rounded-lg border transition-all duration-500 ${
+                        isHighlighted 
+                          ? 'bg-primary-100 border-primary-300 ring-2 ring-primary-200 shadow-lg transform scale-105' 
+                          : event.status === 'taken' ? 'bg-green-50 border-green-200' :
+                            event.status === 'missed' || event.status === 'skipped' ? 'bg-red-50 border-red-200' :
+                            'bg-blue-50 border-blue-200'
                       }`}
                     >
                       <div className="flex items-start space-x-3">
@@ -673,6 +709,11 @@ export function Calendar() {
                             />
                             <p className="text-sm font-medium text-gray-900 truncate">
                               {event.medicationName}
+                              {isHighlighted && (
+                                <span className="ml-2 text-xs px-2 py-1 bg-primary-200 text-primary-800 rounded-full font-medium">
+                                  ⭐ Found
+                                </span>
+                              )}
                             </p>
                           </div>
                           
@@ -712,7 +753,8 @@ export function Calendar() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

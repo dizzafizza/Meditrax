@@ -11,6 +11,7 @@ interface MedicationModalProps {
   isOpen: boolean;
   onClose: () => void;
   medication?: Medication | null;
+  preSelectedMedicationName?: string | null;
 }
 
 interface FormData {
@@ -42,7 +43,7 @@ const colors = [
   '#14b8a6', '#f43f5e', '#dc2626', '#059669', '#d97706'
 ];
 
-export function MedicationModal({ isOpen, onClose, medication }: MedicationModalProps) {
+export function MedicationModal({ isOpen, onClose, medication, preSelectedMedicationName }: MedicationModalProps) {
   const { addMedication, updateMedication } = useMedicationStore();
   const isEditing = !!medication;
 
@@ -236,31 +237,92 @@ export function MedicationModal({ isOpen, onClose, medication }: MedicationModal
           enableTapering: !!medication.tapering,
         });
       } else {
-        reset({
-          name: '',
-          dosage: '',
-          unit: 'mg',
-          inventoryUnit: 'tablets',
-          frequency: 'once-daily',
-          category: 'prescription',
-          notes: '',
-          sideEffects: '',
-          interactions: '',
-          prescribedBy: '',
-          pharmacy: '',
-          pillsRemaining: 0,
-          totalPills: 0,
-          refillReminder: true,
-          color: generateRandomColor(),
-          startDate: new Date().toISOString().split('T')[0],
-          endDate: '',
-          maxDailyDose: 0,
-          enableCyclicDosing: false,
-          enableTapering: false,
-        });
+        // Handle pre-selected medication from search
+        if (preSelectedMedicationName) {
+          const medicationData = getMedicationByName(preSelectedMedicationName);
+          if (medicationData) {
+            reset({
+              name: medicationData.name,
+              dosage: medicationData.commonDosages[0] || '',
+              unit: (medicationData.commonUnits[0] as MedicationUnit) || 'mg',
+              inventoryUnit: 'tablets',
+              frequency: (medicationData.commonFrequencies[0] as MedicationFrequency) || 'once-daily',
+              category: medicationData.category,
+              notes: medicationData.description || '',
+              sideEffects: medicationData.commonSideEffects?.join(', ') || '',
+              interactions: medicationData.commonInteractions?.join(', ') || '',
+              prescribedBy: '',
+              pharmacy: '',
+              pillsRemaining: 0,
+              totalPills: 0,
+              refillReminder: true,
+              color: generateRandomColor(),
+              startDate: new Date().toISOString().split('T')[0],
+              endDate: '',
+              maxDailyDose: 0,
+              enableCyclicDosing: false,
+              enableTapering: medicationData.taperingRequired || false,
+            });
+            setSelectedMedicationData(medicationData);
+            
+            // Generate tapering plan if needed
+            if (medicationData.taperingRequired) {
+              const currentDose = parseFloat(medicationData.commonDosages[0] || '0');
+              const plan = generateTaperingPlan(medicationData.name, currentDose, medicationData.commonUnits[0] || 'mg');
+              setTaperingPlan(plan);
+            }
+          } else {
+            // Fallback to just setting the name if medication not found in database
+            reset({
+              name: preSelectedMedicationName,
+              dosage: '',
+              unit: 'mg',
+              inventoryUnit: 'tablets',
+              frequency: 'once-daily',
+              category: 'prescription',
+              notes: '',
+              sideEffects: '',
+              interactions: '',
+              prescribedBy: '',
+              pharmacy: '',
+              pillsRemaining: 0,
+              totalPills: 0,
+              refillReminder: true,
+              color: generateRandomColor(),
+              startDate: new Date().toISOString().split('T')[0],
+              endDate: '',
+              maxDailyDose: 0,
+              enableCyclicDosing: false,
+              enableTapering: false,
+            });
+          }
+        } else {
+          reset({
+            name: '',
+            dosage: '',
+            unit: 'mg',
+            inventoryUnit: 'tablets',
+            frequency: 'once-daily',
+            category: 'prescription',
+            notes: '',
+            sideEffects: '',
+            interactions: '',
+            prescribedBy: '',
+            pharmacy: '',
+            pillsRemaining: 0,
+            totalPills: 0,
+            refillReminder: true,
+            color: generateRandomColor(),
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: '',
+            maxDailyDose: 0,
+            enableCyclicDosing: false,
+            enableTapering: false,
+          });
+        }
       }
     }
-  }, [isOpen, medication, reset]);
+  }, [isOpen, medication, preSelectedMedicationName, reset]);
 
   const onSubmit = (data: FormData) => {
     const medicationData = {

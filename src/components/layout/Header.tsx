@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Menu, Bell, Search, User, Clock, Settings, Heart, ChevronDown } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { formatTime } from '@/utils/helpers';
+import { useGlobalSearch } from '@/hooks/useGlobalSearch';
+import { SearchResults } from '@/components/ui/SearchResults';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -14,6 +16,24 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [currentTime, setCurrentTime] = React.useState(new Date());
   const [showNotificationDropdown, setShowNotificationDropdown] = React.useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = React.useState(false);
+  const [showSearchResults, setShowSearchResults] = React.useState(false);
+  const [showMobileSearch, setShowMobileSearch] = React.useState(false);
+  
+  // Search functionality
+  const {
+    searchTerm,
+    setSearchTerm,
+    searchResults,
+    isSearching,
+    hasResults,
+    clearSearch,
+    selectResult,
+    selectedIndex,
+    setSelectedIndex,
+    handleKeyNavigation,
+  } = useGlobalSearch();
+  
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // Update time every minute
   React.useEffect(() => {
@@ -27,15 +47,56 @@ export function Header({ onMenuClick }: HeaderProps) {
   // Close dropdowns when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!(event.target as Element).closest('.dropdown-container')) {
+      const target = event.target as Element;
+      if (!target.closest('.dropdown-container') && !target.closest('.search-container') && !target.closest('.mobile-search-modal')) {
         setShowNotificationDropdown(false);
         setShowProfileDropdown(false);
+        setShowSearchResults(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Handle mobile search
+  const handleMobileSearchOpen = () => {
+    setShowMobileSearch(true);
+    setShowSearchResults(true);
+  };
+
+  const handleMobileSearchClose = () => {
+    setShowMobileSearch(false);
+    setShowSearchResults(false);
+    clearSearch();
+  };
+
+  // Search event handlers
+  const handleSearchFocus = () => {
+    setShowSearchResults(true);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setShowSearchResults(true);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setShowSearchResults(false);
+      searchInputRef.current?.blur();
+    } else if (showSearchResults) {
+      handleKeyNavigation(e);
+    }
+  };
+
+  const handleSelectSearchResult = (result: any) => {
+    selectResult(result);
+    setShowSearchResults(false);
+    setShowMobileSearch(false);
+    searchInputRef.current?.blur();
+  };
 
   const todaysReminders = getTodaysReminders();
   const upcomingReminders = todaysReminders.filter(reminder => {
@@ -73,19 +134,44 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Center - Search */}
       <div className="hidden md:flex flex-1 max-w-md mx-8">
-        <div className="relative w-full">
+        <div className="relative w-full search-container">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search medications..."
+            placeholder="Search medications, logs, pages..."
+            value={searchTerm}
+            onChange={handleSearchChange}
+            onFocus={handleSearchFocus}
+            onKeyDown={handleSearchKeyDown}
             className="mobile-search"
-            data-testid="search-button"
+            data-testid="search-input"
           />
+          
+          {/* Search Results Dropdown */}
+          {showSearchResults && (
+            <SearchResults
+              categories={searchResults}
+              isSearching={isSearching}
+              hasResults={hasResults}
+              selectedIndex={selectedIndex}
+              onSelectResult={handleSelectSearchResult}
+              searchTerm={searchTerm}
+            />
+          )}
         </div>
       </div>
 
       {/* Right side */}
       <div className="flex items-center space-x-3">
+        {/* Mobile Search Button */}
+        <button
+          onClick={handleMobileSearchOpen}
+          className="md:hidden p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-full touch-target transition-colors"
+          title="Search"
+        >
+          <Search className="h-5 w-5" />
+        </button>
         {/* Notifications */}
         <div className="relative dropdown-container">
           <button 
@@ -226,6 +312,53 @@ export function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
       </div>
+
+      {/* Mobile Search Modal */}
+      {showMobileSearch && (
+        <div className="fixed inset-0 z-50 bg-white mobile-search-modal md:hidden">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-medium text-gray-900">Search</h2>
+              <button
+                onClick={handleMobileSearchClose}
+                className="p-2 text-gray-400 hover:text-gray-500 rounded-full touch-target"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 p-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search medications, logs, pages..."
+                  value={searchTerm}
+                  onChange={handleSearchChange}
+                  onKeyDown={handleSearchKeyDown}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base"
+                  autoFocus
+                />
+              </div>
+              
+              {/* Mobile Search Results */}
+              <div className="mt-4 flex-1 overflow-hidden">
+                <SearchResults
+                  categories={searchResults}
+                  isSearching={isSearching}
+                  hasResults={hasResults}
+                  selectedIndex={selectedIndex}
+                  onSelectResult={handleSelectSearchResult}
+                  searchTerm={searchTerm}
+                  isMobile={true}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

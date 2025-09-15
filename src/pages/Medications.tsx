@@ -45,6 +45,11 @@ export function Medications() {
     endTaperingBreak
   } = useMedicationStore();
 
+  // Handle search navigation parameters
+  const searchParams = new URLSearchParams(window.location.search);
+  const addMedicationName = searchParams.get('add');
+  const highlightMedicationId = searchParams.get('highlight');
+
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingMedication, setEditingMedication] = React.useState<Medication | null>(null);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -62,6 +67,7 @@ export function Medications() {
   const [withdrawalMedication, setWithdrawalMedication] = React.useState<Medication | null>(null);
   const [dependencyModalOpen, setDependencyModalOpen] = React.useState(false);
   const [dependencyMedication, setDependencyMedication] = React.useState<Medication | null>(null);
+  const [openDropdownId, setOpenDropdownId] = React.useState<string | null>(null);
 
   const filteredMedications = React.useMemo(() => {
     let filtered = medications;
@@ -81,6 +87,47 @@ export function Medications() {
 
   const activeMedications = filteredMedications.filter(med => med.isActive);
   const inactiveMedications = filteredMedications.filter(med => !med.isActive);
+
+  // Handle automatic medication addition from search navigation
+  React.useEffect(() => {
+    if (addMedicationName && !isModalOpen) {
+      setEditingMedication(null);
+      setIsModalOpen(true);
+      // Clear the URL parameter after handling it
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('add');
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.hash);
+    }
+  }, [addMedicationName, isModalOpen]);
+
+  // Handle medication highlighting from search navigation
+  React.useEffect(() => {
+    if (highlightMedicationId) {
+      // Open the dropdown for the highlighted medication
+      setOpenDropdownId(highlightMedicationId);
+      
+      // Scroll to the medication card
+      setTimeout(() => {
+        const medicationCard = document.querySelector(`[data-medication-id="${highlightMedicationId}"]`);
+        if (medicationCard) {
+          medicationCard.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+          // Add a highlight effect
+          medicationCard.classList.add('ring-2', 'ring-primary-500', 'ring-opacity-75');
+          setTimeout(() => {
+            medicationCard.classList.remove('ring-2', 'ring-primary-500', 'ring-opacity-75');
+          }, 3000);
+        }
+      }, 100);
+      
+      // Clear the URL parameter after handling it
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('highlight');
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.hash);
+    }
+  }, [highlightMedicationId]);
 
   const handleAddMedication = () => {
     setEditingMedication(null);
@@ -158,7 +205,7 @@ export function Medications() {
 
   const MedicationCard = ({ medication }: { medication: Medication }) => {
     const adherence = getMedicationAdherence(medication.id, 7);
-    const [showActions, setShowActions] = React.useState(false);
+    const showActions = openDropdownId === medication.id;
     const currentDose = getCurrentDose(medication.id);
     
     const getRiskIcon = (riskLevel: string) => {
@@ -188,7 +235,10 @@ export function Medications() {
     };
 
     return (
-      <div className="card hover:shadow-md transition-shadow">
+      <div 
+        className="card hover:shadow-md transition-all duration-300" 
+        data-medication-id={medication.id}
+      >
         <div className="card-content p-4">
           <div className="flex items-start justify-between">
             <div className="flex items-start space-x-3 flex-1">
@@ -296,7 +346,7 @@ export function Medications() {
 
             <div className="relative">
               <button
-                onClick={() => setShowActions(!showActions)}
+                onClick={() => setOpenDropdownId(showActions ? null : medication.id)}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
               >
                 <MoreVertical className="h-4 w-4" />
@@ -308,7 +358,7 @@ export function Medications() {
                     <button
                       onClick={() => {
                         handleEditMedication(medication);
-                        setShowActions(false);
+                        setOpenDropdownId(null);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
@@ -318,7 +368,7 @@ export function Medications() {
                     <button
                       onClick={() => {
                         handleToggleActive(medication.id);
-                        setShowActions(false);
+                        setOpenDropdownId(null);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
@@ -338,7 +388,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           updateRiskAssessment(medication.id);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-orange-600 hover:bg-orange-50"
                       >
@@ -350,7 +400,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           handleOpenDependency(medication);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
                       >
@@ -371,7 +421,7 @@ export function Medications() {
                             <button
                               onClick={() => {
                                 handleOpenTaperingPlan(medication);
-                                setShowActions(false);
+                                setOpenDropdownId(null);
                               }}
                               className="flex items-center w-full px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
                             >
@@ -388,7 +438,7 @@ export function Medications() {
                           <button
                             onClick={() => {
                               handleResumeTapering(medication.id);
-                              setShowActions(false);
+                              setOpenDropdownId(null);
                             }}
                             className="flex items-center w-full px-4 py-2 text-sm text-green-600 hover:bg-green-50"
                           >
@@ -403,7 +453,7 @@ export function Medications() {
                           <button
                             onClick={() => {
                               handleManageBreak(medication);
-                              setShowActions(false);
+                              setOpenDropdownId(null);
                             }}
                             className="flex items-center w-full px-4 py-2 text-sm text-orange-600 hover:bg-orange-50"
                           >
@@ -417,7 +467,7 @@ export function Medications() {
                         <button
                           onClick={() => {
                             handleOpenTaperingPlan(medication);
-                            setShowActions(false);
+                            setOpenDropdownId(null);
                           }}
                           className="flex items-center w-full px-4 py-2 text-sm text-purple-600 hover:bg-purple-50"
                         >
@@ -432,7 +482,7 @@ export function Medications() {
                         onClick={() => {
                           // Navigate to cyclic dosing page with this medication pre-selected
                           navigate(`/cyclic-dosing?medication=${medication.id}`);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50"
                       >
@@ -445,7 +495,7 @@ export function Medications() {
                         onClick={() => {
                           // Navigate to cyclic dosing page to manage this medication
                           navigate(`/cyclic-dosing?medication=${medication.id}`);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-green-600 hover:bg-green-50"
                       >
@@ -459,7 +509,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           handleOpenMultiplePills(medication.id);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50"
                       >
@@ -474,7 +524,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           handleOpenMultiplePills(medication.id);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-green-600 hover:bg-green-50"
                       >
@@ -490,7 +540,7 @@ export function Medications() {
                     <button
                       onClick={() => {
                         handleOpenSideEffect(medication);
-                        setShowActions(false);
+                        setOpenDropdownId(null);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-orange-600 hover:bg-orange-50"
                     >
@@ -502,7 +552,7 @@ export function Medications() {
                       <button
                         onClick={() => {
                           handleOpenWithdrawal(medication);
-                          setShowActions(false);
+                          setOpenDropdownId(null);
                         }}
                         className="flex items-center w-full px-4 py-2 text-sm text-purple-600 hover:bg-purple-50"
                       >
@@ -513,7 +563,7 @@ export function Medications() {
                     <button
                       onClick={() => {
                         setConfirmDelete(medication.id);
-                        setShowActions(false);
+                        setOpenDropdownId(null);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                     >
@@ -647,6 +697,7 @@ export function Medications() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         medication={editingMedication}
+        preSelectedMedicationName={addMedicationName}
       />
 
       {/* Delete Confirmation */}
