@@ -1,5 +1,5 @@
 /**
- * Advanced Security Service for MedTrack Admin Panel
+ * Advanced Security Service for Meditrax Admin Panel
  * Implements enterprise-grade encryption, token management, and security monitoring
  */
 

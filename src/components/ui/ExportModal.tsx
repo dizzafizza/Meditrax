@@ -54,19 +54,19 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
             ...exportOptions,
             dateRange: exportOptions.dateRange.enabled ? exportOptions.dateRange : undefined
           });
-          filename = `medtrack-export-${dateStr}.json`;
+          filename = `meditrax-export-${dateStr}.json`;
           mimeType = 'application/json';
           break;
 
         case 'csv':
           data = exportToCSV('all', exportOptions.dateRange.enabled ? exportOptions.dateRange : undefined);
-          filename = `medtrack-export-${dateStr}.csv`;
+          filename = `meditrax-export-${dateStr}.csv`;
           mimeType = 'text/csv';
           break;
 
         case 'pdf':
           data = await exportToPDF(exportOptions);
-          filename = `medtrack-export-${dateStr}.json`; // PDF would be .pdf in real implementation
+          filename = `meditrax-export-${dateStr}.json`; // PDF would be .pdf in real implementation
           mimeType = 'application/json';
           break;
 

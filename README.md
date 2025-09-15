@@ -1,6 +1,6 @@
 <a href="https://www.buymeacoffee.com/dizzafizza" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
-# 🏥 MedTrack - Comprehensive Medication Tracking App
+# 🏥 Meditrax - Comprehensive Medication Tracking App
 
 A modern, responsive web application built with React and TypeScript for tracking medications, managing schedules, and monitoring adherence.
 
@@ -46,8 +46,8 @@ A modern, responsive web application built with React and TypeScript for trackin
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/MedTrack.git
-   cd MedTrack
+   git clone https://github.com/your-username/Meditrax.git
+   cd Meditrax
    ```
 
 2. **Install dependencies**
@@ -237,7 +237,7 @@ This project is configured for automatic deployment to GitHub Pages:
 1. Fork the repository
 2. Enable GitHub Pages in repository settings
 3. Push to the `main` branch to trigger deployment
-4. Your app will be available at `https://your-username.github.io/MedTrack/`
+4. Your app will be available at `https://your-username.github.io/Meditrax/`
 
 ### Manual Deployment
 For other hosting platforms:

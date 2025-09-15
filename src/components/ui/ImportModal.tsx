@@ -186,7 +186,7 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
                   {file ? file.name : 'Click to select a JSON file'}
                 </span>
                 <span className="text-xs text-gray-500">
-                  Only MedTrack JSON export files are supported
+                  Only Meditrax JSON export files are supported
                 </span>
               </label>
             </div>

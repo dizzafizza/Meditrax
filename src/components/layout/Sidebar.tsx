@@ -87,7 +87,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
                 <Pill className="h-5 w-5 text-white" />
               </div>
-              <span className="text-lg font-semibold text-gray-900">MedTrack</span>
+              <span className="text-lg font-semibold text-gray-900">Meditrax</span>
             </div>
             <button
               onClick={onClose}

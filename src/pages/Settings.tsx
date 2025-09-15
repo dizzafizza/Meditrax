@@ -177,7 +177,7 @@ export function Settings() {
   //   try {
   //     const data = exportData();
   //     const jsonData = JSON.stringify(data, null, 2);
-  //     downloadFile(jsonData, `medtrack-export-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+  //     downloadFile(jsonData, `meditrax-export-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
   //     toast.success('Data exported successfully');
   //   } catch (error) {
   //     toast.error('Failed to export data');
@@ -187,7 +187,7 @@ export function Settings() {
   // const handleExportCSV = () => {
   //   try {
   //     const csvData = generateCSV(logs, ['timestamp', 'medicationId', 'dosageTaken', 'adherence']);
-  //     downloadFile(csvData, `medtrack-logs-${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+  //     downloadFile(csvData, `meditrax-logs-${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
   //     toast.success('CSV exported successfully');
   //   } catch (error) {
   //     toast.error('Failed to export CSV');

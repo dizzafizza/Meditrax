@@ -27,5 +27,5 @@ export default defineConfig({
       },
     },
   },
-  base: '/MedTrack/', // Use absolute base path matching homepage
+  base: '/Meditrax/', // Use absolute base path matching homepage
 })

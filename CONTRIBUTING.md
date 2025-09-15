@@ -1,6 +1,6 @@
-# Contributing to MedTrack
+# Contributing to Meditrax
 
-We love your input! We want to make contributing to MedTrack as easy and transparent as possible, whether it's:
+We love your input! We want to make contributing to Meditrax as easy and transparent as possible, whether it's:
 
 - Reporting a bug
 - Discussing the current state of the code
@@ -27,9 +27,9 @@ Pull requests are the best way to propose changes to the codebase. We actively w
 
 In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.
 
-## Report bugs using GitHub's [issue tracker](https://github.com/your-username/MedTrack/issues)
+## Report bugs using GitHub's [issue tracker](https://github.com/your-username/Meditrax/issues)
 
-We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/your-username/MedTrack/issues/new); it's that easy!
+We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/your-username/Meditrax/issues/new); it's that easy!
 
 ## Write bug reports with detail, background, and sample code
 
@@ -108,7 +108,7 @@ We welcome feature requests! Please open an issue with:
 
 ## Health & Safety Considerations
 
-Since MedTrack deals with health information:
+Since Meditrax deals with health information:
 
 - Never include real medical data in examples or tests
 - Be mindful of privacy and security implications
