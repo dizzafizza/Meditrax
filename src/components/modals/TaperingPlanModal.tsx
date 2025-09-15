@@ -89,27 +89,48 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
         setCustomMethod(intelligent.adjustedPlan.method);
       }
       
-      // Set medication-specific default break between doses
-      const medicationData = getMedicationByName(medication.name);
-      if (medicationData?.taperingRecommendations?.daysBetweenReductions) {
-        setBreakBetweenDoses(medicationData.taperingRecommendations.daysBetweenReductions);
-      } else {
-        // Default based on medication dependency risk category
-        const defaultBreaks = {
-          'benzodiazepine': 14,
-          'opioid': 10,
-          'antidepressant': 14,
-          'stimulant': 7,
-          'sleep-aid': 10,
-          'muscle-relaxant': 7,
-          'anticonvulsant': 14,
-          'antipsychotic': 21,
-          'low-risk': 7
-        };
-        setBreakBetweenDoses(defaultBreaks[medication.dependencyRiskCategory] || 7);
-      }
+      // Only set medication defaults on first open - don't override user changes
+      // Reset to 7 as base default, user can change as needed
+      setBreakBetweenDoses(7);
     }
   }, [isOpen, medication]);
+
+  // Auto-regenerate plan when settings change
+  React.useEffect(() => {
+    if (isOpen && medication && (selectedPlan === 'custom' || selectedPlan === 'advanced')) {
+      // Get current dose - handle multiple pills vs single dosage
+      let currentDose = parseFloat(medication.dosage);
+      let currentUnit = medication.unit;
+      
+      if (medication.useMultiplePills && medication.doseConfigurations) {
+        const defaultConfig = medication.doseConfigurations.find(
+          config => config.id === medication.defaultDoseConfigurationId
+        ) || medication.doseConfigurations[0];
+        
+        if (defaultConfig) {
+          currentDose = defaultConfig.totalDoseAmount;
+          currentUnit = defaultConfig.totalDoseUnit;
+        }
+      }
+
+      // Basic Custom mode always uses hyperbolic, Advanced mode uses selected method
+      const effectiveMethod = selectedPlan === 'custom' ? 'hyperbolic' : customMethod;
+      
+      // Generate plan without validation checks (just for preview)
+      const customPlan = generateCustomTaperingPlan(
+        medication.name,
+        currentDose,
+        currentUnit,
+        effectiveMethod,
+        customDuration,
+        customReduction,
+        includeStabilization,
+        breakBetweenDoses
+      );
+      
+      setTaperingPlan(customPlan);
+    }
+  }, [customDuration, customMethod, breakBetweenDoses, includeStabilization, selectedPlan, customReduction, isOpen, medication]);
 
   const generateCustomPlan = () => {
     // Check for dangerous settings and require acknowledgment
@@ -133,12 +154,15 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
       }
     }
     
+    // Basic Custom mode always uses hyperbolic, Advanced mode uses selected method
+    const effectiveMethod = selectedPlan === 'custom' ? 'hyperbolic' : customMethod;
+    
     // Use direct custom plan generation for immediate response to user changes
     const customPlan = generateCustomTaperingPlan(
       medication.name,
       currentDose,
       currentUnit,
-      customMethod,
+      effectiveMethod,
       customDuration,
       customReduction,
       includeStabilization,
@@ -147,7 +171,7 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
     
     return customPlan || {
       medicationName: medication.name,
-      method: customMethod,
+      method: effectiveMethod,
       totalDuration: customDuration * 7,
       steps: [],
       warnings: [
@@ -172,9 +196,10 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
         setCurrentDisplayPlan(customPlan);
       } else {
         // Show placeholder when dangerous settings need acknowledgment
+        const effectiveMethod = selectedPlan === 'custom' ? 'hyperbolic' : customMethod;
         setCurrentDisplayPlan({
           medicationName: medication?.name || '',
-          method: customMethod,
+          method: effectiveMethod,
           totalDuration: customDuration * 7,
           steps: [],
           warnings: ['Please acknowledge dangerous settings to view tapering schedule'],
@@ -212,18 +237,23 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
     }
 
     // Create tapering schedule
+    // Determine the actual tapering method
+    const actualMethod = plan.method || (selectedPlan === 'custom' ? 'hyperbolic' : customMethod);
+    
     const taperingSchedule = {
       id: `tapering-${Date.now()}`,
       startDate: new Date(startDate),
       endDate: new Date(new Date(startDate).getTime() + plan.totalDuration * 24 * 60 * 60 * 1000),
       initialDose: initialDose,
       finalDose: 0,
-      taperingMethod: plan.method as 'linear' | 'exponential' | 'hyperbolic' | 'custom',
+      taperingMethod: actualMethod as 'linear' | 'exponential' | 'hyperbolic' | 'custom',
       customSteps: plan.steps.map((step: any) => ({
         day: step.day,
-        dosageMultiplier: step.dose / initialDose,
+        dosageMultiplier: initialDose > 0 ? Math.max(0, step.dose / initialDose) : 0,
         notes: step.notes
       })),
+      daysBetweenReductions: breakBetweenDoses,
+      reductionPercent: customReduction, // Store the reduction percentage for hyperbolic calculations
       isActive: true
     };
 
@@ -494,7 +524,7 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                 {/* Custom Plan Options */}
                 {selectedPlan === 'custom' && (
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Duration (weeks)
@@ -512,25 +542,9 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                             ⚠️ Shorter than recommended ({intelligentRecommendation.adjustedPlan.durationWeeks} weeks)
                           </p>
                         )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Reduction Intensity (%) 
-                          <span className="text-xs text-gray-500 font-normal">- Higher = faster taper</span>
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="50"
-                          value={customReduction}
-                          onChange={(e) => setCustomReduction(parseInt(e.target.value))}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                        />
-                        {intelligentRecommendation && customReduction > intelligentRecommendation.adjustedPlan.reductionPercent && (
-                          <p className="text-xs text-amber-600 mt-1">
-                            ⚠️ Faster than recommended ({intelligentRecommendation.adjustedPlan.reductionPercent}%)
-                          </p>
-                        )}
+                        <p className="text-xs text-gray-500 mt-2">
+                          ℹ️ The reduction rate will be automatically calculated based on duration and days between reductions
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -540,7 +554,7 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                 {selectedPlan === 'advanced' && (
                   <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
                     <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Duration (weeks)
@@ -551,19 +565,6 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                             max="52"
                             value={customDuration}
                             onChange={(e) => setCustomDuration(parseInt(e.target.value))}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Reduction Rate (%)
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="50"
-                            value={customReduction}
-                            onChange={(e) => setCustomReduction(parseInt(e.target.value))}
                             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                           />
                         </div>
@@ -583,6 +584,9 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                           </select>
                         </div>
                       </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        ℹ️ The reduction rate will be automatically calculated based on your selected method, duration, and days between reductions to ensure a smooth taper to zero.
+                      </p>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="flex items-center space-x-2">
@@ -618,11 +622,11 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                       
                       <div className="text-xs text-gray-600 bg-white p-2 rounded border">
                         <strong>Tapering Method Explanations:</strong><br/>
-                        • <strong>Hyperbolic:</strong> Consistent percentage of current dose each step (e.g., 10% of whatever you're currently taking)<br/>
-                        • <strong>Linear:</strong> Fixed amount reduction each step calculated to reach zero over duration (reduction % affects pacing)<br/>
-                        • <strong>Exponential:</strong> Large reductions early, progressively smaller reductions later<br/>
-                        • <strong>Custom:</strong> Hybrid approach - aggressive first 50% of duration, then gentle final 50%<br/>
-                        <em>All methods reach complete elimination (0mg) over your specified duration</em>
+                        • <strong>Hyperbolic:</strong> Consistent percentage reduction of current dose each step (automatically calculated to reach zero)<br/>
+                        • <strong>Linear:</strong> Fixed amount reduction each step (evenly spaced reductions over duration)<br/>
+                        • <strong>Exponential:</strong> Large reductions early, progressively smaller reductions later (front-loaded tapering)<br/>
+                        • <strong>Custom:</strong> Hybrid approach - moderate reductions first half, then gentler reductions final half<br/>
+                        <em>All methods automatically calculate the optimal reduction rate based on your duration and interval settings</em>
                       </div>
 
                       {/* Dangerous Settings Warning */}
@@ -727,18 +731,34 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-semibold text-gray-900">
-                                {medication.useMultiplePills ? 
-                                  formatPillCountsForTapering(
-                                    calculatePillCountsForDose(step.dose, medication), 
-                                    medication
-                                  ) : 
-                                  `${step.dose} ${medication.unit}`
+                              {(() => {
+                                if (!medication.useMultiplePills) {
+                                  return (
+                                    <>
+                                      <p className="text-sm font-semibold text-gray-900">{`${step.dose} ${medication.unit}`}</p>
+                                      <p className="text-xs text-gray-500">Total: {step.dose} {medication.unit}</p>
+                                    </>
+                                  );
                                 }
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Total: {step.dose} {medication.useMultiplePills && medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit}
-                              </p>
+                                const pillCounts = calculatePillCountsForDose(step.dose, medication);
+                                const actualDose = Object.entries(pillCounts).reduce((total, [pillId, count]) => {
+                                  const config = medication.pillConfigurations?.find(cfg => cfg.id === pillId);
+                                  return total + (config ? config.strength * (count as number) : 0);
+                                }, 0);
+                                const totalUnit = medication.doseConfigurations?.find(config => config.id === medication.defaultDoseConfigurationId)?.totalDoseUnit || medication.unit;
+                                const diff = Math.round((actualDose - step.dose) * 1000) / 1000;
+                                const hasDiff = Math.abs(diff) >= 0.001;
+                                return (
+                                  <>
+                                    <p className="text-sm font-semibold text-gray-900">
+                                      {formatPillCountsForTapering(pillCounts, medication)}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      Total: {Math.round(actualDose * 1000) / 1000} {totalUnit}
+                                    </p>
+                                  </>
+                                );
+                              })()}
                               {medication.useMultiplePills && (
                                 <p className="text-xs text-blue-600 mt-1">
                                   {(() => {

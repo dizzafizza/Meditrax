@@ -22,6 +22,7 @@ import {
 import { useMedicationStore } from '@/store';
 import { MedicationModal } from '@/components/modals/MedicationModal';
 import { TaperingPlanModal } from '@/components/modals/TaperingPlanModal';
+import { BreakManagementModal } from '@/components/modals/BreakManagementModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { MultiplePillSelector } from '@/components/ui/MultiplePillSelector';
 import { SideEffectReportModal } from '@/components/modals/SideEffectReportModal';
@@ -40,7 +41,8 @@ export function Medications() {
     toggleMedicationActive,
     getMedicationAdherence,
     getCurrentDose,
-    updateRiskAssessment
+    updateRiskAssessment,
+    endTaperingBreak
   } = useMedicationStore();
 
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -50,8 +52,8 @@ export function Medications() {
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
   const [taperingModalOpen, setTaperingModalOpen] = React.useState(false);
   const [taperingMedication, setTaperingMedication] = React.useState<Medication | null>(null);
-  const [pauseModalOpen, setPauseModalOpen] = React.useState(false);
-  const [pauseMedication, setPauseMedication] = React.useState<Medication | null>(null);
+  const [breakModalOpen, setBreakModalOpen] = React.useState(false);
+  const [breakMedication, setBreakMedication] = React.useState<Medication | null>(null);
   const [multiplePillsModalOpen, setMultiplePillsModalOpen] = React.useState(false);
   const [multiplePillsMedication, setMultiplePillsMedication] = React.useState<string | null>(null);
   const [sideEffectModalOpen, setSideEffectModalOpen] = React.useState(false);
@@ -104,18 +106,9 @@ export function Medications() {
     setTaperingModalOpen(true);
   };
 
-  const handlePauseTapering = (medication: Medication) => {
-    setPauseMedication(medication);
-    setPauseModalOpen(true);
-  };
-
-  const handleConfirmPause = (_severity: 'mild' | 'moderate' | 'severe') => {
-    if (pauseMedication) {
-      // pauseTaperingSchedule(pauseMedication.id, _severity);
-      setPauseModalOpen(false);
-      setPauseMedication(null);
-      toast.success(`Tapering paused for ${pauseMedication.name}. Take time to stabilize.`);
-    }
+  const handleManageBreak = (medication: Medication) => {
+    setBreakMedication(medication);
+    setBreakModalOpen(true);
   };
 
   const handleOpenMultiplePills = (medicationId: string) => {
@@ -158,8 +151,8 @@ export function Medications() {
     setDependencyMedication(null);
   };
 
-  const handleResumeTapering = (_medicationId: string) => {
-    // resumeTaperingSchedule(_medicationId);
+  const handleResumeTapering = (medicationId: string) => {
+    endTaperingBreak(medicationId, true);
     toast.success('Tapering schedule resumed');
   };
 
@@ -409,13 +402,13 @@ export function Medications() {
                         return (
                           <button
                             onClick={() => {
-                              handlePauseTapering(medication);
+                              handleManageBreak(medication);
                               setShowActions(false);
                             }}
                             className="flex items-center w-full px-4 py-2 text-sm text-orange-600 hover:bg-orange-50"
                           >
                             <Coffee className="h-4 w-4 mr-2" />
-                            Take a Break
+                            Manage Breaks
                           </button>
                         );
                       }
@@ -680,72 +673,16 @@ export function Medications() {
         />
       )}
 
-      {/* Pause Tapering Modal */}
-      {pauseModalOpen && pauseMedication && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setPauseModalOpen(false)} />
-            
-            <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-              <div className="bg-white px-4 pb-4 pt-5 sm:p-6">
-                <div className="flex items-center space-x-3 mb-4">
-                  <Coffee className="h-6 w-6 text-orange-600" />
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Take a Break from Tapering
-                  </h3>
-                </div>
-                
-                <p className="text-sm text-gray-600 mb-4">
-                  Pausing your tapering schedule for {pauseMedication.name} is completely normal and safe. 
-                  How are you feeling with withdrawal symptoms?
-                </p>
-                
-                <div className="space-y-3">
-                  <button
-                    onClick={() => handleConfirmPause('mild')}
-                    className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-green-50 hover:border-green-300"
-                  >
-                    <div className="font-medium text-green-800">Mild symptoms</div>
-                    <div className="text-sm text-green-600">Suggested break: 3-6 days</div>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleConfirmPause('moderate')}
-                    className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-orange-50 hover:border-orange-300"
-                  >
-                    <div className="font-medium text-orange-800">Moderate symptoms</div>
-                    <div className="text-sm text-orange-600">Suggested break: 1-2 weeks</div>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleConfirmPause('severe')}
-                    className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-300"
-                  >
-                    <div className="font-medium text-red-800">Severe symptoms</div>
-                    <div className="text-sm text-red-600">Suggested break: 2-4 weeks</div>
-                  </button>
-                </div>
-                
-                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-700">
-                    <strong>Remember:</strong> Taking breaks during tapering is encouraged and safe. 
-                    Your schedule will automatically extend to account for the pause time.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                <button
-                  type="button"
-                  onClick={() => setPauseModalOpen(false)}
-                  className="w-full justify-center rounded-md bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-300 sm:ml-3 sm:w-auto"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Break Management Modal */}
+      {breakModalOpen && breakMedication && (
+        <BreakManagementModal
+          isOpen={breakModalOpen}
+          onClose={() => {
+            setBreakModalOpen(false);
+            setBreakMedication(null);
+          }}
+          medication={breakMedication}
+        />
       )}
 
       {/* Multiple Pills Setup Modal */}

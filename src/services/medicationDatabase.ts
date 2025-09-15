@@ -1955,27 +1955,37 @@ export function generateTaperingPlan(medicationName: string, currentDose: number
   const totalDays = tapering.durationWeeks * 7;
   const steps: Array<{day: number, dose: number, notes: string}> = [];
   
+  // Add initial dose as first step
+  steps.push({
+    day: 0,
+    dose: currentDose,
+    notes: `Day 0: Starting dose ${currentDose} ${currentUnit}`
+  });
+  
   if (tapering.method === 'linear') {
-    const dailyReduction = (currentDose * (tapering.reductionPercent / 100)) / (tapering.durationWeeks);
+    // Linearly reduce from currentDose to 0 over the duration
     
     for (let week = 1; week <= tapering.durationWeeks; week++) {
-      const newDose = Math.max(0, currentDose - (dailyReduction * week));
+      const progress = week / tapering.durationWeeks;
+      const newDose = Math.max(0, currentDose * (1 - progress));
       steps.push({
         day: week * 7,
-        dose: Math.round(newDose * 100) / 100,
-        notes: `Week ${week}: Reduce to ${Math.round(newDose * 100) / 100} ${currentUnit}`
+        dose: Math.round(newDose * 1000) / 1000,
+        notes: `Week ${week}: Reduce to ${Math.round(newDose * 1000) / 1000} ${currentUnit}`
       });
     }
   } else if (tapering.method === 'exponential') {
+    // Front-loaded reductions that reach 0 at the end. Use reductionPercent to tune aggressiveness.
+    
+    const aggressiveness = Math.max(1.2, Math.min(3.0, tapering.reductionPercent / 15));
     for (let week = 1; week <= tapering.durationWeeks; week++) {
       const progress = week / tapering.durationWeeks;
-      const exponentialProgress = 1 - Math.pow(1 - progress, 2);
-      const newDose = currentDose * (1 - exponentialProgress * (tapering.reductionPercent / 100));
-      
+      const exponentialProgress = 1 - Math.pow(1 - progress, aggressiveness);
+      const newDose = Math.max(0, currentDose * (1 - exponentialProgress));
       steps.push({
         day: week * 7,
-        dose: Math.round(newDose * 100) / 100,
-        notes: `Week ${week}: Reduce to ${Math.round(newDose * 100) / 100} ${currentUnit}`
+        dose: Math.round(newDose * 1000) / 1000,
+        notes: `Week ${week}: Reduce to ${Math.round(newDose * 1000) / 1000} ${currentUnit}`
       });
     }
   } else if (tapering.method === 'hyperbolic') {
@@ -1983,31 +1993,58 @@ export function generateTaperingPlan(medicationName: string, currentDose: number
     let currentStepDose = currentDose;
     const reductionFactor = tapering.reductionPercent / 100;
     const stepsPerWeek = medication.dependencyRiskCategory === 'benzodiazepine' ? 0.5 : 1; // Slower for benzos
-    const totalSteps = Math.ceil(tapering.durationWeeks * stepsPerWeek);
+    const daysBetween = Math.round(7 / stepsPerWeek);
     
-    for (let step = 1; step <= totalSteps; step++) {
-      currentStepDose = currentStepDose * (1 - reductionFactor);
-      const daysFromStart = Math.round((step / stepsPerWeek) * 7);
-      
-      steps.push({
-        day: daysFromStart,
-        dose: Math.round(currentStepDose * 1000) / 1000, // More precision for small doses
-        notes: `Step ${step} (Day ${daysFromStart}): Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (${tapering.reductionPercent}% reduction from previous)`
-      });
-      
-      // Stop if dose gets very small
-      if (currentStepDose < 0.001) break;
-    }
+    let stepCount = 0;
+    let currentDay = 0;
     
-    // Add final step to zero if not already there
-    if (steps.length > 0 && steps[steps.length - 1].dose > 0.001) {
-      steps.push({
-        day: steps[steps.length - 1].day + 7,
-        dose: 0,
-        notes: `Final step: Complete discontinuation`
-      });
+    // Continue until we reach zero
+    while (currentStepDose > 0) {
+      stepCount++;
+      currentDay = stepCount * daysBetween;
+      
+      // Use smaller reductions when dose gets very low
+      let adjustedReductionFactor = reductionFactor;
+      if (currentStepDose < 1) {
+        adjustedReductionFactor = reductionFactor / 2;
+      }
+      if (currentStepDose < 0.1) {
+        adjustedReductionFactor = reductionFactor / 4;
+      }
+      
+      currentStepDose = currentStepDose * (1 - adjustedReductionFactor);
+      
+      // Round based on dose size
+      if (currentStepDose >= 1) {
+        currentStepDose = Math.round(currentStepDose * 100) / 100;
+      } else if (currentStepDose >= 0.1) {
+        currentStepDose = Math.round(currentStepDose * 1000) / 1000;
+      } else {
+        currentStepDose = Math.round(currentStepDose * 10000) / 10000;
+      }
+      
+      // When dose gets extremely small, go to zero
+      if (currentStepDose < 0.001) {
+        steps.push({
+          day: currentDay,
+          dose: 0,
+          notes: `Day ${currentDay}: Complete discontinuation`
+        });
+        break;
+      } else {
+        const actualReduction = adjustedReductionFactor * 100;
+        steps.push({
+          day: currentDay,
+          dose: currentStepDose,
+          notes: `Day ${currentDay}: Reduce to ${currentStepDose} ${currentUnit} (${Math.round(actualReduction * 10) / 10}% reduction from previous)`
+        });
+      }
+      
+      // Safety check to prevent infinite loops
+      if (stepCount > 100) break;
     }
   }
+  
   
   // Enhanced warnings based on medication type and risk level
   const baseWarnings = [
@@ -2164,10 +2201,8 @@ export function generateCustomTaperingPlan(
 ) {
   const medication = getMedicationByName(medicationName);
   
-  // Use medication-specific default if no custom value provided
-  const effectiveDaysBetweenReductions = daysBetweenReductions === 7 && medication?.taperingRecommendations?.daysBetweenReductions
-    ? medication.taperingRecommendations.daysBetweenReductions
-    : daysBetweenReductions;
+  // Always use the user-provided value - no more automatic overrides
+  const effectiveDaysBetweenReductions = daysBetweenReductions;
   
   const totalDays = durationWeeks * 7;
   const steps: Array<{day: number, dose: number, notes: string}> = [];
@@ -2175,202 +2210,207 @@ export function generateCustomTaperingPlan(
   // For most tapering, the target is complete elimination (0)
   const finalTargetDose = 0;
   
+  // Initialize warnings array early so it can be used in method logic
+  const baseWarnings = [
+    "Custom tapering plan - consult with your healthcare provider",
+    "Monitor for withdrawal symptoms and adjust pace if necessary", 
+    "Never stop abruptly if experiencing severe withdrawal symptoms"
+  ];
+  
+  // Always add the starting dose as day 0
+  steps.push({
+    day: 0,
+    dose: currentDose,
+    notes: `Day 0: Starting dose ${currentDose} ${currentUnit}`
+  });
+  
   if (method === 'linear') {
-    // Linear tapering: reduce by fixed amount each step
-    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    // Linear tapering: equal dose reductions at each step
+    const totalSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    
+    // Calculate safe step reduction based on number of steps
+    // More steps = smaller reductions to avoid doses changing too fast
+    let stepReduction = currentDose / totalSteps;
+    
+    // Apply safety limits based on step count to prevent too-fast changes
+    const maxReductionPerStep = currentDose * 0.25; // Never reduce more than 25% per step
+    const minReductionPerStep = currentDose * 0.05; // Never reduce less than 5% per step
+    stepReduction = Math.min(maxReductionPerStep, Math.max(minReductionPerStep, stepReduction));
+    
     let currentStepDose = currentDose;
     
-    // Calculate how much to reduce each step to reach finalTargetDose within the timeframe
-    const totalReductionNeeded = currentDose - finalTargetDose;
-    const stepReductionAmount = totalReductionNeeded / totalReductionSteps;
-    
-    for (let step = 1; step <= totalReductionSteps; step++) {
+    for (let step = 1; step <= totalSteps; step++) {
       const stepDay = step * effectiveDaysBetweenReductions;
       
-      // Add stabilization periods if requested (every other step)
       if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
         steps.push({
           day: stepDay,
           dose: Math.round(currentStepDose * 1000) / 1000,
           notes: `Day ${stepDay}: Stabilization period - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
         });
-      } else {
-        // Apply linear reduction
-        currentStepDose = Math.max(finalTargetDose, currentStepDose - stepReductionAmount);
-        
-        // Ensure final step reaches exact target
-        if (step === totalReductionSteps) {
-          currentStepDose = finalTargetDose;
-        }
-        
-        const reductionAmountDisplay = Math.round(stepReductionAmount * 1000) / 1000;
-        const currentReductionPercent = Math.round((stepReductionAmount / (currentStepDose + stepReductionAmount)) * 100 * 10) / 10;
-        const isComplete = currentStepDose === finalTargetDose;
-        
-        steps.push({
-          day: stepDay,
-          dose: Math.round(currentStepDose * 1000) / 1000,
-          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (-${reductionAmountDisplay} ${currentUnit} fixed reduction, ${currentReductionPercent}% of previous dose)${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
-        });
-        
-        // Stop when we reach the target
-        if (currentStepDose <= finalTargetDose) break;
+        continue;
       }
+      
+      const previousDose = currentStepDose;
+      currentStepDose = previousDose - stepReduction;
+      
+      // Ensure final step goes to zero and no negative doses
+      if (step === totalSteps || currentStepDose <= 0) {
+        currentStepDose = 0;
+      }
+      
+      const actualReduction = previousDose - currentStepDose;
+      const reductionPercent = previousDose > 0 ? Math.round((actualReduction / previousDose) * 100 * 10) / 10 : 0;
+      
+      steps.push({
+        day: stepDay,
+        dose: Math.round(currentStepDose * 1000) / 1000,
+        notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (-${Math.round(actualReduction * 1000) / 1000} ${currentUnit}, ${reductionPercent}% reduction)${currentStepDose === 0 ? ' - complete discontinuation' : ''}`
+      });
     }
   } else if (method === 'exponential') {
-    // Exponential tapering: larger reductions early, progressively smaller reductions later
-    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    // Exponential tapering: high reduction rates early, low rates later
+    const totalSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
     let currentStepDose = currentDose;
     
-    // Calculate exponential reduction amounts that reach zero naturally within timeframe
-    // Use reduction percentage to influence aggressiveness (higher % = more front-loaded)
-    const aggressiveness = Math.max(1.5, Math.min(5.0, reductionPercent / 10)); // 1.5-5.0 range
+    // Calculate safe max reduction based on number of steps
+    // More steps = smaller max reduction to avoid doses changing too fast
+    let maxReduction, minReduction;
+    if (totalSteps <= 5) {
+      maxReduction = 0.4; // 40% max for very short tapers
+      minReduction = 0.1; // 10% min
+    } else if (totalSteps <= 10) {
+      maxReduction = 0.3; // 30% max for medium tapers
+      minReduction = 0.08; // 8% min
+    } else if (totalSteps <= 15) {
+      maxReduction = 0.25; // 25% max for longer tapers
+      minReduction = 0.06; // 6% min
+    } else {
+      maxReduction = 0.2; // 20% max for very long tapers
+      minReduction = 0.05; // 5% min
+    }
     
-    for (let step = 1; step <= totalReductionSteps; step++) {
+    for (let step = 1; step <= totalSteps; step++) {
       const stepDay = step * effectiveDaysBetweenReductions;
       
-      // Add stabilization periods if requested
       if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
         steps.push({
           day: stepDay,
           dose: Math.round(currentStepDose * 1000) / 1000,
           notes: `Day ${stepDay}: Stabilization period - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
         });
-      } else {
-        // Calculate exponential progression: larger reductions early, smaller later
-        // Formula ensures we reach finalTargetDose at the last step
-        const progress = step / totalReductionSteps; // 0 to 1
-        const exponentialProgress = 1 - Math.pow(1 - progress, aggressiveness); // Front-loaded curve
-        const targetDose = currentDose * (1 - exponentialProgress * ((currentDose - finalTargetDose) / currentDose));
-        
-        // Ensure final step reaches exact target
-        const newDose = step === totalReductionSteps ? finalTargetDose : Math.max(finalTargetDose, targetDose);
-        
-        const reductionAmount = currentStepDose - newDose;
-        const reductionPercent = currentStepDose > 0 ? (reductionAmount / currentStepDose) * 100 : 0;
-        
-        currentStepDose = newDose;
-        
-        const reductionAmountDisplay = Math.round(reductionAmount * 1000) / 1000;
-        const reductionPercentDisplay = Math.round(reductionPercent * 10) / 10;
-        const isComplete = currentStepDose === finalTargetDose;
-        
-        steps.push({
-          day: stepDay,
-          dose: Math.round(currentStepDose * 1000) / 1000,
-          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (-${reductionAmountDisplay} ${currentUnit}, ${reductionPercentDisplay}% exponential reduction)${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
-        });
-        
-        // Stop when we reach the target
-        if (currentStepDose <= finalTargetDose) break;
+        continue;
       }
+      
+      const previousDose = currentStepDose;
+      
+      if (step === totalSteps) {
+        currentStepDose = 0;
+      } else {
+        // Calculate reduction percentage for this step (high early, low later)
+        const stepProgress = (step - 1) / (totalSteps - 1); // 0 to 1
+        const reductionPercent = maxReduction * Math.pow(1 - stepProgress, 2) + minReduction;
+        
+        currentStepDose = previousDose * (1 - reductionPercent);
+        currentStepDose = Math.round(currentStepDose * 1000) / 1000;
+      }
+      
+      const reduction = previousDose - currentStepDose;
+      const actualReductionPercent = previousDose > 0 ? Math.round((reduction / previousDose) * 100 * 10) / 10 : 0;
+      
+      steps.push({
+        day: stepDay,
+        dose: currentStepDose,
+        notes: `Day ${stepDay}: Reduce to ${currentStepDose} ${currentUnit} (-${Math.round(reduction * 1000) / 1000} ${currentUnit}, ${actualReductionPercent}% reduction)${currentStepDose === 0 ? ' - complete discontinuation' : ''}`
+      });
     }
   } else if (method === 'hyperbolic') {
-    // Hyperbolic tapering: reduce by consistent percentage of current dose each step
-    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    // Hyperbolic tapering: consistent percentage reduction each step
+    const totalSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
     let currentStepDose = currentDose;
     
-    // Use the user's input directly as per-step percentage for hyperbolic method
-    // This gives users full control but they should be warned about high values
-    const reductionFactor = reductionPercent / 100;
+    // Calculate the reduction percentage needed to get close to zero
+    // We want to reach about 1% of original dose by the second-to-last step
+    const targetRemainingPercent = 0.01; // 1% of original
+    const reductionPercent = totalSteps > 1 ? 1 - Math.pow(targetRemainingPercent, 1 / (totalSteps - 1)) : 0.5;
     
-    for (let step = 1; step <= totalReductionSteps; step++) {
+    for (let step = 1; step <= totalSteps; step++) {
       const stepDay = step * effectiveDaysBetweenReductions;
       
-      // Add stabilization periods if requested
       if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
         steps.push({
           day: stepDay,
           dose: Math.round(currentStepDose * 1000) / 1000,
-          notes: `Day ${stepDay}: Stabilization - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
+          notes: `Day ${stepDay}: Stabilization period - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
         });
-      } else {
-        // Apply hyperbolic reduction (consistent percentage of current dose)
-        const reductionAmount = currentStepDose * reductionFactor;
-        currentStepDose = Math.max(finalTargetDose, currentStepDose - reductionAmount);
-        
-        // If we're getting close to the end and still above target, ensure we reach zero
-        if (step >= totalReductionSteps - 2 && currentStepDose > 0.1) {
-          // Accelerate reduction in final steps to ensure elimination
-          const remainingSteps = totalReductionSteps - step + 1;
-          currentStepDose = Math.max(finalTargetDose, currentStepDose * Math.pow(0.3, 1/remainingSteps));
-        }
-        
-        // Ensure final step reaches exact target
-        if (step === totalReductionSteps) {
-          currentStepDose = finalTargetDose;
-        }
-        
-        const actualReductionPercent = Math.round(reductionPercent * 10) / 10;
-        const reductionAmountDisplay = Math.round(reductionAmount * 1000) / 1000;
-        const isComplete = currentStepDose === finalTargetDose;
-        
-        steps.push({
-          day: stepDay,
-          dose: Math.round(currentStepDose * 1000) / 1000,
-          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (${actualReductionPercent}% reduction from current dose, -${reductionAmountDisplay} ${currentUnit})${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
-        });
-        
-        // Stop when we reach the target
-        if (currentStepDose <= finalTargetDose) break;
+        continue;
       }
+      
+      const previousDose = currentStepDose;
+      
+      if (step === totalSteps) {
+        currentStepDose = 0;
+      } else {
+        currentStepDose = previousDose * (1 - reductionPercent);
+        currentStepDose = Math.round(currentStepDose * 1000) / 1000;
+      }
+      
+      const reduction = previousDose - currentStepDose;
+      const actualReductionPercent = previousDose > 0 ? Math.round((reduction / previousDose) * 100 * 10) / 10 : 0;
+      
+      steps.push({
+        day: stepDay,
+        dose: currentStepDose,
+        notes: `Day ${stepDay}: Reduce to ${currentStepDose} ${currentUnit} (-${Math.round(reduction * 1000) / 1000} ${currentUnit}, ${actualReductionPercent}% reduction)${currentStepDose === 0 ? ' - complete discontinuation' : ''}`
+      });
     }
   } else if (method === 'custom') {
-    // Custom method: hybrid approach - start with large reductions, then switch to small consistent reductions
-    const totalReductionSteps = Math.floor(totalDays / effectiveDaysBetweenReductions);
+    // Custom method: hybrid approach - moderate reductions early, then gentle linear finish
+    const totalReductionSteps = Math.max(1, Math.floor(totalDays / effectiveDaysBetweenReductions));
     let currentStepDose = currentDose;
     
-    const baseReductionPercent = reductionPercent;
+    const totalReductionNeeded = currentDose - finalTargetDose;
     const halfwayPoint = Math.ceil(totalReductionSteps / 2);
     
     for (let step = 1; step <= totalReductionSteps; step++) {
-      const stepDay = step * effectiveDaysBetweenReductions;
+      const stepDay = Math.min(step * effectiveDaysBetweenReductions, totalDays);
       
       // Add stabilization periods if requested
       if (includeStabilizationPeriods && step > 1 && step % 2 === 0) {
         steps.push({
           day: stepDay,
-          dose: currentStepDose,
+          dose: Math.round(currentStepDose * 1000) / 1000,
           notes: `Day ${stepDay}: Stabilization - maintain ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit}`
         });
       } else {
-        let currentReductionPercent: number;
+        let reductionAmount: number;
         let phaseDescription: string;
         
         if (step <= halfwayPoint) {
-          // First half: larger reductions (1.5x the base rate)
-          currentReductionPercent = baseReductionPercent * 1.5;
-          phaseDescription = 'aggressive phase';
+          // First half: Moderate exponential reduction (remove 65% of total)
+          // Use user's percentage to influence aggressiveness, but keep it reasonable
+          const aggressiveness = Math.max(1.2, Math.min(2.5, reductionPercent / 20)); // 20% input = 1.0 aggressiveness
+          const targetReductionByHalfway = totalReductionNeeded * 0.65;
+          const phaseProgress = step / halfwayPoint;
+          const exponentialFactor = 1 - Math.pow(1 - phaseProgress, aggressiveness);
+          const targetDoseAtStep = currentDose - (targetReductionByHalfway * exponentialFactor);
+          reductionAmount = currentStepDose - Math.max(finalTargetDose, targetDoseAtStep);
+          phaseDescription = 'moderate phase';
         } else {
-          // Second half: smaller reductions (0.5x the base rate)
-          currentReductionPercent = baseReductionPercent * 0.5;
+          // Second half: Gentle linear reduction (remove remaining 35%)
+          const remainingSteps = totalReductionSteps - halfwayPoint;
+          const remainingReduction = totalReductionNeeded * 0.35;
+          reductionAmount = remainingSteps > 0 ? remainingReduction / remainingSteps : 0;
           phaseDescription = 'gentle phase';
         }
         
-        // Calculate reduction to reach finalTargetDose properly
-        let reductionAmount: number;
-        const totalReductionNeeded = currentDose - finalTargetDose;
-        
-        if (step <= halfwayPoint) {
-          // First half: Aggressive exponential reduction (remove 75% of total reduction)
-          const targetReductionByHalfway = totalReductionNeeded * 0.75;
-          const phaseProgress = step / halfwayPoint;
-          const exponentialFactor = 1 - Math.exp(-2.5 * phaseProgress); // Exponential approach to 75%
-          const targetDoseAtStep = currentDose - (targetReductionByHalfway * exponentialFactor);
-          reductionAmount = currentStepDose - Math.max(finalTargetDose, targetDoseAtStep);
-        } else {
-          // Second half: Gentle linear reduction (remove remaining 25%)
-          const remainingSteps = totalReductionSteps - halfwayPoint;
-          const remainingReduction = totalReductionNeeded * 0.25;
-          reductionAmount = remainingSteps > 0 ? remainingReduction / remainingSteps : 0;
-        }
-        
-        // Apply the reduction
-        currentStepDose = Math.max(finalTargetDose, currentStepDose - reductionAmount);
-        
-        // Ensure final step reaches exact target
+        // Apply the reduction with guaranteed completion
         if (step === totalReductionSteps) {
-          currentStepDose = finalTargetDose;
+          // Final step: ensure complete elimination
+          currentStepDose = 0;
+        } else {
+          currentStepDose = Math.max(0, currentStepDose - reductionAmount);
+          currentStepDose = Math.round(currentStepDose * 1000) / 1000;
         }
         
         const reductionPercent = currentStepDose > 0 && reductionAmount > 0 ? 
@@ -2378,36 +2418,64 @@ export function generateCustomTaperingPlan(
         
         const reductionAmountDisplay = Math.round(reductionAmount * 1000) / 1000;
         const reductionPercentDisplay = Math.round(reductionPercent * 10) / 10;
-        const isComplete = currentStepDose === finalTargetDose;
+        const isComplete = currentStepDose === 0;
         
         steps.push({
           day: stepDay,
-          dose: Math.round(currentStepDose * 1000) / 1000,
-          notes: `Day ${stepDay}: Reduce to ${Math.round(currentStepDose * 1000) / 1000} ${currentUnit} (${phaseDescription}, ${reductionPercentDisplay}% reduction, -${reductionAmountDisplay} ${currentUnit})${isComplete && finalTargetDose === 0 ? ' - complete discontinuation' : ''}`
+          dose: currentStepDose,
+          notes: `Day ${stepDay}: Reduce to ${currentStepDose} ${currentUnit} (${phaseDescription}, ${reductionPercentDisplay}% reduction, -${reductionAmountDisplay} ${currentUnit})${isComplete ? ' - complete discontinuation' : ''}`
         });
         
-        // Stop when we reach the target
-        if (currentStepDose <= finalTargetDose) break;
+        // Stop when we reach zero
+        if (currentStepDose <= 0) break;
       }
     }
   }
   
-  // Safety check: Only add final step if the target is 0 and we haven't reached it naturally
-  if (finalTargetDose === 0 && steps.length > 0 && steps[steps.length - 1].dose > 0.001) {
-    const lastStep = steps[steps.length - 1];
+  // ALL tapering methods must reach zero for complete discontinuation
+  // Add final zero step if the last step is not zero
+  if (steps.length > 0 && steps[steps.length - 1].dose > 0) {
+    // For hyperbolic method, add a few more steps to get closer to zero first
+    if (method === 'hyperbolic') {
+      let currentStepDose = steps[steps.length - 1].dose;
+      let lastDay = steps[steps.length - 1].day;
+      const userReductionFactor = reductionPercent / 100;
+      
+      // Continue for a few more steps to get very close to zero
+      let additionalSteps = 0;
+      const maxAdditionalSteps = Math.min(3, Math.floor((totalDays - lastDay) / effectiveDaysBetweenReductions));
+      
+      while (currentStepDose > 0.1 && additionalSteps < maxAdditionalSteps && lastDay < totalDays - effectiveDaysBetweenReductions) {
+        lastDay = Math.min(lastDay + effectiveDaysBetweenReductions, totalDays - effectiveDaysBetweenReductions);
+        const previousDose = currentStepDose;
+        currentStepDose = Math.max(0, previousDose * (1 - userReductionFactor));
+        currentStepDose = Math.round(currentStepDose * 1000) / 1000;
+        
+        const reductionAmount = Math.max(0, previousDose - currentStepDose);
+        const actualReductionPercent = previousDose > 0 ? Math.round((reductionAmount / previousDose) * 100 * 10) / 10 : 0;
+        
+        steps.push({
+          day: lastDay,
+          dose: currentStepDose,
+          notes: `Day ${lastDay}: Reduce to ${currentStepDose} ${currentUnit} (${actualReductionPercent}% reduction from current dose, -${Math.round(reductionAmount * 1000) / 1000} ${currentUnit})`
+        });
+        
+        additionalSteps++;
+      }
+    }
+    
+    // Always add final zero step to complete discontinuation
     steps.push({
-      day: lastStep.day + effectiveDaysBetweenReductions,
+      day: totalDays,
       dose: 0,
-      notes: `Day ${lastStep.day + effectiveDaysBetweenReductions}: Complete discontinuation (final elimination)`
+      notes: `Final step: Complete discontinuation`
     });
   }
   
+  // Let the mathematical methods work naturally - no forced completion steps
+  
   // Get warnings from medication database or provide defaults
-  const baseWarnings = [
-    "Custom tapering plan - consult with your healthcare provider",
-    "Monitor for withdrawal symptoms and adjust pace if necessary", 
-    "Never stop abruptly if experiencing severe withdrawal symptoms"
-  ];
+  // baseWarnings already declared at top of function
 
   // Add method-specific warnings
   const methodWarnings = [];
@@ -2521,19 +2589,17 @@ export function generateEnhancedTaperingPlan(
     notes: intelligentRec.adjustedPlan.notes
   };
   
-  // Generate the actual tapering schedule using custom parameters
-  const schedule = customOptions ? 
-    generateCustomTaperingPlan(
-      medicationName, 
-      currentDose, 
-      currentUnit, 
-      finalPlan.method,
-      finalPlan.durationWeeks,
-      finalPlan.reductionPercent,
-      customOptions.includeStabilizationPeriods || false,
-      customOptions.daysBetweenReductions || 7
-    ) :
-    generateTaperingPlan(medicationName, currentDose, currentUnit);
+  // Always generate the actual tapering schedule using the final plan parameters
+  const schedule = generateCustomTaperingPlan(
+    medicationName,
+    currentDose,
+    currentUnit,
+    finalPlan.method,
+    finalPlan.durationWeeks,
+    finalPlan.reductionPercent,
+    customOptions?.includeStabilizationPeriods || false,
+    customOptions?.daysBetweenReductions || 7
+  );
   
   if (!schedule) return null;
   

@@ -3,7 +3,7 @@ import {
   X, 
   Home, 
   Pill, 
-  // Calendar,  // DISABLED
+  Calendar,
   BarChart3, 
   Settings, 
   Heart,
@@ -24,7 +24,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Medications', href: '/medications', icon: Pill },
   { name: 'Inventory', href: '/inventory', icon: Package },
-  // { name: 'Calendar', href: '/calendar', icon: Calendar },  // DISABLED
+  { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

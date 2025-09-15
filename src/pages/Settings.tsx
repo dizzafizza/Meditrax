@@ -9,6 +9,9 @@ import {
   Trash2,
   Save,
   AlertTriangle,
+  Moon,
+  Sun,
+  Monitor
   // Eye, // DISABLED - no longer needed
   // UserCheck, // DISABLED - no longer needed
   // CheckCircle // DISABLED - no longer needed

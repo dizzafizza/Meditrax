@@ -143,7 +143,7 @@ interface MedicationStore {
   addCyclicDosingPattern: (pattern: Omit<CyclicDosingPattern, 'id'>) => void;
   updateCyclicDosingPattern: (id: string, updates: Partial<CyclicDosingPattern>) => void;
   deleteCyclicDosingPattern: (id: string) => void;
-  getCurrentDose: (medicationId: string, date?: Date) => { dose: number; phase: string; message?: string };
+  getCurrentDose: (medicationId: string, date?: Date) => { dose: number; phase: string; message?: string; pillBreakdown?: Record<string, number> };
 
   // Tapering schedules
   addTaperingSchedule: (schedule: Omit<TaperingSchedule, 'id'>) => void;
@@ -203,6 +203,48 @@ const initialUserProfile: UserProfile = {
   },
   createdAt: new Date(),
   updatedAt: new Date(),
+};
+
+// Helper function to deserialize dates in tapering schedules
+const deserializeTaperingDates = (tapering: any) => {
+  if (!tapering) return tapering;
+  
+  const deserializedTapering = { ...tapering };
+  
+  // Deserialize main schedule dates
+  if (deserializedTapering.startDate && typeof deserializedTapering.startDate === 'string') {
+    deserializedTapering.startDate = new Date(deserializedTapering.startDate);
+  }
+  if (deserializedTapering.endDate && typeof deserializedTapering.endDate === 'string') {
+    deserializedTapering.endDate = new Date(deserializedTapering.endDate);
+  }
+  if (deserializedTapering.pausedAt && typeof deserializedTapering.pausedAt === 'string') {
+    deserializedTapering.pausedAt = new Date(deserializedTapering.pausedAt);
+  }
+  if (deserializedTapering.originalEndDate && typeof deserializedTapering.originalEndDate === 'string') {
+    deserializedTapering.originalEndDate = new Date(deserializedTapering.originalEndDate);
+  }
+  
+  // Deserialize current break dates
+  if (deserializedTapering.currentBreak) {
+    if (deserializedTapering.currentBreak.startDate && typeof deserializedTapering.currentBreak.startDate === 'string') {
+      deserializedTapering.currentBreak.startDate = new Date(deserializedTapering.currentBreak.startDate);
+    }
+    if (deserializedTapering.currentBreak.endDate && typeof deserializedTapering.currentBreak.endDate === 'string') {
+      deserializedTapering.currentBreak.endDate = new Date(deserializedTapering.currentBreak.endDate);
+    }
+  }
+  
+  // Deserialize break history dates
+  if (deserializedTapering.breakHistory && Array.isArray(deserializedTapering.breakHistory)) {
+    deserializedTapering.breakHistory = deserializedTapering.breakHistory.map((breakItem: any) => ({
+      ...breakItem,
+      startDate: typeof breakItem.startDate === 'string' ? new Date(breakItem.startDate) : breakItem.startDate,
+      endDate: breakItem.endDate && typeof breakItem.endDate === 'string' ? new Date(breakItem.endDate) : breakItem.endDate
+    }));
+  }
+  
+  return deserializedTapering;
 };
 
 export const useMedicationStore = create<MedicationStore>()(
@@ -1114,8 +1156,92 @@ export const useMedicationStore = create<MedicationStore>()(
         }
         
         // Apply tapering if active (use the provided date for calculation)
+        let isTapering = false;
+        let taperingMessage = undefined;
         if (medication.tapering?.isActive) {
-          const taperedDose = calculateTaperingDose(baseDose, medication.tapering, date, medication);
+          const taperedDose = calculateTaperingDose(medication.tapering, date, medication);
+          isTapering = true;
+          
+        // Calculate message about next dose reduction, stabilization, or breaks
+        if (medication.tapering.currentBreak && medication.tapering.currentBreak.isActive) {
+          // Handle active breaks
+          const currentBreak = medication.tapering.currentBreak;
+          // Ensure startDate is a Date object (handle localStorage deserialization)
+          const startDate = currentBreak.startDate instanceof Date ? currentBreak.startDate : new Date(currentBreak.startDate);
+          const breakDuration = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          switch (currentBreak.type) {
+            case 'stabilization':
+              if (currentBreak.plannedDuration) {
+                const daysRemaining = currentBreak.plannedDuration - breakDuration;
+                taperingMessage = daysRemaining > 0 
+                  ? `Stabilization break (${daysRemaining} days remaining)`
+                  : `Stabilization break complete - ready to resume`;
+              } else {
+                taperingMessage = `Stabilization break active (${breakDuration} days)`;
+              }
+              break;
+            case 'tolerance':
+              taperingMessage = `Tolerance break active - preventing dependence`;
+              break;
+            case 'emergency':
+              taperingMessage = `Emergency break - severe withdrawal management`;
+              break;
+            case 'planned':
+              taperingMessage = `Planned break - ${currentBreak.reason}`;
+              break;
+            case 'temporary':
+              taperingMessage = `Temporary break - maintain current dose`;
+              break;
+            case 'withdrawal_management':
+              const severity = currentBreak.withdrawalSeverity || 'moderate';
+              taperingMessage = `Break for ${severity} withdrawal symptoms`;
+              break;
+            default:
+              taperingMessage = `Tapering break active - maintain current dose`;
+          }
+        } else if (medication.tapering.daysBetweenReductions) {
+          const startDate = new Date(medication.tapering.startDate);
+          const daysSinceStart = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+          const currentStep = Math.floor(daysSinceStart / medication.tapering.daysBetweenReductions);
+          const daysInCurrentStep = daysSinceStart % medication.tapering.daysBetweenReductions;
+          const daysUntilNextReduction = medication.tapering.daysBetweenReductions - daysInCurrentStep;
+          
+          // Check if current step is a stabilization period
+          // Stabilization periods occur on even steps (step 2, 4, 6, etc.) when enabled
+          const isStabilizationEnabled = medication.tapering.includeStabilizationPeriods || 
+            (medication.tapering.customSteps && 
+             medication.tapering.customSteps.some((step: any) => step.notes && step.notes.includes('Stabilization')));
+          const isCurrentStepStabilization = isStabilizationEnabled && currentStep > 0 && currentStep % 2 === 0;
+          
+          if (daysInCurrentStep === 0) {
+            // First day of a new period
+            if (isCurrentStepStabilization) {
+              taperingMessage = `Stabilization period - maintain current dose`;
+            } else {
+              taperingMessage = `Dose reduction today`;
+            }
+          } else if (daysUntilNextReduction === 1) {
+            // Last day of current period
+            if (isCurrentStepStabilization) {
+              taperingMessage = `Stabilization ends tomorrow`;
+            } else {
+              const nextStepWillBeStabilization = isStabilizationEnabled && (currentStep + 1) % 2 === 0;
+              if (nextStepWillBeStabilization) {
+                taperingMessage = `Stabilization period starts tomorrow`;
+              } else {
+                taperingMessage = `Next reduction tomorrow`;
+              }
+            }
+          } else {
+            // Middle of a period
+            if (isCurrentStepStabilization) {
+              taperingMessage = `Stabilization period (${daysUntilNextReduction} days remaining)`;
+            } else {
+              taperingMessage = `Next reduction in ${daysUntilNextReduction} days`;
+            }
+          }
+        }
           
           // For multiple pills, calculate the pill breakdown for the tapered dose
           if (medication.useMultiplePills && medication.pillConfigurations) {
@@ -1129,11 +1255,15 @@ export const useMedicationStore = create<MedicationStore>()(
         }
         
         // Apply cyclic dosing if active (use the provided date for calculation)
-        let cyclicResult = { dose: baseDose, phase: 'maintenance' };
+        let cyclicResult = { dose: baseDose, phase: isTapering ? 'tapering' : 'maintenance' };
         
         if (medication.cyclicDosing?.isActive) {
           // Use the medication's cyclicDosing directly and the provided date
           cyclicResult = calculateCyclicDose(baseDose, medication.cyclicDosing, date);
+          // If both tapering and cyclic are active, show combined phase
+          if (isTapering && cyclicResult.phase !== 'maintenance') {
+            cyclicResult.phase = `tapering-${cyclicResult.phase}`;
+          }
         }
         
         // For multiple pills with cyclic dosing, recalculate pill breakdown
@@ -1144,6 +1274,7 @@ export const useMedicationStore = create<MedicationStore>()(
         // Return enhanced result with pill breakdown for multiple pill medications
         return {
           ...cyclicResult,
+          message: taperingMessage || cyclicResult.message,
           pillBreakdown: medication.useMultiplePills ? pillBreakdown : undefined
         };
       },
@@ -1174,19 +1305,54 @@ export const useMedicationStore = create<MedicationStore>()(
         }));
       },
 
-      pauseTaperingSchedule: (medicationId, withdrawalSeverity: 'mild' | 'moderate' | 'severe' = 'moderate') => {
+      // Enhanced break management methods
+      startTaperingBreak: (
+        medicationId: string, 
+        breakType: 'stabilization' | 'tolerance' | 'emergency' | 'planned' | 'temporary' | 'withdrawal_management',
+        reason: string,
+        options: {
+          withdrawalSeverity?: 'mild' | 'moderate' | 'severe';
+          plannedDuration?: number;
+          notes?: string;
+          autoResumeEnabled?: boolean;
+          reminderEnabled?: boolean;
+          reminderFrequency?: 'daily' | 'weekly' | 'none';
+        } = {}
+      ) => {
         set((state) => ({
           medications: state.medications.map(med => {
             if (med.id === medicationId && med.tapering && !med.tapering.isPaused) {
-              const suggestedDays = suggestPauseDuration(med.name, withdrawalSeverity);
+              const currentDose = get().getCurrentDose(medicationId);
+              const suggestedDays = options.plannedDuration || suggestPauseDuration(med.name, options.withdrawalSeverity || 'moderate');
               
+              const taperingBreak = {
+                id: `break-${Date.now()}`,
+                type: breakType,
+                reason,
+                startDate: new Date(),
+                endDate: options.plannedDuration ? new Date(Date.now() + options.plannedDuration * 24 * 60 * 60 * 1000) : undefined,
+                doseAtBreak: currentDose.dose,
+                withdrawalSeverity: options.withdrawalSeverity,
+                plannedDuration: suggestedDays,
+                notes: options.notes,
+                isActive: true,
+                autoResumeEnabled: options.autoResumeEnabled || false,
+                reminderEnabled: options.reminderEnabled !== false,
+                reminderFrequency: options.reminderFrequency || 'weekly'
+              };
+
               return {
                 ...med,
                 tapering: {
                   ...med.tapering,
                   isPaused: true,
                   pausedAt: new Date(),
-                  suggestedResumeDays: suggestedDays
+                  suggestedResumeDays: suggestedDays,
+                  currentBreak: taperingBreak,
+                  breakHistory: [...(med.tapering.breakHistory || []), taperingBreak],
+                  totalBreakDays: (med.tapering.totalBreakDays || 0),
+                  originalEndDate: med.tapering.originalEndDate || med.tapering.endDate,
+                  autoExtendOnBreak: med.tapering.autoExtendOnBreak !== false
                 }
               };
             }
@@ -1195,31 +1361,74 @@ export const useMedicationStore = create<MedicationStore>()(
         }));
       },
 
-      resumeTaperingSchedule: (medicationId) => {
+      endTaperingBreak: (medicationId: string, resumeImmediately: boolean = true) => {
         set((state) => ({
           medications: state.medications.map(med => {
-            if (med.id === medicationId && med.tapering && med.tapering.isPaused) {
-              const pauseDuration = med.tapering.pausedAt ? 
-                Math.floor((new Date().getTime() - new Date(med.tapering.pausedAt).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+            if (med.id === medicationId && med.tapering && med.tapering.isPaused && med.tapering.currentBreak) {
+              const currentBreak = med.tapering.currentBreak;
+              // Ensure startDate is a Date object (handle localStorage deserialization)
+              const startDate = currentBreak.startDate instanceof Date ? currentBreak.startDate : new Date(currentBreak.startDate);
+              const breakDuration = Math.floor((new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
               
-              // Extend the end date by the pause duration
-              const newEndDate = new Date(med.tapering.endDate);
-              newEndDate.setDate(newEndDate.getDate() + pauseDuration);
-              
-              return {
-                ...med,
-                tapering: {
-                  ...med.tapering,
+              // Update break with actual duration
+              const updatedBreak = {
+                ...currentBreak,
+                endDate: new Date(),
+                actualDuration: breakDuration,
+                isActive: false
+              };
+
+              // Update break history
+              const updatedHistory = (med.tapering.breakHistory || []).map(b => 
+                b.id === currentBreak.id ? updatedBreak : b
+              );
+
+              let updatedTapering = {
+                ...med.tapering,
+                currentBreak: undefined,
+                breakHistory: updatedHistory,
+                totalBreakDays: (med.tapering.totalBreakDays || 0) + breakDuration
+              };
+
+              // If resuming immediately, update schedule
+              if (resumeImmediately) {
+                // Extend the end date by the break duration if auto-extend is enabled
+                if (med.tapering.autoExtendOnBreak !== false) {
+                  const newEndDate = new Date(med.tapering.endDate);
+                  newEndDate.setDate(newEndDate.getDate() + breakDuration);
+                  updatedTapering.endDate = newEndDate;
+                }
+
+                updatedTapering = {
+                  ...updatedTapering,
                   isPaused: false,
                   pausedAt: undefined,
-                  endDate: newEndDate,
                   suggestedResumeDays: undefined
-                }
+                };
+              }
+
+              return {
+                ...med,
+                tapering: updatedTapering
               };
             }
             return med;
           })
         }));
+      },
+
+      // Legacy methods for backward compatibility
+      pauseTaperingSchedule: (medicationId, withdrawalSeverity: 'mild' | 'moderate' | 'severe' = 'moderate') => {
+        get().startTaperingBreak(medicationId, 'withdrawal_management', 'Manual pause for withdrawal management', {
+          withdrawalSeverity,
+          autoResumeEnabled: false,
+          reminderEnabled: true,
+          reminderFrequency: 'weekly'
+        });
+      },
+
+      resumeTaperingSchedule: (medicationId) => {
+        get().endTaperingBreak(medicationId, true);
       },
 
       adjustTaperingSchedule: (medicationId, adjustments: {
@@ -2068,6 +2277,50 @@ export const useMedicationStore = create<MedicationStore>()(
       name: 'medtrack-storage',
       storage: createJSONStorage(() => localStorage),
       version: 1,
+      onRehydrateStorage: () => (state) => {
+        if (state?.medications) {
+          // Deserialize dates in medications
+          state.medications = state.medications.map((med: any) => ({
+            ...med,
+            // Deserialize basic dates
+            createdAt: typeof med.createdAt === 'string' ? new Date(med.createdAt) : med.createdAt,
+            updatedAt: typeof med.updatedAt === 'string' ? new Date(med.updatedAt) : med.updatedAt,
+            // Deserialize tapering dates
+            tapering: deserializeTaperingDates(med.tapering),
+            // Deserialize cyclic dosing dates if they exist
+            cyclicDosing: med.cyclicDosing ? {
+              ...med.cyclicDosing,
+              startDate: typeof med.cyclicDosing.startDate === 'string' ? new Date(med.cyclicDosing.startDate) : med.cyclicDosing.startDate
+            } : med.cyclicDosing
+          }));
+        }
+        
+        if (state?.logs) {
+          // Deserialize dates in medication logs
+          state.logs = state.logs.map((log: any) => ({
+            ...log,
+            timestamp: typeof log.timestamp === 'string' ? new Date(log.timestamp) : log.timestamp,
+            dateCreated: typeof log.dateCreated === 'string' ? new Date(log.dateCreated) : log.dateCreated
+          }));
+        }
+        
+        if (state?.reminders) {
+          // Deserialize dates in reminders
+          state.reminders = state.reminders.map((reminder: any) => ({
+            ...reminder,
+            createdAt: typeof reminder.createdAt === 'string' ? new Date(reminder.createdAt) : reminder.createdAt
+          }));
+        }
+        
+        if (state?.userProfile) {
+          // Deserialize user profile dates
+          state.userProfile = {
+            ...state.userProfile,
+            createdAt: typeof state.userProfile.createdAt === 'string' ? new Date(state.userProfile.createdAt) : state.userProfile.createdAt,
+            updatedAt: typeof state.userProfile.updatedAt === 'string' ? new Date(state.userProfile.updatedAt) : state.userProfile.updatedAt
+          };
+        }
+      }
     }
   )
 );

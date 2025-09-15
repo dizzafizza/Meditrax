@@ -383,10 +383,18 @@ export interface CalendarEvent {
   id: string;
   medicationId: string;
   medicationName: string;
+  medicationColor: string;
+  dosageInfo: string;
   time: string;
-  type: 'reminder' | 'taken' | 'missed' | 'refill';
-  status: AdherenceStatus | 'upcoming';
   date: Date;
+  type: 'logged' | 'scheduled';
+  status: AdherenceStatus | 'scheduled';
+  notes?: string;
+  skipReason?: string;
+  cyclicPhase?: string;
+  isTapered?: boolean;
+  isMultiplePills?: boolean;
+  pillBreakdown?: string;
 }
 
 export interface ScheduleSlot {
@@ -456,6 +464,23 @@ export interface DosingCycle {
   customMessage?: string;
 }
 
+export interface TaperingBreak {
+  id: string;
+  type: 'stabilization' | 'tolerance' | 'emergency' | 'planned' | 'temporary' | 'withdrawal_management';
+  reason: string;
+  startDate: Date;
+  endDate?: Date; // Undefined for indefinite breaks
+  doseAtBreak: number;
+  withdrawalSeverity?: 'mild' | 'moderate' | 'severe';
+  plannedDuration?: number; // Days
+  actualDuration?: number; // Days
+  notes?: string;
+  isActive: boolean;
+  autoResumeEnabled?: boolean;
+  reminderEnabled?: boolean;
+  reminderFrequency?: 'daily' | 'weekly' | 'none';
+}
+
 export interface TaperingSchedule {
   id: string;
   startDate: Date;
@@ -464,12 +489,21 @@ export interface TaperingSchedule {
   finalDose: number;
   taperingMethod: 'linear' | 'exponential' | 'hyperbolic' | 'custom';
   customSteps?: TaperingStep[];
+  daysBetweenReductions?: number; // Number of days to stay at each dose level
   isActive: boolean;
   canPause?: boolean;
   isPaused?: boolean;
   pausedAt?: Date;
   suggestedResumeDays?: number;
   flexibilityNotes?: string;
+  // Enhanced break management
+  currentBreak?: TaperingBreak;
+  breakHistory?: TaperingBreak[];
+  totalBreakDays?: number;
+  originalEndDate?: Date; // Store original end date before breaks extended it
+  autoExtendOnBreak?: boolean;
+  stabilizationPeriods?: TaperingBreak[]; // Planned stabilization periods
+  toleranceBreaks?: TaperingBreak[]; // Planned tolerance breaks
   intelligentRecommendations?: {
     originalPlan: any;
     adjustedPlan: any;

@@ -633,19 +633,35 @@ export function calculateCyclicDose(
 }
 
 export function calculateTaperingDose(
-  baseDose: number,
   taperingSchedule: any,
   currentDate: Date,
   medication?: any
 ): number {
-  if (!taperingSchedule) return baseDose;
+  if (!taperingSchedule || !taperingSchedule.initialDose) return 0;
   
-  // Check if tapering is paused
+  const finalizeDose = (dose: number): number => {
+    const safeDose = Math.max(0, isFinite(dose) ? dose : 0);
+    const roundedDose = Math.round(safeDose * 1000) / 1000;
+    if (roundedDose === 0) return 0;
+    // For tapering, don't adjust dose for pill combinations
+    // The exact tapered dose should be maintained, pill breakdown is calculated separately
+    return roundedDose;
+  };
+  
+  // Check if tapering is paused or has an active break
   if (taperingSchedule.isPaused) {
-    // Return the dose from when it was paused, or find the appropriate step
-    const pausedDate = taperingSchedule.pausedAt ? new Date(taperingSchedule.pausedAt) : currentDate;
-    // Use the paused date for calculation instead of current date
-    return calculateTaperingDose(baseDose, { ...taperingSchedule, isPaused: false }, pausedDate, medication);
+    // Handle different types of breaks
+    if (taperingSchedule.currentBreak && taperingSchedule.currentBreak.isActive) {
+      const currentBreak = taperingSchedule.currentBreak;
+      
+      // For all break types, maintain the dose at break initiation
+      // This ensures stability during the break period
+      return finalizeDose(currentBreak.doseAtBreak);
+    } else {
+      // Legacy pause handling - return dose from when paused
+      const pausedDate = taperingSchedule.pausedAt ? new Date(taperingSchedule.pausedAt) : currentDate;
+      return calculateTaperingDose({ ...taperingSchedule, isPaused: false }, pausedDate, medication);
+    }
   }
   
   const startDate = new Date(taperingSchedule.startDate);
@@ -653,72 +669,115 @@ export function calculateTaperingDose(
   const daysDiff = Math.floor((currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
   const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
   
-  if (daysDiff < 0) return taperingSchedule.initialDose;
-  if (daysDiff >= totalDays) return taperingSchedule.finalDose;
+  if (daysDiff < 0) return finalizeDose(taperingSchedule.initialDose);
+  if (daysDiff >= totalDays) return finalizeDose(taperingSchedule.finalDose);
   
   // Use custom steps if available (for hyperbolic and other advanced methods)
   if (taperingSchedule.customSteps && taperingSchedule.customSteps.length > 0) {
+    // Sort steps by day to ensure proper ordering
+    const sortedSteps = [...taperingSchedule.customSteps].sort((a: any, b: any) => a.day - b.day);
+    
     // Find the appropriate step for the current day
-    const applicableStep = taperingSchedule.customSteps
-      .filter((step: any) => step.day <= daysDiff)
-      .sort((a: any, b: any) => b.day - a.day)[0]; // Get the most recent applicable step
+    let applicableStep = null;
+    for (let i = 0; i < sortedSteps.length; i++) {
+      if (sortedSteps[i].day <= daysDiff) {
+        applicableStep = sortedSteps[i];
+      } else {
+        break; // We've passed the current day
+      }
+    }
     
     if (applicableStep) {
-      return taperingSchedule.initialDose * applicableStep.dosageMultiplier;
+      const calculatedDose = taperingSchedule.initialDose * applicableStep.dosageMultiplier;
+      return finalizeDose(calculatedDose);
     }
+    
+    // If we have custom steps but no applicable step yet (day 0 or before first step), return initial dose
+    return finalizeDose(taperingSchedule.initialDose);
   }
   
   if (taperingSchedule.taperingMethod === 'linear') {
-    const progress = daysDiff / totalDays;
-    return taperingSchedule.initialDose + 
-           (taperingSchedule.finalDose - taperingSchedule.initialDose) * progress;
+    const daysBetween = taperingSchedule.daysBetweenReductions || 7;
+    const stepNumber = Math.floor(daysDiff / daysBetween);
+    const totalSteps = Math.floor(totalDays / daysBetween);
+    
+    if (stepNumber >= totalSteps) {
+      return finalizeDose(0);
+    }
+    
+    // Calculate safe step reduction with safety limits (same as plan generation)
+    let stepReduction = taperingSchedule.initialDose / totalSteps;
+    const maxReductionPerStep = taperingSchedule.initialDose * 0.25; // Never reduce more than 25% per step
+    const minReductionPerStep = taperingSchedule.initialDose * 0.05; // Never reduce less than 5% per step
+    stepReduction = Math.min(maxReductionPerStep, Math.max(minReductionPerStep, stepReduction));
+    
+    const currentDose = taperingSchedule.initialDose - (stepReduction * stepNumber);
+    
+    return finalizeDose(Math.max(0, currentDose));
   }
   
   if (taperingSchedule.taperingMethod === 'exponential') {
-    const progress = daysDiff / totalDays;
-    const exponentialProgress = 1 - Math.pow(1 - progress, 2);
-    return taperingSchedule.initialDose + 
-           (taperingSchedule.finalDose - taperingSchedule.initialDose) * exponentialProgress;
+    const daysBetween = taperingSchedule.daysBetweenReductions || 7;
+    const stepNumber = Math.floor(daysDiff / daysBetween);
+    const totalSteps = Math.floor(totalDays / daysBetween);
+    
+    if (stepNumber >= totalSteps) {
+      return finalizeDose(0);
+    }
+    
+    // Calculate safe max reduction based on number of steps (same as plan generation)
+    let maxReduction, minReduction;
+    if (totalSteps <= 5) {
+      maxReduction = 0.4; // 40% max for very short tapers
+      minReduction = 0.1; // 10% min
+    } else if (totalSteps <= 10) {
+      maxReduction = 0.3; // 30% max for medium tapers
+      minReduction = 0.08; // 8% min
+    } else if (totalSteps <= 15) {
+      maxReduction = 0.25; // 25% max for longer tapers
+      minReduction = 0.06; // 6% min
+    } else {
+      maxReduction = 0.2; // 20% max for very long tapers
+      minReduction = 0.05; // 5% min
+    }
+    
+    // Calculate dose by applying exponential reductions step by step
+    let currentDose = taperingSchedule.initialDose;
+    
+    for (let step = 1; step <= stepNumber; step++) {
+      const stepProgress = (step - 1) / (totalSteps - 1); // 0 to 1
+      const reductionPercent = maxReduction * Math.pow(1 - stepProgress, 2) + minReduction;
+      currentDose = currentDose * (1 - reductionPercent);
+    }
+    
+    return finalizeDose(Math.max(0, currentDose));
   }
   
   if (taperingSchedule.taperingMethod === 'hyperbolic') {
-    // Hyperbolic tapering: Creates a curve that reduces doses more slowly at the beginning and faster at the end
-    const progress = daysDiff / totalDays;
+    const daysBetween = taperingSchedule.daysBetweenReductions || 7;
+    const stepNumber = Math.floor(daysDiff / daysBetween);
+    const totalSteps = Math.floor(totalDays / daysBetween);
     
-    // Handle the case where final dose is 0 (can't use ratio method)
-    if (taperingSchedule.finalDose === 0) {
-      // Use exponential decay: dose = initialDose * (1 - progress)^2
-      // This creates the hyperbolic-like curve but works with final dose of 0
-      return taperingSchedule.initialDose * Math.pow(1 - progress, 2);
-    } else {
-      // Original hyperbolic method for non-zero final doses
-      const ratio = taperingSchedule.finalDose / taperingSchedule.initialDose;
-      return taperingSchedule.initialDose * Math.pow(ratio, progress);
+    if (stepNumber >= totalSteps) {
+      return finalizeDose(0);
     }
+    
+    // Calculate the reduction percentage needed to get close to zero
+    const targetRemainingPercent = 0.01; // 1% of original
+    const reductionPercent = totalSteps > 1 ? 1 - Math.pow(targetRemainingPercent, 1 / (totalSteps - 1)) : 0.5;
+    
+    const currentDose = taperingSchedule.initialDose * Math.pow(1 - reductionPercent, stepNumber);
+    
+    return finalizeDose(Math.max(0, currentDose));
   }
   
-  // Custom steps (this is duplicate code from above, keeping for backward compatibility)
-  if (taperingSchedule.customSteps && taperingSchedule.customSteps.length > 0) {
-    const applicableStep = taperingSchedule.customSteps
-      .filter((step: any) => step.day <= daysDiff)
-      .sort((a: any, b: any) => b.day - a.day)[0];
-    
-    if (applicableStep) {
-      return taperingSchedule.initialDose * applicableStep.dosageMultiplier;
-    }
-  }
+  // Note: Custom steps are handled at the top of this function
   
   // Default to linear tapering if no method specified or method not recognized
   const progress = daysDiff / totalDays;
   const taperedDose = taperingSchedule.initialDose + 
                      (taperingSchedule.finalDose - taperingSchedule.initialDose) * progress;
-  
-  // If medication uses multiple pills, calculate the optimal pill combination for tapered dose
-  if (medication?.useMultiplePills && medication?.pillConfigurations) {
-    return adjustDoseForMultiplePills(taperedDose, medication);
-  }
-  
-  return taperedDose;
+  return finalizeDose(taperedDose);
 }
 
 // Helper function to adjust tapered dose to available pill combinations for multiple pills
