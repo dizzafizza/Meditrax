@@ -1,4 +1,4 @@
-# 🚀 MedTrack Deployment Checklist
+# 🚀 Meditrax Deployment Checklist
 
 ## ✅ Mobile Compatibility Completed
 
@@ -65,13 +65,13 @@
 ✅ **COMPLETELY FIXED:** Multiple issues resolved for blank page problem:
 
 ### **Primary Issue: Wrong Homepage URL**
-- ❌ **Was:** `"homepage": "https://github.com/your-username/MedTrack#readme"`
-- ✅ **Fixed:** `"homepage": "https://dizzafizza.github.io/MedTrack"`
+- ❌ **Was:** `"homepage": "https://github.com/your-username/Meditrax#readme"`
+- ✅ **Fixed:** `"homepage": "https://dizzafizza.github.io/Meditrax"`
 
 ### **Routing Solution: Switched to HashRouter**
 - ❌ **Problem:** BrowserRouter needs server-side routing (not available on GitHub Pages)
 - ✅ **Solution:** HashRouter works perfectly with static hosting
-- ✅ **URLs now:** `https://dizzafizza.github.io/MedTrack/#/dashboard`
+- ✅ **URLs now:** `https://dizzafizza.github.io/Meditrax/#/dashboard`
 
 ### **Additional Fixes:**
 - ✅ Added 404.html for SPA support
@@ -90,7 +90,7 @@ git push origin main
 **The GitHub Actions workflow will automatically:**
 1. ✅ Build the application (type-checking disabled for deployment)
 2. ✅ Deploy to GitHub Pages with correct routing
-3. ✅ Your app will work at: `https://dizzafizza.github.io/MedTrack/`
+3. ✅ Your app will work at: `https://dizzafizza.github.io/Meditrax/`
 
 **If you haven't enabled GitHub Pages yet:**
 1. Go to your repository Settings > Pages
@@ -122,4 +122,4 @@ The build succeeds but has some TypeScript warnings:
 ✅ **Comprehensive documentation**
 ✅ **Security and privacy compliance**
 
-Your MedTrack application is now ready for open source release and deployment!
+Your Meditrax application is now ready for open source release and deployment!

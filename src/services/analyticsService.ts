@@ -1,5 +1,5 @@
 /**
- * Advanced Analytics Service for MedTrack
+ * Advanced Analytics Service for Meditrax
  * Provides comprehensive data analysis, ML insights, and real-time analytics
  */
 
