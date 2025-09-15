@@ -33,6 +33,9 @@ A modern, responsive web application built with React and TypeScript for trackin
 - **Customizable Settings**: Themes, notifications, display preferences
 - **Responsive Design**: Optimized for desktop, tablet, and mobile devices
 
+### 🐞🔧 Known Bugs:
+- **Tapering System:** Sometimes you may get an incorrect dosage. *WIP*
+
 ## 🚀 Getting Started
 
 ### Prerequisites
