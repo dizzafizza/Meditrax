@@ -27,5 +27,5 @@ export default defineConfig({
       },
     },
   },
-  base: '/Meditrax/', // Use absolute base path matching homepage
+  base: '/', // Use root path for custom domain
 })
