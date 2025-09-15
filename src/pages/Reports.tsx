@@ -7,10 +7,14 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  Pill
+  Pill,
+  PlusCircle,
+  TrendingUp,
+  Database
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useMedicationStore } from '@/store';
-import { formatDate, generateCSV, downloadFile } from '@/utils/helpers';
+import { formatDate, generateCSV, downloadFile, generateId } from '@/utils/helpers';
 import { AdherenceReport, SideEffectReport } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -18,14 +22,160 @@ export function Reports() {
   const {
     medications,
     logs,
-    getMissedDoses
+    getMissedDoses,
+    addMedication,
+    logMedication
   } = useMedicationStore();
 
   const [selectedReport, setSelectedReport] = React.useState<'adherence' | 'side-effects' | 'summary'>('adherence');
   const [dateRange, setDateRange] = React.useState({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
+    start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // 90 days ago (more inclusive)
     end: new Date()
   });
+  const [isLoadingSampleData, setIsLoadingSampleData] = React.useState(false);
+
+  // Function to load sample data for testing and demonstration
+  const loadSampleData = async () => {
+    setIsLoadingSampleData(true);
+    try {
+      // Sample medications
+      const sampleMedications = [
+        {
+          name: 'Lisinopril',
+          dosage: '10',
+          unit: 'mg' as const,
+          frequency: 'once-daily' as const,
+          category: 'cardiovascular' as const,
+          color: '#ef4444',
+          isActive: true,
+          startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) // 60 days ago
+        },
+        {
+          name: 'Metformin',
+          dosage: '500',
+          unit: 'mg' as const,
+          frequency: 'twice-daily' as const,
+          category: 'diabetes' as const,
+          color: '#3b82f6',
+          isActive: true,
+          startDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000) // 45 days ago
+        },
+        {
+          name: 'Vitamin D3',
+          dosage: '1000',
+          unit: 'IU' as const,
+          frequency: 'once-daily' as const,
+          category: 'vitamin' as const,
+          color: '#f59e0b',
+          isActive: true,
+          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // 30 days ago
+        }
+      ];
+
+      // Add sample medications
+      const addedMedications: any[] = [];
+      for (const med of sampleMedications) {
+        addMedication(med);
+        addedMedications.push(med);
+      }
+
+      // Wait for state to update and get the medication IDs
+      setTimeout(() => {
+        // Get the current medications from the store to find the IDs
+        const currentMedications = medications.filter(m => 
+          addedMedications.some(added => added.name === m.name)
+        );
+
+        // Add sample medication logs (simulate realistic adherence patterns)
+        for (let i = 0; i < 30; i++) {
+          currentMedications.forEach((med, index) => {
+            // Simulate different adherence patterns
+            const adherenceRate = [0.95, 0.88, 0.92][index] || 0.9; // Different rates for each medication
+            
+            if (Math.random() < adherenceRate) {
+              // Log as taken with occasional simple side effects
+              const sideEffects = Math.random() < 0.1 ? 
+                ['mild headache', 'nausea', 'dizziness', 'fatigue'][Math.floor(Math.random() * 4)] : 
+                undefined;
+              
+              logMedication(med.id, undefined, undefined, 
+                sideEffects ? [sideEffects] : undefined
+              );
+            }
+          });
+        }
+
+        // Add some enhanced side effect reports for more detailed data
+        setTimeout(() => {
+          const updatedMedications = medications.filter(m => 
+            addedMedications.some(added => added.name === m.name)
+          );
+
+          updatedMedications.forEach((med, index) => {
+            // Add 1-3 enhanced side effect reports per medication
+            const numReports = Math.floor(Math.random() * 3) + 1;
+            const sideEffectOptions = [
+              { effect: 'Mild headache', severity: 'mild' as const, bodySystem: 'neurological' as const },
+              { effect: 'Nausea', severity: 'mild' as const, bodySystem: 'gastrointestinal' as const },
+              { effect: 'Dizziness', severity: 'mild' as const, bodySystem: 'neurological' as const },
+              { effect: 'Fatigue', severity: 'mild' as const, bodySystem: 'other' as const },
+              { effect: 'Dry mouth', severity: 'mild' as const, bodySystem: 'other' as const },
+              { effect: 'Stomach upset', severity: 'moderate' as const, bodySystem: 'gastrointestinal' as const }
+            ];
+
+            for (let j = 0; j < numReports; j++) {
+              const sideEffect = sideEffectOptions[Math.floor(Math.random() * sideEffectOptions.length)];
+              const daysAgo = Math.floor(Math.random() * 20) + 1; // 1-20 days ago
+              
+              const enhancedReport = {
+                id: generateId(),
+                medicationId: med.id,
+                medicationName: med.name,
+                sideEffect: sideEffect.effect,
+                severity: sideEffect.severity,
+                onset: 'within-hours' as const,
+                frequency: ['occasional', 'frequent'][Math.floor(Math.random() * 2)] as const,
+                duration: Math.floor(Math.random() * 12) + 1, // 1-12 hours
+                interference: ['none', 'mild'][Math.floor(Math.random() * 2)] as const,
+                bodySystem: sideEffect.bodySystem,
+                description: `${sideEffect.effect} experienced after taking ${med.name}`,
+                timestamp: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+                resolved: Math.random() < 0.8, // 80% resolved
+                resolvedDate: Math.random() < 0.8 ? new Date(Date.now() - (daysAgo - 1) * 24 * 60 * 60 * 1000) : undefined,
+                actionTaken: ['continued', 'reduced-dose'][Math.floor(Math.random() * 2)] as const,
+                relatedMedications: [],
+                doctorNotified: Math.random() < 0.3, // 30% notified doctor
+                reportedDates: [new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)],
+                followUpRequired: Math.random() < 0.2 // 20% need follow-up
+              };
+
+              // Add the enhanced side effect report to the medication
+              const currentReports = med.sideEffectReports || [];
+              const { updateMedication } = useMedicationStore.getState();
+              updateMedication(med.id, {
+                sideEffectReports: [...currentReports, enhancedReport],
+                enhancedMonitoring: true
+              });
+            }
+          });
+        }, 200);
+      }, 100);
+
+      toast.success('Sample data loaded! You can now see reports with realistic medication data.');
+    } catch (error) {
+      console.error('Failed to load sample data:', error);
+      toast.error('Failed to load sample data');
+    } finally {
+      setIsLoadingSampleData(false);
+    }
+  };
+
+  // Check if user has any data at all
+  const hasAnyData = medications.length > 0 || logs.length > 0;
+  const hasLogsInDateRange = logs.some(log => 
+    new Date(log.timestamp) >= dateRange.start && 
+    new Date(log.timestamp) <= dateRange.end
+  );
 
   // Generate adherence report
   const generateAdherenceReport = (): AdherenceReport[] => {
@@ -55,34 +205,78 @@ export function Reports() {
     }).filter(report => report.totalDoses > 0);
   };
 
-  // Generate side effects report
+  // Generate side effects report - combines both simple and enhanced side effect data
   const generateSideEffectsReport = (): SideEffectReport[] => {
-    const sideEffectsMap = new Map<string, { medication: string; effect: string; dates: Date[] }>();
+    const sideEffectsMap = new Map<string, { 
+      medication: string; 
+      effect: string; 
+      dates: Date[]; 
+      severity: 'mild' | 'moderate' | 'severe' | 'life-threatening';
+      medicationId: string;
+    }>();
 
+    // Check simple side effects from medication logs
     logs.forEach(log => {
       const medication = medications.find(med => med.id === log.medicationId);
       if (!medication || !log.sideEffectsReported) return;
+
+      // Filter logs within date range
+      const logDate = new Date(log.timestamp);
+      if (logDate < dateRange.start || logDate > dateRange.end) return;
 
       log.sideEffectsReported.forEach(effect => {
         const key = `${medication.name}-${effect}`;
         if (!sideEffectsMap.has(key)) {
           sideEffectsMap.set(key, {
             medication: medication.name,
+            medicationId: medication.id,
             effect,
-            dates: []
+            dates: [],
+            severity: 'mild' // Default severity for simple reports
           });
         }
         sideEffectsMap.get(key)!.dates.push(new Date(log.timestamp));
       });
     });
 
+    // Check enhanced side effect reports from medications
+    medications.forEach(medication => {
+      if (!medication.sideEffectReports) return;
+
+      medication.sideEffectReports.forEach(report => {
+        // Filter reports within date range
+        const reportDate = new Date(report.timestamp);
+        if (reportDate < dateRange.start || reportDate > dateRange.end) return;
+
+        const key = `${medication.name}-${report.sideEffect}`;
+        if (!sideEffectsMap.has(key)) {
+          sideEffectsMap.set(key, {
+            medication: medication.name,
+            medicationId: medication.id,
+            effect: report.sideEffect,
+            dates: [],
+            severity: report.severity
+          });
+        }
+        
+        const existing = sideEffectsMap.get(key)!;
+        existing.dates.push(new Date(report.timestamp));
+        
+        // Use the most severe severity if there are multiple reports
+        const severityLevels = { 'mild': 1, 'moderate': 2, 'severe': 3, 'life-threatening': 4 };
+        if (severityLevels[report.severity] > severityLevels[existing.severity]) {
+          existing.severity = report.severity;
+        }
+      });
+    });
+
     return Array.from(sideEffectsMap.entries()).map(([, data]) => ({
-      medicationId: medications.find(med => med.name === data.medication)?.id || '',
+      medicationId: data.medicationId,
       medicationName: data.medication,
       sideEffect: data.effect,
       frequency: data.dates.length,
-      severity: 'mild' as const, // Would need more data to determine actual severity
-      reportedDates: data.dates
+      severity: data.severity,
+      reportedDates: data.dates.sort((a, b) => a.getTime() - b.getTime()) // Sort dates chronologically
     }));
   };
 
@@ -130,10 +324,11 @@ export function Reports() {
     const csvData = generateCSV(sideEffectsReports.map(report => ({
       medication: report.medicationName,
       side_effect: report.sideEffect,
-      frequency: report.frequency,
       severity: report.severity,
+      frequency: report.frequency,
       first_reported: formatDate(report.reportedDates[0]),
-      last_reported: formatDate(report.reportedDates[report.reportedDates.length - 1])
+      last_reported: formatDate(report.reportedDates[report.reportedDates.length - 1]),
+      total_occurrences: report.reportedDates.length
     })));
 
     downloadFile(
@@ -186,6 +381,71 @@ export function Reports() {
     </button>
   );
 
+  // Show empty state if no data exists
+  if (!hasAnyData) {
+    return (
+      <div className="space-y-6">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Generate and export detailed medication reports
+            </p>
+          </div>
+        </div>
+
+        {/* No Data State */}
+        <div className="bg-white rounded-lg border border-gray-200 p-8">
+          <div className="text-center">
+            <BarChart3 className="mx-auto h-16 w-16 text-gray-400" />
+            <h3 className="mt-4 text-lg font-medium text-gray-900">No Medication Data Yet</h3>
+            <p className="mt-2 text-gray-500 max-w-md mx-auto">
+              To generate reports, you need to add medications and start logging your doses. 
+              Reports will show your adherence patterns, side effects, and medication trends.
+            </p>
+            
+            <div className="mt-8 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                <Link
+                  to="/medications"
+                  className="flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  <PlusCircle className="h-5 w-5 mr-2" />
+                  Add Your First Medication
+                </Link>
+                
+                <button
+                  onClick={loadSampleData}
+                  disabled={isLoadingSampleData}
+                  className="flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  <Database className="h-5 w-5 mr-2" />
+                  {isLoadingSampleData ? 'Loading...' : 'Load Sample Data'}
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
+                <div className="flex items-start space-x-3">
+                  <TrendingUp className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium">Reports will include:</p>
+                    <ul className="mt-1 list-disc list-inside space-y-1">
+                      <li>Medication adherence percentages</li>
+                      <li>Side effects tracking and frequency</li>
+                      <li>Missed doses and patterns</li>
+                      <li>Exportable data for healthcare providers</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -210,6 +470,14 @@ export function Reports() {
             onChange={(e) => setDateRange(prev => ({ ...prev, end: new Date(e.target.value) }))}
             className="px-3 py-2 border border-gray-300 rounded-md text-sm"
           />
+          <button
+            onClick={loadSampleData}
+            disabled={isLoadingSampleData}
+            className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+            title="Add sample data for testing"
+          >
+            <Database className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -345,10 +613,33 @@ export function Reports() {
               {adherenceReports.length === 0 ? (
                 <div className="text-center py-8">
                   <BarChart3 className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No data available</h3>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No adherence data available</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    No medication logs found for the selected date range.
+                    {!hasLogsInDateRange 
+                      ? 'No medication logs found for the selected date range. Try expanding the date range or start logging your medications.'
+                      : 'No medication logs found for the selected date range.'
+                    }
                   </p>
+                  {!hasLogsInDateRange && (
+                    <div className="mt-4 space-y-2">
+                      <Link
+                        to="/dashboard"
+                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                      >
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Start Logging Medications
+                      </Link>
+                      <p className="text-xs text-gray-400 mt-2">
+                        or <button 
+                          onClick={() => setDateRange({ 
+                            start: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), 
+                            end: new Date() 
+                          })}
+                          className="text-blue-500 hover:text-blue-700 underline"
+                        >expand to show all-time data</button>
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-hidden">
@@ -425,8 +716,22 @@ export function Reports() {
                   <AlertTriangle className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-2 text-sm font-medium text-gray-900">No side effects reported</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    No side effects have been logged for your medications.
+                    {hasLogsInDateRange 
+                      ? 'No side effects have been logged for your medications in this date range. This is good news!'
+                      : 'No side effects data available. Start logging medications to track any side effects.'
+                    }
                   </p>
+                  {!hasLogsInDateRange && (
+                    <div className="mt-4">
+                      <Link
+                        to="/dashboard"
+                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                      >
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Start Tracking Side Effects
+                      </Link>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-hidden">
@@ -440,6 +745,9 @@ export function Reports() {
                           Side Effect
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Severity
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Frequency
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -451,25 +759,44 @@ export function Reports() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {sideEffectsReports.map((report, index) => (
-                        <tr key={index}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {report.medicationName}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {report.sideEffect}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {report.frequency}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDate(report.reportedDates[0])}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDate(report.reportedDates[report.reportedDates.length - 1])}
-                          </td>
-                        </tr>
-                      ))}
+                      {sideEffectsReports.map((report, index) => {
+                        const getSeverityBadge = (severity: string) => {
+                          const severityColors = {
+                            'mild': 'bg-green-100 text-green-800',
+                            'moderate': 'bg-yellow-100 text-yellow-800',
+                            'severe': 'bg-red-100 text-red-800',
+                            'life-threatening': 'bg-purple-100 text-purple-800'
+                          };
+                          return (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${severityColors[severity] || 'bg-gray-100 text-gray-800'}`}>
+                              {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                            </span>
+                          );
+                        };
+
+                        return (
+                          <tr key={index}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {report.medicationName}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {report.sideEffect}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              {getSeverityBadge(report.severity)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {report.frequency} time{report.frequency !== 1 ? 's' : ''}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(report.reportedDates[0])}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(report.reportedDates[report.reportedDates.length - 1])}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
