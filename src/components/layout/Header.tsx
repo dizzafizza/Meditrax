@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Bell, Search, User, Clock, Settings, Heart, ChevronDown } from 'lucide-react';
+import { Menu, Bell, Search, User, Clock, Settings, Heart, ChevronDown, Pill } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { formatTime } from '@/utils/helpers';
 import { useGlobalSearch } from '@/hooks/useGlobalSearch';
@@ -109,7 +109,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm backdrop-blur-sm bg-white/95 supports-[backdrop-filter]:bg-white/95">
       {/* Left side */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3 sm:space-x-4">
         <button
           onClick={onMenuClick}
           className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 touch-target"
@@ -117,6 +117,15 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Menu className="h-5 w-5" />
         </button>
         
+        {/* Mobile Logo */}
+        <div className="sm:hidden flex items-center space-x-2">
+          <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
+            <Pill className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-lg font-semibold text-gray-900">MedTrack</span>
+        </div>
+        
+        {/* Desktop Greeting */}
         <div className="hidden sm:block">
           <h1 className="text-xl font-semibold text-gray-900" data-testid="header-logo">
             Good {currentTime.getHours() < 12 ? 'morning' : currentTime.getHours() < 18 ? 'afternoon' : 'evening'}

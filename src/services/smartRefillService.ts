@@ -37,17 +37,17 @@ export class PersonalRefillService {
         this.createDefaultTracking(medication);
 
       // Calculate current pill count
-      const currentPillCount = this.calculateCurrentPillCount(medication);
+      const currentInventoryCount = this.calculateCurrentInventoryCount(medication);
 
       // Generate refill prediction
       const prediction = PersonalMedicationTracker.predictRefillNeeds(
-        medication, currentPillCount, pattern, tracking
+        medication, currentInventoryCount, pattern, tracking
       );
       refillPredictions.push(prediction);
 
       // Generate alerts
       const medicationAlerts = PersonalMedicationTracker.generateMedicationAlerts(
-        medication, currentPillCount, prediction, tracking, []
+        medication, currentInventoryCount, prediction, tracking, []
       );
       alerts.push(...medicationAlerts);
 
@@ -219,7 +219,7 @@ export class PersonalRefillService {
     };
   }
 
-  private static calculateCurrentPillCount(medication: Medication): number {
+  private static calculateCurrentInventoryCount(medication: Medication): number {
     if (medication.pillInventory && medication.pillInventory.length > 0) {
       return medication.pillInventory.reduce((total, item) => total + item.currentCount, 0);
     }

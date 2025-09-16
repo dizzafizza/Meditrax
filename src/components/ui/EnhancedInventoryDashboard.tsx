@@ -13,6 +13,7 @@ import { PersonalRefillService } from '@/services/smartRefillService';
 import { formatDate } from '@/utils/helpers';
 import { InventoryConfigModal } from '@/components/modals/InventoryConfigModal';
 import { PharmacyInfo, PersonalMedicationTracking } from '@/types/enhanced-inventory';
+import { calculateDailyUsageRate, isInventoryLow, getInventoryStatus, formatInventoryDisplay } from '@/utils/inventoryHelpers';
 
 interface InventoryInsight {
   type: 'info' | 'warning' | 'success' | 'error';
@@ -55,7 +56,7 @@ export function PersonalMedicationDashboard() {
     try {
       // Filter to only medications that have trackable inventory
       const trackableMedications = medications.filter(med => {
-        // Has inventory or legacy pill count
+        // Has inventory or legacy count
         const hasInventory = (med.pillInventory && med.pillInventory.length > 0) || 
                             (med.pillsRemaining !== undefined && med.pillsRemaining > 0);
         return med.isActive && hasInventory;
@@ -65,7 +66,7 @@ export function PersonalMedicationDashboard() {
         setInsights([{
           type: 'info',
           title: 'No Trackable Medications',
-          message: 'Enable "Multiple Pills" on your medications to start tracking inventory.',
+          message: 'Add inventory quantities to your medications to start tracking supply levels.',
           action: 'Go to Medications page'
         }]);
         setValidPredictions([]);
@@ -143,15 +144,14 @@ export function PersonalMedicationDashboard() {
       // Add current inventory summary
       const totalMedications = trackableMedications.length;
       const medicationsWithLowStock = trackableMedications.filter(med => {
-        const currentCount = (med.pillInventory?.reduce((sum, item) => sum + item.currentCount, 0) || med.pillsRemaining || 0);
-        return currentCount <= 7; // Less than a week supply
+        return isInventoryLow(med, logs);
       }).length;
 
       if (medicationsWithLowStock > 0) {
         newInsights.unshift({
           type: 'warning',
           title: 'Inventory Summary',
-          message: `${medicationsWithLowStock} of ${totalMedications} medications running low (≤7 days supply)`,
+          message: `${medicationsWithLowStock} of ${totalMedications} medications running low (≤1 week supply)`,
           action: 'Review inventory below'
         });
       } else {
@@ -364,12 +364,80 @@ export function PersonalMedicationDashboard() {
         </div>
       </div>
 
+      {/* Current Inventory Status */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">Current Inventory</h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Real-time medication supply levels and usage patterns
+          </p>
+        </div>
+
+        <div className="p-6">
+          {medications.filter(med => med.isActive && (med.pillsRemaining || 0) > 0).length > 0 ? (
+            <div className="space-y-4">
+              {medications
+                .filter(med => med.isActive && (med.pillsRemaining || 0) > 0)
+                .map((medication) => {
+                  const status = getInventoryStatus(medication, logs);
+                  const inventoryDisplay = formatInventoryDisplay(medication);
+                  
+                  const getStatusColor = (status: string) => {
+                    switch (status) {
+                      case 'critical': return 'border-red-200 bg-red-50';
+                      case 'low': return 'border-orange-200 bg-orange-50';
+                      case 'out': return 'border-gray-200 bg-gray-50';
+                      default: return 'border-green-200 bg-green-50';
+                    }
+                  };
+                  
+                  return (
+                    <div key={medication.id} className={`flex items-center justify-between p-4 rounded-lg border ${getStatusColor(status.status)}`}>
+                      <div className="flex items-center space-x-3">
+                        <div 
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: medication.color }}
+                        />
+                        <div>
+                          <h4 className="font-medium text-gray-900">{medication.name}</h4>
+                          <p className="text-sm text-gray-600">{medication.dosage} {medication.unit} • {medication.frequency}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-sm font-medium ${
+                          status.status === 'critical' ? 'text-red-700' :
+                          status.status === 'low' ? 'text-orange-700' :
+                          status.status === 'out' ? 'text-gray-700' :
+                          'text-green-700'
+                        }`}>
+                          {inventoryDisplay}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {status.daysRemaining === Infinity ? 'Adequate supply' : `${status.daysRemaining} days at current usage`}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Package className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No inventory to track</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Add inventory quantities to your medications to start tracking.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Future Predictions */}
       <div className="bg-white rounded-lg border border-gray-200">
         <div className="p-6 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Your Refill Calendar</h3>
+          <h3 className="text-lg font-medium text-gray-900">Refill Predictions</h3>
           <p className="text-sm text-gray-600 mt-1">
-            When you'll likely need refills based on your usage
+            When you'll likely need refills based on your usage patterns
           </p>
         </div>
 
@@ -388,7 +456,7 @@ export function PersonalMedicationDashboard() {
                     <div className="text-sm font-medium text-gray-900">
                       {Math.ceil((prediction.estimatedEmptyDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days
                     </div>
-                    <div className="text-xs text-gray-500">remaining</div>
+                    <div className="text-xs text-gray-500">until refill needed</div>
                   </div>
                 </div>
               ))}

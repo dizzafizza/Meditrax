@@ -689,6 +689,66 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     taperingRequired: false
   },
 
+  // ADVANCED SUPPLEMENTS & NOOTROPICS
+  {
+    name: "CoQ10",
+    brandNames: ["Ubiquinone", "Ubiquinol", "Coenzyme Q10"],
+    category: "supplement",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "minimal",
+    commonDosages: ["30", "60", "100", "200", "300"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["once-daily", "twice-daily"],
+    description: "Coenzyme Q10 for heart health, cellular energy production, and antioxidant support",
+    commonSideEffects: ["nausea", "diarrhea", "heartburn", "headache"],
+    commonInteractions: ["blood thinners", "blood pressure medications"],
+    withdrawalRisk: "none",
+    taperingRequired: false
+  },
+  {
+    name: "NAD+",
+    brandNames: ["Nicotinamide Adenine Dinucleotide", "NAD Plus"],
+    category: "supplement",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "minimal",
+    commonDosages: ["100", "250", "300", "500"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["once-daily"],
+    description: "NAD+ precursor for cellular energy, DNA repair, and anti-aging support",
+    commonSideEffects: ["nausea", "fatigue", "headache", "diarrhea"],
+    withdrawalRisk: "none",
+    taperingRequired: false
+  },
+  {
+    name: "NAC",
+    brandNames: ["N-Acetylcysteine", "N-Acetyl Cysteine"],
+    category: "supplement",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "minimal",
+    commonDosages: ["500", "600", "1000", "1200"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["once-daily", "twice-daily"],
+    description: "N-Acetylcysteine for respiratory health, liver support, and antioxidant benefits",
+    commonSideEffects: ["nausea", "vomiting", "diarrhea", "drowsiness"],
+    commonInteractions: ["nitroglycerin", "activated charcoal"],
+    withdrawalRisk: "none",
+    taperingRequired: false
+  },
+  {
+    name: "Alpha-GPC",
+    brandNames: ["Alpha-Glycerophosphocholine", "Choline Alfoscerate"],
+    category: "supplement",
+    dependencyRiskCategory: "low-risk",
+    riskLevel: "minimal",
+    commonDosages: ["150", "300", "600"],
+    commonUnits: ["mg"],
+    commonFrequencies: ["once-daily", "twice-daily"],
+    description: "Cholinergic nootropic for cognitive enhancement and memory support",
+    commonSideEffects: ["headache", "dizziness", "skin rash", "heartburn"],
+    withdrawalRisk: "none",
+    taperingRequired: false
+  },
+
   // PLANT-BASED DRUGS AND ETHNOBOTANICALS
   {
     name: "Kratom",
@@ -919,20 +979,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     taperingRequired: false
   },
   {
-    name: "Lion's Mane",
-    brandNames: ["Hericium erinaceus"],
-    category: "herbal",
-    dependencyRiskCategory: "low-risk",
-    riskLevel: "minimal",
-    commonDosages: ["500", "1000", "1500"],
-    commonUnits: ["mg"],
-    commonFrequencies: ["once-daily", "twice-daily"],
-    description: "Medicinal mushroom for cognitive support and nerve health",
-    commonSideEffects: ["skin rash", "nausea"],
-    withdrawalRisk: "none",
-    taperingRequired: false
-  },
-  {
     name: "Reishi",
     brandNames: ["Ganoderma lucidum"],
     category: "herbal",
@@ -1128,20 +1174,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     }
   },
   {
-    name: "CoQ10",
-    brandNames: ["Coenzyme Q10", "Ubiquinone"],
-    category: "supplement",
-    dependencyRiskCategory: "low-risk",
-    riskLevel: "minimal",
-    commonDosages: ["30", "60", "100", "200"],
-    commonUnits: ["mg"],
-    commonFrequencies: ["once-daily"],
-    description: "Antioxidant supplement for cellular energy",
-    commonSideEffects: ["stomach upset", "loss of appetite"],
-    withdrawalRisk: "none",
-    taperingRequired: false
-  },
-  {
     name: "Glucosamine",
     brandNames: ["Glucosamine Sulfate", "Glucosamine HCl"],
     category: "supplement",
@@ -1194,19 +1226,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     commonFrequencies: ["twice-daily", "three-times-daily"],
     description: "Original nootropic compound for cognitive enhancement",
     commonSideEffects: ["nervousness", "insomnia", "depression"],
-    withdrawalRisk: "none",
-    taperingRequired: false
-  },
-  {
-    name: "Alpha-GPC",
-    category: "supplement",
-    dependencyRiskCategory: "low-risk",
-    riskLevel: "minimal",
-    commonDosages: ["300", "600"],
-    commonUnits: ["mg"],
-    commonFrequencies: ["once-daily", "twice-daily"],
-    description: "Choline compound for cognitive function and acetylcholine",
-    commonSideEffects: ["heartburn", "headache", "insomnia"],
     withdrawalRisk: "none",
     taperingRequired: false
   },
@@ -1478,32 +1497,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     }
   },
   {
-    name: "LSD",
-    brandNames: ["Acid", "Lucy", "L"],
-    category: "recreational",
-    dependencyRiskCategory: "low-risk",
-    riskLevel: "moderate",
-    commonDosages: ["15", "50", "100", "200", "400"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki standards)
-    commonUnits: ["mcg"],
-    commonFrequencies: ["as-needed"],
-    description: "Synthetic psychedelic; illegal in most jurisdictions",
-    commonSideEffects: ["visual/auditory hallucinations", "altered perception", "increased heart rate", "anxiety"],
-    commonInteractions: ["MAOIs", "lithium", "antidepressants"],
-    withdrawalRisk: "none",
-    taperingRequired: false,
-    psychologicalSupport: {
-      adherenceFactors: ["set and setting", "experience level", "mental state"],
-      motivationalMessages: [
-        "Always test with Ehrlich reagent - never take untested tabs",
-        "Start with 50mcg or less for first time",
-        "Clear your schedule for 12+ hours minimum",
-        "Wait 2+ weeks between sessions for tolerance reset",
-        "Avoid if you're on psychiatric medications"
-      ],
-      riskTriggers: ["frequent use", "unknown dosage", "unsafe environments", "mental health issues"]
-    }
-  },
-  {
     name: "MDMA",
     brandNames: ["Ecstasy", "Molly", "E"],
     category: "recreational",
@@ -1530,33 +1523,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
     }
   },
   {
-    name: "Cocaine",
-    brandNames: ["Coke", "Blow", "Snow"],
-    category: "recreational",
-    dependencyRiskCategory: "stimulant",
-    riskLevel: "high",
-    commonDosages: ["10", "30", "60", "90", "150"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
-    commonUnits: ["mg"],
-    commonFrequencies: ["as-needed"],
-    description: "Powerful stimulant with dopamine reuptake inhibition; illegal in most countries. Duration: 15-30min onset, 1-2 hours total",
-    commonSideEffects: ["euphoria", "increased energy", "paranoia", "heart palpitations", "nose damage"],
-    commonInteractions: ["alcohol", "MAOIs", "heart medications", "blood pressure medications"],
-    withdrawalRisk: "moderate",
-    taperingRequired: false,
-    psychologicalSupport: {
-      adherenceFactors: ["energy boost", "confidence", "social situations"],
-      motivationalMessages: [
-        "Test every batch with fentanyl strips - contamination is common",
-        "Never mix with alcohol - creates cardiotoxic cocaethylene",
-        "Start with small bumps (10-20mg) and wait 30min between doses",
-        "Have someone monitor you for cardiac symptoms",
-        "Avoid daily use - highly psychologically addictive",
-        "Use nasal spray/saline to reduce nasal damage"
-      ],
-      riskTriggers: ["binge use", "mixing with depressants", "frequent use", "injection use"]
-    }
-  },
-  {
     name: "LSD",
     brandNames: ["Acid", "Lucy", "Tabs"],
     category: "recreational",
@@ -1579,31 +1545,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
         "Avoid if you have history of psychosis or are on psychiatric medications"
       ],
       riskTriggers: ["high doses", "unsafe settings", "mental health issues", "frequent use"]
-    }
-  },
-  {
-    name: "Psilocybin",
-    brandNames: ["Magic Mushrooms", "Shrooms", "Mushrooms"],
-    category: "herbal",
-    dependencyRiskCategory: "low-risk",
-    riskLevel: "moderate",
-    commonDosages: ["0.5", "1", "2", "3.5"],
-    commonUnits: ["g"],
-    commonFrequencies: ["as-needed"],
-    description: "Psychedelic mushrooms; legal status varies by location",
-    commonSideEffects: ["visual hallucinations", "altered perception", "nausea", "anxiety", "spiritual experiences"],
-    commonInteractions: ["SSRIs", "MAOIs", "lithium"],
-    withdrawalRisk: "none",
-    taperingRequired: false,
-    psychologicalSupport: {
-      adherenceFactors: ["therapeutic use", "spiritual exploration", "personal growth"],
-      motivationalMessages: [
-        "Know your mushroom species - misidentification can be fatal",
-        "Start with 0.5-1g to assess potency and sensitivity",
-        "Fast 4-6 hours before use to reduce nausea",
-        "Have a trip sitter present, especially for higher doses"
-      ],
-      riskTriggers: ["misidentified species", "high doses", "unsafe settings", "mental health conditions"]
     }
   },
   {
@@ -1689,39 +1630,6 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
         "Take magnesium to reduce jaw clenching and muscle tension"
       ],
       riskTriggers: ["binge use", "injection use", "sleep deprivation", "paranoid thoughts"]
-    }
-  },
-  {
-    name: "Methamphetamine",
-    brandNames: ["Crystal Meth", "Ice", "Glass"],
-    category: "recreational",
-    dependencyRiskCategory: "stimulant",
-    riskLevel: "high",
-    commonDosages: ["5", "15", "30", "50", "100"], // Threshold, Light, Common, Strong, Heavy (psychonaut wiki)
-    commonUnits: ["mg"],
-    commonFrequencies: ["as-needed"],
-    description: "Highly neurotoxic amphetamine with extreme addiction potential; illegal. Duration: 30min-2h onset, 8-24 hours total",
-    commonSideEffects: ["extreme euphoria", "hyperfocus", "paranoia", "psychosis", "dental problems"],
-    commonInteractions: ["all medications", "MAOIs", "heart medications"],
-    withdrawalRisk: "severe",
-    taperingRequired: true,
-    taperingRecommendations: {
-      method: "linear",
-      durationWeeks: 4,
-      reductionPercent: 25,
-      notes: "Methamphetamine withdrawal can cause severe depression and suicidal thoughts. Professional support strongly recommended."
-    },
-    psychologicalSupport: {
-      adherenceFactors: ["extreme stimulation", "productivity", "euphoria"],
-      motivationalMessages: [
-        "Seek immediate professional help - meth is extremely addictive",
-        "Never inject - extreme risk of HIV, hepatitis, abscesses",
-        "Start extremely low (5mg) - purity varies drastically",
-        "Maintain oral hygiene obsessively - meth mouth is severe",
-        "Monitor for psychosis, paranoia, hyperthermia",
-        "Stay hydrated and force yourself to eat regularly"
-      ],
-      riskTriggers: ["injection use", "binge use", "psychotic symptoms", "dental problems"]
     }
   },
   {
@@ -1838,22 +1746,292 @@ export const MEDICATION_DATABASE: MedicationDatabaseEntry[] = [
       riskTriggers: ["daily use", "direct inhalation", "standing use", "oxygen deprivation"]
     }
   },
+  {
+    name: "Cocaine",
+    brandNames: ["Coke", "Blow", "Snow", "Powder"],
+    category: "recreational",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["5", "30", "60", "90", "150"], // mg insufflated - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Powerful stimulant with high addiction potential and cardiovascular risks. Duration: 15-30 minutes insufflated",
+    commonSideEffects: ["euphoria", "increased energy", "paranoia", "anxiety", "heart palpitations", "nosebleeds", "insomnia"],
+    commonInteractions: ["alcohol", "MAOIs", "heart medications", "blood pressure medications"],
+    withdrawalRisk: "high",
+    taperingRequired: false,
+    taperingRecommendations: {
+      method: "custom",
+      durationWeeks: 4,
+      reductionPercent: 0,
+      notes: "Cocaine withdrawal involves psychological symptoms. Professional addiction treatment recommended."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["high reinforcement", "social use", "energy enhancement"],
+      motivationalMessages: [
+        "Never mix with alcohol - creates cardiotoxic cocaethylene",
+        "Use clean supplies if insufflating to prevent infections",
+        "Take breaks between lines to assess effects",
+        "Stay hydrated and eat regularly during use",
+        "Consider harm reduction services if using regularly"
+      ],
+      riskTriggers: ["alcohol combination", "frequent redosing", "daily use", "unknown purity"]
+    }
+  },
+  {
+    name: "Ketamine",
+    brandNames: ["K", "Special K", "Ket"],
+    category: "recreational",
+    dependencyRiskCategory: "dissociative",
+    riskLevel: "moderate",
+    commonDosages: ["10", "30", "75", "150", "250"], // mg insufflated - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Dissociative anesthetic causing K-holes at high doses. Duration: 1-2 hours insufflated",
+    commonSideEffects: ["dissociation", "euphoria", "confusion", "nausea", "bladder damage", "memory impairment"],
+    commonInteractions: ["alcohol", "benzodiazepines", "opioids", "all depressants"],
+    withdrawalRisk: "moderate",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["dissociative effects", "therapeutic potential", "escape mechanism"],
+      motivationalMessages: [
+        "Avoid frequent use - causes serious bladder damage",
+        "Use in safe environment with trusted people",
+        "Lower doses provide therapeutic benefits without K-hole",
+        "Consider therapeutic ketamine clinics for depression",
+        "Test your supply - adulterants are common"
+      ],
+      riskTriggers: ["frequent use", "high doses", "unsafe environments", "mixing with depressants"]
+    }
+  },
+  {
+    name: "DMT",
+    brandNames: ["N,N-Dimethyltryptamine", "Dimitri", "Spirit Molecule"],
+    category: "recreational",
+    dependencyRiskCategory: "psychedelic",
+    riskLevel: "moderate",
+    commonDosages: ["5", "15", "30", "50", "70"], // mg vaporized - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Intense short-acting psychedelic. Duration: 5-15 minutes vaporized, 4-6 hours oral with MAOI",
+    commonSideEffects: ["intense visuals", "entity encounters", "time distortion", "nausea", "anxiety", "elevated heart rate"],
+    commonInteractions: ["MAOIs", "SSRIs", "lithium", "tramadol"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["spiritual exploration", "breakthrough experiences", "personal growth"],
+      motivationalMessages: [
+        "Start with very low doses - effects are extremely intense",
+        "Have an experienced sitter present for safety",
+        "Prepare mentally - experiences can be overwhelming",
+        "Integration time between uses is important",
+        "Never combine with MAOIs unless experienced with ayahuasca"
+      ],
+      riskTriggers: ["mental health issues", "high doses without experience", "MAOI combinations", "frequent use"]
+    }
+  },
+  {
+    name: "2C-B",
+    brandNames: ["2C-Bromo", "Nexus", "Venus"],
+    category: "recreational",
+    dependencyRiskCategory: "psychedelic",
+    riskLevel: "moderate",
+    commonDosages: ["2", "8", "18", "25", "35"], // mg oral - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Phenylethylamine psychedelic with empathogenic properties. Duration: 4-8 hours oral",
+    commonSideEffects: ["visual hallucinations", "euphoria", "nausea", "body load", "increased heart rate"],
+    commonInteractions: ["MAOIs", "lithium", "tramadol"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["manageable intensity", "empathogenic effects", "sexual enhancement"],
+      motivationalMessages: [
+        "Dose carefully - small differences have big effects",
+        "Expect significant nausea on come-up",
+        "Safe environment essential - effects can be intense",
+        "Test substances - many fake 2C-B contains dangerous chemicals",
+        "Wait 2 weeks minimum between uses for tolerance reset"
+      ],
+      riskTriggers: ["unknown dosage", "frequent use", "adulterants", "unsafe setting"]
+    }
+  },
+  {
+    name: "Amphetamine",
+    brandNames: ["Speed", "Adderall", "Dextroamphetamine"],
+    category: "recreational",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["2.5", "10", "20", "30", "50"], // mg oral - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed", "daily"],
+    description: "CNS stimulant with high addiction potential. Duration: 6-12 hours oral",
+    commonSideEffects: ["increased focus", "euphoria", "insomnia", "appetite suppression", "anxiety", "paranoia"],
+    commonInteractions: ["MAOIs", "heart medications", "blood pressure medications"],
+    withdrawalRisk: "high",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "linear",
+      durationWeeks: 2,
+      reductionPercent: 25,
+      notes: "Gradual reduction helps manage rebound depression and fatigue"
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["productivity enhancement", "energy boost", "weight loss", "social confidence"],
+      motivationalMessages: [
+        "Take regular breaks to prevent tolerance and dependence",
+        "Eat regularly even when not hungry - malnutrition is common",
+        "Get adequate sleep - chronic sleep deprivation is harmful",
+        "Stay hydrated and monitor blood pressure if using regularly",
+        "Consider lower therapeutic doses over recreational amounts"
+      ],
+      riskTriggers: ["daily use", "high doses", "sleep deprivation", "poor nutrition"]
+    }
+  },
+  {
+    name: "DXM",
+    brandNames: ["Dextromethorphan", "Robitussin", "Triple C"],
+    category: "recreational",
+    dependencyRiskCategory: "dissociative",
+    riskLevel: "moderate",
+    commonDosages: ["100", "200", "400", "600", "900"], // mg oral - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "OTC cough suppressant with dissociative effects at high doses. Duration: 6-12 hours",
+    commonSideEffects: ["dissociation", "euphoria", "nausea", "vomiting", "confusion", "motor impairment"],
+    commonInteractions: ["MAOIs", "SSRIs", "acetaminophen", "antihistamines"],
+    withdrawalRisk: "low",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["legal accessibility", "dissociative escape", "introspective experiences"],
+      motivationalMessages: [
+        "Use pure DXM products only - avoid combination medications",
+        "Never use products containing acetaminophen - liver damage risk",
+        "Week-per-plateau rule: wait weeks equal to plateau reached",
+        "Start with low doses - effects vary greatly between individuals",
+        "Have a trip sitter - motor impairment is significant"
+      ],
+      riskTriggers: ["combination products", "frequent use", "high plateaus", "driving while impaired"]
+    }
+  },
+  {
+    name: "GHB",
+    brandNames: ["Gamma-Hydroxybutyric Acid", "G", "Liquid Ecstasy"],
+    category: "recreational",
+    dependencyRiskCategory: "depressant",
+    riskLevel: "high",
+    commonDosages: ["0.5", "1", "2.5", "3.5", "5"], // grams oral - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["g"],
+    commonFrequencies: ["as-needed"],
+    description: "CNS depressant with euphoric effects. Duration: 2-4 hours. EXTREMELY dangerous with alcohol",
+    commonSideEffects: ["euphoria", "disinhibition", "dizziness", "nausea", "unconsciousness", "respiratory depression"],
+    commonInteractions: ["alcohol", "benzodiazepines", "opioids", "all depressants"],
+    withdrawalRisk: "severe",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "custom",
+      durationWeeks: 2,
+      reductionPercent: 10,
+      notes: "GHB withdrawal can cause seizures. Medical supervision required for regular users."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["euphoric effects", "social disinhibition", "sleep enhancement"],
+      motivationalMessages: [
+        "NEVER mix with alcohol or other depressants - can be fatal",
+        "Measure doses precisely - overdose window is very narrow",
+        "Don't redose for 3+ hours - delayed onset can cause overdose",
+        "Use with trusted people only - unconsciousness is common",
+        "Seek medical help immediately if someone becomes unresponsive"
+      ],
+      riskTriggers: ["alcohol combination", "frequent redosing", "unknown concentration", "using alone"]
+    }
+  },
+  {
+    name: "Mescaline",
+    brandNames: ["Peyote", "San Pedro", "Bolivian Torch"],
+    category: "recreational",
+    dependencyRiskCategory: "psychedelic",
+    riskLevel: "moderate",
+    commonDosages: ["50", "200", "400", "600", "800"], // mg oral - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Classic psychedelic from various cacti. Duration: 10-16 hours oral",
+    commonSideEffects: ["visual hallucinations", "euphoria", "nausea", "vomiting", "increased heart rate"],
+    commonInteractions: ["MAOIs", "lithium", "tramadol"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["spiritual exploration", "natural origin", "long history of use"],
+      motivationalMessages: [
+        "Prepare for long duration - 12+ hours is common",
+        "Expect significant nausea in first 2-3 hours",
+        "Set and setting crucial for positive experiences",
+        "Have experienced sitter available throughout",
+        "Respect indigenous traditions if using peyote"
+      ],
+      riskTriggers: ["mental health issues", "unsafe environment", "frequent use", "high doses"]
+    }
+  },
+  {
+    name: "Salvia Divinorum",
+    brandNames: ["Salvia", "Diviner's Sage", "Ska María Pastora"],
+    category: "recreational",
+    dependencyRiskCategory: "psychedelic",
+    riskLevel: "moderate",
+    commonDosages: ["0.25", "0.5", "1", "2.5", "5"], // grams smoked - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["g"],
+    commonFrequencies: ["as-needed"],
+    description: "Intense short-acting dissociative psychedelic. Duration: 5-30 minutes smoked",
+    commonSideEffects: ["intense dissociation", "reality distortion", "fear", "confusion", "loss of body awareness"],
+    commonInteractions: ["generally safe with other substances"],
+    withdrawalRisk: "none",
+    taperingRequired: false,
+    psychologicalSupport: {
+      adherenceFactors: ["intense experiences", "legal status", "short duration"],
+      motivationalMessages: [
+        "Have a sitter present - users often lose awareness of surroundings",
+        "Use in safe, soft environment - falling and injury common",
+        "Start with very small amounts - effects are unpredictable",
+        "Respect the intensity - experiences can be traumatic",
+        "Consider lower extract strengths for first experiences"
+      ],
+      riskTriggers: ["high extracts", "unsafe environment", "using alone", "frequent use"]
+    }
+  },
+  {
+    name: "Methamphetamine",
+    brandNames: ["Crystal Meth", "Ice", "Glass", "Tina"],
+    category: "recreational",
+    dependencyRiskCategory: "stimulant",
+    riskLevel: "high",
+    commonDosages: ["5", "10", "30", "50", "100"], // mg oral - Threshold, Light, Common, Strong, Heavy
+    commonUnits: ["mg"],
+    commonFrequencies: ["as-needed"],
+    description: "Highly addictive stimulant with severe health consequences. Duration: 8-24 hours oral",
+    commonSideEffects: ["intense euphoria", "increased energy", "hyperfocus", "insomnia", "paranoia", "psychosis", "dental problems"],
+    commonInteractions: ["MAOIs", "heart medications", "blood pressure medications"],
+    withdrawalRisk: "severe",
+    taperingRequired: true,
+    taperingRecommendations: {
+      method: "custom",
+      durationWeeks: 8,
+      reductionPercent: 0,
+      notes: "Methamphetamine addiction requires professional treatment. Withdrawal involves severe depression and fatigue."
+    },
+    psychologicalSupport: {
+      adherenceFactors: ["extreme euphoria", "productivity boost", "weight loss", "sexual enhancement"],
+      motivationalMessages: [
+        "Seek professional addiction treatment if using regularly",
+        "Test supplies - adulteration with fentanyl is increasing",
+        "Maintain oral hygiene - meth mouth is preventable",
+        "Force yourself to eat and sleep during use",
+        "Consider harm reduction services and needle exchanges"
+      ],
+      riskTriggers: ["daily use", "IV administration", "sleep deprivation", "poor nutrition", "unsafe sex"]
+    }
+  },
 
   // ADDITIONAL SUPPLEMENTS
-  {
-    name: "NAD+",
-    brandNames: ["Nicotinamide Adenine Dinucleotide"],
-    category: "supplement",
-    dependencyRiskCategory: "low-risk",
-    riskLevel: "minimal",
-    commonDosages: ["250", "500"],
-    commonUnits: ["mg"],
-    commonFrequencies: ["once-daily"],
-    description: "Cellular energy coenzyme for longevity and metabolism",
-    commonSideEffects: ["nausea", "fatigue", "headache"],
-    withdrawalRisk: "none",
-    taperingRequired: false
-  },
   {
     name: "NMN",
     brandNames: ["Nicotinamide Mononucleotide"],

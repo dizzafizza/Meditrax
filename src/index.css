@@ -140,6 +140,30 @@
     @apply fixed inset-y-0 left-0 z-50 w-full sm:w-64 transform transition-transform duration-300 ease-in-out;
   }
   
+  /* Better mobile card spacing */
+  .mobile-card-container {
+    @apply p-3 sm:p-4 space-y-3 sm:space-y-4;
+  }
+  
+  /* Mobile dashboard improvements */
+  .mobile-dashboard-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6;
+  }
+  
+  /* Better mobile typography scaling */
+  .mobile-title {
+    @apply text-xl sm:text-2xl lg:text-3xl font-bold;
+  }
+  
+  .mobile-subtitle {
+    @apply text-base sm:text-lg font-medium;
+  }
+  
+  /* Improved mobile padding and margins */
+  .mobile-section {
+    @apply py-4 sm:py-6 px-3 sm:px-4;
+  }
+  
   /* Improved search bar for mobile */
   .mobile-search {
     @apply w-full h-12 sm:h-10 pl-10 pr-4 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent touch-manipulation;

@@ -52,7 +52,7 @@ export function WithdrawalSymptomTracker({ medication, isOpen, onClose }: Withdr
   const category = medication.dependencyRiskCategory;
   const symptomList = commonSymptoms[category as keyof typeof commonSymptoms] || commonSymptoms['benzodiazepine'];
 
-  const activeWithdrawal = medication.dependencePrevention?.withdrawalHistory.find(event => !event.endDate);
+  const activeWithdrawal = medication.dependencePrevention?.withdrawalHistory.find(event => !event.endDate && !event.successfullyCompleted);
   const daysSinceStart = activeWithdrawal?.startDate 
     ? Math.floor((Date.now() - new Date(activeWithdrawal.startDate).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
@@ -177,6 +177,12 @@ export function WithdrawalSymptomTracker({ medication, isOpen, onClose }: Withdr
             withdrawalHistory: updatedHistory
           }
         });
+      } else {
+        // No active withdrawal found, but user is trying to log symptoms
+        toast.error('No active withdrawal tracking found. Please start withdrawal tracking first from the medications page.');
+        onClose();
+        return;
+      }
 
         // Generate support message based on symptoms
         const totalSeverity = Object.values(symptoms).reduce((sum, severity) => sum + severity, 0);
@@ -217,10 +223,10 @@ export function WithdrawalSymptomTracker({ medication, isOpen, onClose }: Withdr
           });
         }
 
-        toast.success('Withdrawal symptoms logged successfully');
-        onClose();
-      }
+      toast.success('Withdrawal symptoms logged successfully');
+      onClose();
     } catch (error) {
+      console.error('Error logging withdrawal symptoms:', error);
       toast.error('Failed to log symptoms');
     } finally {
       setIsSubmitting(false);

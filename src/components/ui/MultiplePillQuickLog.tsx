@@ -162,10 +162,10 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
                 />
                 <div>
                   <div className="text-sm font-medium text-gray-900">
-                    {pillConfig.strength}{pillConfig.unit} {pillConfig.color} pill
+                    {pillConfig.strength}{pillConfig.unit} {pillConfig.color} {medication.inventoryUnit || 'pill'}
                   </div>
                   <div className="text-xs text-gray-500">
-                    Need: {expected} {expected === 1 ? 'pill' : 'pills'}
+                    Need: {expected} {expected === 1 ? 'unit' : 'units'}
                   </div>
                 </div>
               </div>

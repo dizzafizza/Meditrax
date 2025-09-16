@@ -53,7 +53,7 @@ export function Dashboard() {
   // Enhanced dashboard data
   const taperingMedications = activeMedications.filter(med => med.tapering?.isActive);
   const withdrawalTrackingMedications = activeMedications.filter(med => 
-    med.dependencePrevention?.withdrawalHistory.some(event => !event.endDate)
+    med.dependencePrevention?.withdrawalHistory?.some(event => !event.endDate && !event.successfullyCompleted)
   );
   const cyclicDosingMedications = activeMedications.filter(med => med.cyclicDosing?.isActive);
   const recreationalMedications = activeMedications.filter(med => med.category === 'recreational');
@@ -801,7 +801,7 @@ export function Dashboard() {
           <div className="card-content">
             <div className="space-y-4">
               {withdrawalTrackingMedications.map((medication, index) => {
-                const activeWithdrawal = medication.dependencePrevention?.withdrawalHistory.find(event => !event.endDate);
+                const activeWithdrawal = medication.dependencePrevention?.withdrawalHistory.find(event => !event.endDate && !event.successfullyCompleted);
                 const daysSinceStart = activeWithdrawal?.startDate 
                   ? Math.floor((Date.now() - new Date(activeWithdrawal.startDate).getTime()) / (1000 * 60 * 60 * 24))
                   : 0;
@@ -955,7 +955,7 @@ export function Dashboard() {
                         <ul className="list-disc list-inside space-y-1">
                           {upcomingRefills.map((med) => (
                             <li key={med.id}>
-                              {med.name} - {med.pillsRemaining} pills remaining
+                              {med.name} - {med.pillsRemaining} {med.inventoryUnit || 'pills'} remaining
                             </li>
                           ))}
                         </ul>

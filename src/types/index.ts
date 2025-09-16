@@ -258,7 +258,13 @@ export type MedicationUnit =
   | 'pessaries'
   | 'implants'
   | 'rings'
-  | 'discs';
+  | 'discs'
+  // Powder-specific units
+  | 'g powder'
+  | 'mg powder'
+  | 'kg powder'
+  | 'oz powder'
+  | 'lbs powder';
 
 export type MedicationCategory = 
   | 'prescription'

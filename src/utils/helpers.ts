@@ -272,12 +272,13 @@ export function formatPillDisplay(medication: any): string {
     const unit = pillConfig.unit;
     const color = pillConfig.color;
     
+    const inventoryUnit = medication.inventoryUnit || 'pill';
     if (quantity === 1) {
-      return `1 × ${strength}${unit}${color ? ` ${color}` : ''} pill`;
+      return `1 × ${strength}${unit}${color ? ` ${color}` : ''} ${inventoryUnit}`;
     } else if (quantity % 1 === 0) {
-      return `${quantity} × ${strength}${unit}${color ? ` ${color}` : ''} pills`;
+      return `${quantity} × ${strength}${unit}${color ? ` ${color}` : ''} ${inventoryUnit}s`;
     } else {
-      return `${quantity} × ${strength}${unit}${color ? ` ${color}` : ''} pill`;
+      return `${quantity} × ${strength}${unit}${color ? ` ${color}` : ''} ${inventoryUnit}`;
     }
   }).filter(Boolean);
 
@@ -1056,6 +1057,83 @@ export function generatePsychologicalMessage(
 }
 
 // Heavy Dose Detection based on Psychonaut Wiki standards
+// Helper function to determine if a unit is weight/volume-based (continuous) or discrete (countable)
+export function isWeightBasedUnit(unit: string): boolean {
+  const weightVolumeUnits = [
+    'mg', 'g', 'mcg', 'μg', 'ng', 'kg', 'lbs', 'oz', 'ounces', 'grams',
+    'ml', 'L', 'fl oz', 'tsp', 'tbsp', 'cc',
+    'iu', 'IU', 'units', 'mEq', 'mmol', '%',
+    'mg THC', 'mg CBD', 'billion CFU', 'million CFU',
+    'mg THC/CBD', 'g flower', 'g concentrate', 'g edible', 'mg/ml',
+    'drops (tincture)', 'puffs (vape)', 'mL/hr', 'mcg/hr', 'mg/hr', 'units/hr',
+    'g powder', 'mg powder', 'kg powder', 'oz powder', 'lbs powder'
+  ];
+  
+  return weightVolumeUnits.includes(unit);
+}
+
+// Helper function to determine if units are compatible for inventory calculations
+export function unitsAreCompatible(doseUnit: string, inventoryUnit: string): boolean {
+  // If both are weight-based, they're compatible (we can convert between them)
+  if (isWeightBasedUnit(doseUnit) && isWeightBasedUnit(inventoryUnit)) {
+    return true;
+  }
+  
+  // If both are discrete units, they're compatible
+  if (!isWeightBasedUnit(doseUnit) && !isWeightBasedUnit(inventoryUnit)) {
+    return true;
+  }
+  
+  // If one is weight-based and one is discrete, they're not directly compatible
+  return false;
+}
+
+// Convert weight units to a standard base unit (mg) for calculations
+export function convertToBaseWeight(amount: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'ng': 0.000001,
+    'mcg': 0.001,
+    'μg': 0.001,
+    'mg': 1,
+    'g': 1000,
+    'grams': 1000,
+    'kg': 1000000,
+    'oz': 28349.5,
+    'ounces': 28349.5,
+    'lbs': 453592,
+    'g powder': 1000,
+    'mg powder': 1,
+    'kg powder': 1000000,
+    'oz powder': 28349.5,
+    'lbs powder': 453592
+  };
+  
+  return amount * (conversions[unit] || 1);
+}
+
+// Convert from base weight (mg) to target unit
+export function convertFromBaseWeight(amount: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'ng': 0.000001,
+    'mcg': 0.001,
+    'μg': 0.001,
+    'mg': 1,
+    'g': 1000,
+    'grams': 1000,
+    'kg': 1000000,
+    'oz': 28349.5,
+    'ounces': 28349.5,
+    'lbs': 453592,
+    'g powder': 1000,
+    'mg powder': 1,
+    'kg powder': 1000000,
+    'oz powder': 28349.5,
+    'lbs powder': 453592
+  };
+  
+  return amount / (conversions[unit] || 1);
+}
+
 export function isHeavyDose(medicationName: string, dose: number, unit: string): boolean {
   const name = medicationName.toLowerCase();
   

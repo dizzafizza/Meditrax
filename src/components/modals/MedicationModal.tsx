@@ -63,7 +63,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
       name: '',
       dosage: '',
       unit: 'mg',
-      inventoryUnit: 'tablets',
+      inventoryUnit: 'mg', // Default to same as dose unit
       frequency: 'once-daily',
       category: 'prescription',
       notes: '',
@@ -88,6 +88,13 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
   const selectedCategory = watch('category');
   const selectedUnit = watch('unit');
   const selectedInventoryUnit = watch('inventoryUnit');
+
+  // Auto-sync inventory unit with dose unit when dose unit changes
+  React.useEffect(() => {
+    if (selectedUnit) {
+      setValue('inventoryUnit', selectedUnit);
+    }
+  }, [selectedUnit, setValue]);
 
   // Helper function to get appropriate inventory unit label
   const getInventoryUnitLabel = (unit: MedicationUnit): string => {
@@ -134,15 +141,49 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
       return unitMappings[unit];
     }
 
-    // For volume/weight units, use "Units" as a generic term
-    const volumeWeightUnits = ['mg', 'g', 'mcg', 'μg', 'ng', 'kg', 'lbs', 'oz', 'ounces', 
-                               'ml', 'L', 'fl oz', 'tsp', 'tbsp', 'cc', 'iu', 'IU', 'units', 
-                               'mEq', 'mmol', '%', 'mg THC', 'mg CBD', 'billion CFU', 'million CFU',
-                               'mg THC/CBD', 'g flower', 'g concentrate', 'g edible', 'mg/ml',
-                               'drops (tincture)', 'puffs (vape)', 'mL/hr', 'mcg/hr', 'mg/hr', 'units/hr'];
+    // For volume/weight units, use the actual unit with proper capitalization
+    const volumeWeightUnits: Record<string, string> = {
+      'mg': 'mg',
+      'g': 'grams', 
+      'mcg': 'mcg',
+      'μg': 'μg',
+      'ng': 'ng',
+      'kg': 'kg', 
+      'lbs': 'lbs',
+      'oz': 'oz',
+      'ounces': 'ounces',
+      'grams': 'grams',
+      'ml': 'ml', 
+      'L': 'liters',
+      'fl oz': 'fl oz',
+      'tsp': 'tsp',
+      'tbsp': 'tbsp',
+      'cc': 'cc',
+      'iu': 'IU',
+      'IU': 'IU',
+      'units': 'units',
+      'mEq': 'mEq',
+      'mmol': 'mmol',
+      '%': '%',
+      'mg THC': 'mg THC',
+      'mg CBD': 'mg CBD',
+      'billion CFU': 'billion CFU',
+      'million CFU': 'million CFU',
+      'mg THC/CBD': 'mg THC/CBD',
+      'g flower': 'g flower',
+      'g concentrate': 'g concentrate',
+      'g edible': 'g edible',
+      'mg/ml': 'mg/ml',
+      'drops (tincture)': 'drops (tincture)',
+      'puffs (vape)': 'puffs (vape)',
+      'mL/hr': 'mL/hr',
+      'mcg/hr': 'mcg/hr',
+      'mg/hr': 'mg/hr',
+      'units/hr': 'units/hr'
+    };
     
-    if (volumeWeightUnits.includes(unit)) {
-      return 'Units';
+    if (volumeWeightUnits[unit]) {
+      return volumeWeightUnits[unit];
     }
 
     // Fallback to generic "Items"
@@ -241,11 +282,11 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
         if (preSelectedMedicationName) {
           const medicationData = getMedicationByName(preSelectedMedicationName);
           if (medicationData) {
-            reset({
-              name: medicationData.name,
-              dosage: medicationData.commonDosages[0] || '',
-              unit: (medicationData.commonUnits[0] as MedicationUnit) || 'mg',
-              inventoryUnit: 'tablets',
+          reset({
+            name: medicationData.name,
+            dosage: medicationData.commonDosages[0] || '',
+            unit: (medicationData.commonUnits[0] as MedicationUnit) || 'mg',
+            inventoryUnit: (medicationData.commonUnits[0] as MedicationUnit) || 'mg', // Default to same as dose unit
               frequency: (medicationData.commonFrequencies[0] as MedicationFrequency) || 'once-daily',
               category: medicationData.category,
               notes: medicationData.description || '',
@@ -277,7 +318,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
               name: preSelectedMedicationName,
               dosage: '',
               unit: 'mg',
-              inventoryUnit: 'tablets',
+              inventoryUnit: 'mg', // Default to same as dose unit
               frequency: 'once-daily',
               category: 'prescription',
               notes: '',
@@ -301,7 +342,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
             name: '',
             dosage: '',
             unit: 'mg',
-            inventoryUnit: 'tablets',
+            inventoryUnit: 'mg', // Default to same as dose unit
             frequency: 'once-daily',
             category: 'prescription',
             notes: '',
@@ -498,6 +539,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
                         <option value="lbs">lbs</option>
                         <option value="oz">oz</option>
                         <option value="ounces">ounces</option>
+                        <option value="grams">grams</option>
                       </optgroup>
                       <optgroup label="Volume">
                         <option value="ml">ml</option>
@@ -547,6 +589,13 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
                         <option value="packets">packets</option>
                         <option value="scoops">scoops</option>
                         <option value="cartridges">cartridges</option>
+                      </optgroup>
+                      <optgroup label="Powders & Bulk">
+                        <option value="g powder">g (powder)</option>
+                        <option value="mg powder">mg (powder)</option>
+                        <option value="kg powder">kg (powder)</option>
+                        <option value="oz powder">oz (powder)</option>
+                        <option value="lbs powder">lbs (powder)</option>
                       </optgroup>
                       <optgroup label="General">
                         <option value="doses">doses</option>
@@ -782,6 +831,13 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
                         <option value="scoops">scoops</option>
                         <option value="cartridges">cartridges</option>
                       </optgroup>
+                      <optgroup label="Weight-based Inventory">
+                        <option value="g">grams</option>
+                        <option value="mg">milligrams</option>
+                        <option value="kg">kilograms</option>
+                        <option value="oz">ounces</option>
+                        <option value="lbs">pounds</option>
+                      </optgroup>
                       <optgroup label="General">
                         <option value="doses">doses</option>
                         <option value="units">units</option>
@@ -789,7 +845,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
                       </optgroup>
                     </select>
                     <p className="mt-1 text-xs text-gray-500">
-                      Choose the unit for tracking inventory (can be different from dosage unit)
+                      Unit for tracking inventory (automatically matches dosage unit)
                     </p>
                   </div>
                   

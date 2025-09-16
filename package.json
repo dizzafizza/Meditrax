@@ -1,7 +1,7 @@
 {
   "name": "medtrack",
   "private": false,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "A modern, responsive web application for comprehensive medication tracking and management",
   "keywords": [

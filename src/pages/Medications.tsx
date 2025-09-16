@@ -334,7 +334,7 @@ export function Medications() {
                         <div className="flex items-center space-x-1">
                           <Clock className="h-4 w-4 text-blue-500" />
                           <span className="text-sm text-gray-600">
-                            {totalPills} pills left
+                            {totalPills} {medication.inventoryUnit || 'pills'} left
                           </span>
                         </div>
                       ) : null;

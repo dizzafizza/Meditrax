@@ -4,6 +4,7 @@ import { useMedicationStore } from '@/store';
 import { Medication, WithdrawalEvent, WithdrawalSymptom } from '@/types';
 import { generateId } from '@/utils/helpers';
 import toast from 'react-hot-toast';
+import { DependencePrevention } from '@/types';
 
 interface WithdrawalTrackingModalProps {
   isOpen: boolean;
@@ -150,20 +151,40 @@ export function WithdrawalTrackingModal({ isOpen, onClose, medication, event }: 
       successfullyCompleted: eventData.successfullyCompleted!
     };
 
-    const prevention = medication.dependencePrevention;
-    if (prevention) {
-      const existingEventIndex = prevention.withdrawalHistory.findIndex(e => e.id === withdrawalEvent.id);
-      const updatedHistory = existingEventIndex >= 0
-        ? prevention.withdrawalHistory.map((e, i) => i === existingEventIndex ? withdrawalEvent : e)
-        : [...prevention.withdrawalHistory, withdrawalEvent];
-
-      updateMedication(medication.id, {
-        dependencePrevention: {
-          ...prevention,
-          withdrawalHistory: updatedHistory
-        }
-      });
+    // Initialize dependence prevention if it doesn't exist
+    let prevention = medication.dependencePrevention;
+    if (!prevention) {
+      prevention = {
+        medicationId: medication.id,
+        isEnabled: true,
+        riskLevel: 'moderate',
+        dependenceType: 'physical',
+        usagePatterns: [],
+        toleranceIndicators: [],
+        withdrawalHistory: [],
+        recommendedMaxDuration: 90,
+        currentDuration: 0,
+        taperingRecommended: true,
+        taperingUrgency: 'moderate',
+        alerts: [],
+        interventions: [],
+        educationalResources: [],
+        doctorReviewRequired: true,
+        reviewFrequency: 7
+      };
     }
+
+    const existingEventIndex = prevention.withdrawalHistory.findIndex(e => e.id === withdrawalEvent.id);
+    const updatedHistory = existingEventIndex >= 0
+      ? prevention.withdrawalHistory.map((e, i) => i === existingEventIndex ? withdrawalEvent : e)
+      : [...prevention.withdrawalHistory, withdrawalEvent];
+
+    updateMedication(medication.id, {
+      dependencePrevention: {
+        ...prevention,
+        withdrawalHistory: updatedHistory
+      }
+    });
 
     toast.success(event ? 'Withdrawal event updated' : 'Withdrawal tracking started');
     onClose();

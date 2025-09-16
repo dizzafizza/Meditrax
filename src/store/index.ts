@@ -41,7 +41,11 @@ import {
   calculateTaperingDose,
   calculatePillCountsForDose,
   isHeavyDose,
-  generateDoseSafetyMessage
+  generateDoseSafetyMessage,
+  isWeightBasedUnit,
+  unitsAreCompatible,
+  convertToBaseWeight,
+  convertFromBaseWeight
 } from '@/utils/helpers';
 import { DependencePreventionService } from '@/services/dependencePreventionService';
 import { suggestPauseDuration } from '@/services/medicationDatabase';
@@ -435,11 +439,9 @@ export const useMedicationStore = create<MedicationStore>()(
           });
         }
 
-        // Update inventory for single dose medications (legacy system)
-        if (!medication.useMultiplePills && medication.pillsRemaining !== undefined) {
-          get().updateMedication(medicationId, {
-            pillsRemaining: Math.max(0, medication.pillsRemaining - 1)
-          });
+        // Update inventory - handle both weight-based and discrete units
+        if (!medication.useMultiplePills) {
+          get().updateInventoryAfterDose(medicationId, dosage, medication.unit);
         }
 
         // Update pill inventory for multiple pill medications
@@ -462,6 +464,48 @@ export const useMedicationStore = create<MedicationStore>()(
             }));
             
             get().updatePillInventory(medicationId, inventoryUpdates);
+          }
+        }
+      },
+
+      // New function to handle inventory updates after dose logging
+      updateInventoryAfterDose: (medicationId: string, dosageTaken: number, doseUnit: string) => {
+        const state = get();
+        const medication = state.medications.find(med => med.id === medicationId);
+        if (!medication) return;
+
+        const inventoryUnit = medication.inventoryUnit || medication.unit;
+
+        // Handle weight-based units
+        if (isWeightBasedUnit(doseUnit) && isWeightBasedUnit(inventoryUnit)) {
+          if (medication.pillsRemaining !== undefined) {
+            // Convert dose to base unit (mg), then convert to inventory unit
+            const doseInBaseMg = convertToBaseWeight(dosageTaken, doseUnit);
+            const doseInInventoryUnit = convertFromBaseWeight(doseInBaseMg, inventoryUnit);
+            
+            const newRemaining = Math.max(0, medication.pillsRemaining - doseInInventoryUnit);
+            
+            get().updateMedication(medicationId, {
+              pillsRemaining: newRemaining
+            });
+          }
+        } 
+        // Handle discrete units (pills, capsules, etc.)
+        else if (!isWeightBasedUnit(doseUnit) && !isWeightBasedUnit(inventoryUnit)) {
+          if (medication.pillsRemaining !== undefined) {
+            // For discrete units, subtract 1 unit per dose
+            get().updateMedication(medicationId, {
+              pillsRemaining: Math.max(0, medication.pillsRemaining - 1)
+            });
+          }
+        }
+        // Handle mixed units - log warning and fall back to discrete counting
+        else {
+          console.warn(`Unit mismatch: dose unit "${doseUnit}" and inventory unit "${inventoryUnit}" are not compatible. Falling back to discrete counting.`);
+          if (medication.pillsRemaining !== undefined) {
+            get().updateMedication(medicationId, {
+              pillsRemaining: Math.max(0, medication.pillsRemaining - 1)
+            });
           }
         }
       },
