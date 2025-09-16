@@ -27,5 +27,5 @@ export default defineConfig({
       },
     },
   },
-  base: '/MedTrack/', // Use absolute base path matching homepage
+  base: '/', // Use root path for custom domain
 })

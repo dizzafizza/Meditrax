@@ -1,5 +1,5 @@
 {
-  "name": "medtrack",
+  "name": "meditrax",
   "private": false,
   "version": "1.1.0",
   "type": "module",
@@ -12,16 +12,16 @@
     "typescript",
     "healthcare"
   ],
-  "homepage": "https://dizzafizza.github.io/MedTrack",
+  "homepage": "https://www.meditrax.ca/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dizzafizza/MedTrack.git"
+    "url": "git+https://github.com/dizzafizza/Meditrax.git"
   },
   "bugs": {
-    "url": "https://github.com/dizzafizza/MedTrack/issues"
+    "url": "https://github.com/dizzafizza/Meditrax/issues"
   },
   "license": "MIT",
-  "author": "MedTrack Contributors",
+  "author": "Meditrax Contributors",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

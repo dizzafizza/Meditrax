@@ -37,11 +37,11 @@ export function Wiki() {
       content: (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to MedTrack</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to Meditrax</h2>
             <p className="text-gray-700 leading-relaxed mb-4">
-              MedTrack is a comprehensive medication tracking application designed to help you manage your medications safely, 
+              Meditrax is a comprehensive medication tracking application designed to help you manage your medications safely, 
               track adherence, and access evidence-based harm reduction information. Whether you're managing prescription 
-              medications, supplements, or other substances, MedTrack provides the tools you need for safer use.
+              medications, supplements, or other substances, Meditrax provides the tools you need for safer use.
             </p>
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -186,7 +186,7 @@ export function Wiki() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Safe Tapering Practices</h2>
             <p className="text-gray-700 leading-relaxed mb-6">
               Tapering is the gradual reduction of a substance to minimize withdrawal symptoms and safely discontinue use. 
-              MedTrack provides evidence-based tapering schedules for various substances.
+              Meditrax provides evidence-based tapering schedules for various substances.
             </p>
 
             <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
@@ -274,10 +274,10 @@ export function Wiki() {
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
               <h3 className="font-semibold text-yellow-900 mb-3 flex items-center">
                 <Clock className="h-5 w-5 mr-2" />
-                Using MedTrack for Tapering
+                Using Meditrax for Tapering
               </h3>
               <ol className="space-y-2 text-yellow-800 text-sm">
-                <li>1. Add your medication and current dose to MedTrack</li>
+                <li>1. Add your medication and current dose to Meditrax</li>
                 <li>2. Navigate to the medication details and select "Create Tapering Plan"</li>
                 <li>3. Review the suggested schedule based on your usage history</li>
                 <li>4. Customize the plan if needed with your healthcare provider</li>
@@ -527,7 +527,7 @@ export function Wiki() {
                   <div className="mt-6 p-4 bg-green-50 rounded-lg">
                     <h4 className="font-medium text-green-900 mb-2">Privacy First Design</h4>
                     <p className="text-green-800 text-sm">
-                      MedTrack is designed with privacy as a core principle. Your sensitive medication and health data 
+                      Meditrax is designed with privacy as a core principle. Your sensitive medication and health data 
                       never leaves your device, ensuring complete confidentiality and control.
                     </p>
                   </div>
@@ -545,7 +545,7 @@ export function Wiki() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">MedTrack Wiki</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Meditrax Wiki</h1>
           <p className="text-gray-600">
             Comprehensive guides for safe medication management, harm reduction, and app usage
           </p>

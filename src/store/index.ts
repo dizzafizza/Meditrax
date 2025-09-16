@@ -1048,10 +1048,10 @@ export const useMedicationStore = create<MedicationStore>()(
         };
         
         // Store backup in localStorage with timestamp
-        localStorage.setItem(`medtrack-backup-${Date.now()}`, JSON.stringify(backup));
+        localStorage.setItem(`meditrax-backup-${Date.now()}`, JSON.stringify(backup));
         
         // Keep only last 5 backups
-        const backupKeys = Object.keys(localStorage).filter(key => key.startsWith('medtrack-backup-'));
+        const backupKeys = Object.keys(localStorage).filter(key => key.startsWith('meditrax-backup-'));
         if (backupKeys.length > 5) {
           backupKeys.sort().slice(0, -5).forEach(key => localStorage.removeItem(key));
         }
@@ -2318,7 +2318,7 @@ export const useMedicationStore = create<MedicationStore>()(
       },
     }),
     {
-      name: 'medtrack-storage',
+      name: 'meditrax-storage',
       storage: createJSONStorage(() => localStorage),
       version: 1,
       onRehydrateStorage: () => (state) => {
