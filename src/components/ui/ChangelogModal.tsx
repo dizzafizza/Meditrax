@@ -172,7 +172,7 @@ export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps
                   <h4 className="text-sm font-medium text-blue-900 mb-1">Important Note</h4>
                   <p className="text-sm text-blue-800">
                     This is a beta release. If you encounter any issues or have feedback, 
-                    please let us know through the settings page. Your data remains private and secure.
+                    please open an issue on the GitHub page so we could promptly fix it. Your data remains private and secure.
                   </p>
                 </div>
               </div>
