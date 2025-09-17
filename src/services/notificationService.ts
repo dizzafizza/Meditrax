@@ -167,6 +167,13 @@ class NotificationService {
       const now = new Date();
       const notificationId = `${reminder.id}_${Date.now()}`;
       
+      // Check if browser supports notifications at all
+      const permissionState = await this.getPermissionState();
+      if (!permissionState.supported) {
+        console.warn(`Browser notifications not supported for reminder ${reminder.id}`);
+        return;
+      }
+      
       if (!this.isPushNotificationAvailable()) {
         console.info(`Push notifications not available for reminder ${reminder.id}. Using fallback browser notifications.`);
       }
@@ -174,8 +181,11 @@ class NotificationService {
       const nextNotificationTime = this.calculateNextNotificationTime(reminder, now);
       
       if (!nextNotificationTime) {
+        console.warn(`Could not calculate next notification time for reminder ${reminder.id}`);
         return;
       }
+
+      console.log(`Scheduling notification for ${nextNotificationTime.toLocaleString()} (in ${Math.round((nextNotificationTime.getTime() - now.getTime()) / 1000 / 60)} minutes)`);
 
       const payload: NotificationPayload = {
         title: `Time for ${medication.name}`,
@@ -227,27 +237,45 @@ class NotificationService {
       const permissionState = await this.getPermissionState();
       
       if (permissionState.status !== 'granted') {
-        throw new Error('Notification permission not granted');
+        console.warn('Notification permission not granted, requesting permission...');
+        const granted = await this.requestPermission();
+        if (!granted) {
+          throw new Error('Notification permission denied by user');
+        }
       }
 
+      console.log('Sending immediate notification:', payload.title);
+
       if (this.serviceWorkerRegistration) {
+        console.log('Using service worker to show notification');
         await this.serviceWorkerRegistration.showNotification(payload.title, {
           body: payload.body,
-          icon: payload.icon,
-          badge: payload.badge,
+          icon: payload.icon || '/pill-icon.svg',
+          badge: payload.badge || '/pill-icon.svg',
           data: payload.data,
           tag: payload.tag,
-          requireInteraction: payload.requireInteraction,
-          actions: payload.actions
+          requireInteraction: payload.requireInteraction !== false,
+          actions: payload.actions,
+          vibrate: [200, 100, 200],
+          silent: false
         });
       } else {
-        new Notification(payload.title, {
+        console.log('Using basic notification API');
+        const notification = new Notification(payload.title, {
           body: payload.body,
-          icon: payload.icon,
+          icon: payload.icon || '/pill-icon.svg',
           tag: payload.tag,
-          data: payload.data
+          data: payload.data,
+          requireInteraction: payload.requireInteraction !== false
         });
+        
+        // Auto-close after 10 seconds if not interactive
+        if (!payload.requireInteraction) {
+          setTimeout(() => notification.close(), 10000);
+        }
       }
+      
+      console.log('Notification sent successfully');
     } catch (error) {
       console.error('Failed to send immediate notification:', error);
       throw error;
@@ -258,22 +286,38 @@ class NotificationService {
     const [hours, minutes] = reminder.time.split(':').map(Number);
     const now = new Date(fromDate);
     
-    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+    console.log(`Calculating next notification time for reminder ${reminder.id}:`);
+    console.log(`  - Time: ${reminder.time} (${hours}:${minutes})`);
+    console.log(`  - Days: ${reminder.days.join(', ')}`);
+    console.log(`  - From date: ${now.toLocaleString()}`);
+    
+    if (!reminder.days || reminder.days.length === 0) {
+      console.warn('Reminder has no days selected');
+      return null;
+    }
+    
+    for (let dayOffset = 0; dayOffset < 14; dayOffset++) { // Check 2 weeks ahead
       const checkDate = new Date(now);
       checkDate.setDate(now.getDate() + dayOffset);
       checkDate.setHours(hours, minutes, 0, 0);
       
+      // Skip if time has already passed today
       if (dayOffset === 0 && checkDate <= now) {
+        console.log(`  - Skipping today (${checkDate.toLocaleString()}) - time has passed`);
         continue;
       }
       
-      const dayName = checkDate.toLocaleDateString('en', { weekday: 'long' }).toLowerCase();
+      const dayName = checkDate.toLocaleDateString('en', { weekday: 'long' }).toLowerCase() as any;
+      
+      console.log(`  - Checking ${dayName} (${checkDate.toLocaleDateString()}): ${reminder.days.includes(dayName) ? 'MATCH' : 'skip'}`);
       
       if (reminder.days.includes(dayName)) {
+        console.log(`  - Next notification scheduled for: ${checkDate.toLocaleString()}`);
         return checkDate;
       }
     }
     
+    console.warn('No valid notification time found in the next 14 days');
     return null;
   }
 
@@ -282,38 +326,46 @@ class NotificationService {
     const scheduledTime = scheduledNotification.scheduledTime.getTime();
     const delay = scheduledTime - now;
 
+    console.log(`Scheduling notification with delay: ${Math.round(delay / 1000 / 60)} minutes`);
+
     if (delay <= 0) {
+      console.log('Sending immediate notification (time already passed)');
       await this.sendImmediateNotification(scheduledNotification.payload);
       scheduledNotification.status = 'sent';
       return;
     }
 
-    // For immediate notifications (within 5 minutes), use setTimeout
-    // For longer delays, rely on visibility check and background sync
-    if (delay <= 5 * 60 * 1000) {
+    // ALWAYS store in queue for persistence (regardless of delay)
+    this.addToNotificationQueue(scheduledNotification);
+    console.log(`Added notification to queue. Queue size: ${this.getNotificationQueue().length}`);
+
+    // For immediate notifications (within 30 minutes), also use setTimeout as primary method
+    if (delay <= 30 * 60 * 1000) {
+      console.log(`Setting setTimeout for ${Math.round(delay / 1000 / 60)} minutes`);
       setTimeout(async () => {
         try {
+          console.log('setTimeout triggered, sending notification');
           await this.sendImmediateNotification(scheduledNotification.payload);
           scheduledNotification.status = 'sent';
           this.scheduledNotifications.delete(scheduledNotification.id);
           this.saveScheduledNotifications();
+          // Also remove from queue
+          this.removeFromNotificationQueue(scheduledNotification.id);
         } catch (error) {
-          console.error('Failed to send scheduled notification:', error);
+          console.error('Failed to send scheduled notification via setTimeout:', error);
           scheduledNotification.status = 'failed';
           scheduledNotification.retryCount = (scheduledNotification.retryCount || 0) + 1;
         }
       }, delay);
-    } else {
-      // Store in queue for later processing via visibility/background sync
-      this.addToNotificationQueue(scheduledNotification);
-      
-      // Try to register background sync
-      if (this.serviceWorkerRegistration && 'sync' in window.ServiceWorkerRegistration.prototype) {
-        try {
-          await this.serviceWorkerRegistration.sync.register('check-notifications');
-        } catch (error) {
-          console.log('Background sync not available:', error);
-        }
+    }
+
+    // Try to register background sync for backup
+    if (this.serviceWorkerRegistration && 'sync' in window.ServiceWorkerRegistration.prototype) {
+      try {
+        await this.serviceWorkerRegistration.sync.register('check-notifications');
+        console.log('Background sync registered successfully');
+      } catch (error) {
+        console.log('Background sync not available:', error);
       }
     }
   }
@@ -531,6 +583,17 @@ class NotificationService {
     }
   }
 
+  private removeFromNotificationQueue(notificationId: string): void {
+    try {
+      const queue = this.getNotificationQueue();
+      const updatedQueue = queue.filter(n => n.id !== notificationId);
+      localStorage.setItem(this.NOTIFICATION_QUEUE_KEY, JSON.stringify(updatedQueue));
+      console.log(`Removed notification ${notificationId} from queue`);
+    } catch (error) {
+      console.error('Failed to remove notification from queue:', error);
+    }
+  }
+
   async checkMissedNotifications(): Promise<void> {
     try {
       const now = Date.now();
@@ -590,7 +653,13 @@ class NotificationService {
 
   // Enhanced scheduling that considers app state
   async scheduleReminderEnhanced(reminder: any, medication: any): Promise<void> {
+    console.log('=== Enhanced Reminder Scheduling ===');
+    console.log('Reminder:', reminder);
+    console.log('Medication:', medication);
+    
     await this.scheduleReminder(reminder, medication);
+    
+    console.log(`After scheduling - Queue size: ${this.getNotificationQueue().length}, Scheduled: ${this.scheduledNotifications.size}`);
     
     // If service worker supports periodic background sync, register it
     if (this.serviceWorkerRegistration && 'periodicSync' in window.ServiceWorkerRegistration.prototype) {
@@ -599,6 +668,7 @@ class NotificationService {
         await this.serviceWorkerRegistration.periodicSync.register('check-medication-reminders', {
           minInterval: 15 * 60 * 1000, // 15 minutes minimum
         });
+        console.log('Periodic background sync registered');
       } catch (error) {
         console.log('Periodic background sync not available:', error);
       }
@@ -606,7 +676,7 @@ class NotificationService {
   }
 
   // Get notification system diagnostics
-  getNotificationDiagnostics(): {
+  async getNotificationDiagnostics(): Promise<{
     scheduledCount: number;
     queuedCount: number;
     pushAvailable: boolean;
@@ -615,7 +685,13 @@ class NotificationService {
     backgroundSyncSupported: boolean;
     periodicSyncSupported: boolean;
     lastVisibilityCheck: string;
-  } {
+    notificationPermission: string;
+    vapidKeyConfigured: boolean;
+    browserSupportsNotifications: boolean;
+    pushSubscription: boolean;
+  }> {
+    const permissionState = await this.getPermissionState();
+    
     return {
       scheduledCount: this.scheduledNotifications.size,
       queuedCount: this.getNotificationQueue().length,
@@ -624,7 +700,11 @@ class NotificationService {
       visibilitySupported: 'visibilityState' in document,
       backgroundSyncSupported: this.serviceWorkerRegistration ? 'sync' in window.ServiceWorkerRegistration.prototype : false,
       periodicSyncSupported: this.serviceWorkerRegistration ? 'periodicSync' in window.ServiceWorkerRegistration.prototype : false,
-      lastVisibilityCheck: new Date(this.lastVisibilityCheck).toLocaleString()
+      lastVisibilityCheck: new Date(this.lastVisibilityCheck).toLocaleString(),
+      notificationPermission: permissionState.status,
+      vapidKeyConfigured: !!this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY),
+      browserSupportsNotifications: permissionState.supported,
+      pushSubscription: !!this.pushSubscription
     };
   }
 
@@ -634,19 +714,88 @@ class NotificationService {
     sent: number;
     failed: number;
   }> {
+    console.log('=== Manual Notification Check Triggered ===');
     const beforeQueue = this.getNotificationQueue().length;
     const beforeScheduled = this.scheduledNotifications.size;
+    
+    console.log(`Before check - Queue: ${beforeQueue}, Scheduled: ${beforeScheduled}`);
     
     await this.checkMissedNotifications();
     
     const afterQueue = this.getNotificationQueue().length;
     const afterScheduled = this.scheduledNotifications.size;
     
-    return {
+    console.log(`After check - Queue: ${afterQueue}, Scheduled: ${afterScheduled}`);
+    
+    const result = {
       checked: beforeQueue + beforeScheduled,
       sent: (beforeQueue - afterQueue) + (beforeScheduled - afterScheduled),
       failed: 0 // TODO: Track failed notifications
     };
+    
+    console.log('Check result:', result);
+    return result;
+  }
+
+  // Debug method to test notification immediately
+  async debugTestNotification(): Promise<void> {
+    console.log('=== Debug Test Notification ===');
+    const diagnostics = await this.getNotificationDiagnostics();
+    console.log('Current diagnostics:', diagnostics);
+    
+    const payload: NotificationPayload = {
+      title: 'DEBUG: Meditrax Test',
+      body: 'If you see this, notifications are working!',
+      icon: '/pill-icon.svg',
+      requireInteraction: true
+    };
+    
+    try {
+      await this.sendImmediateNotification(payload);
+      console.log('Debug notification sent successfully');
+    } catch (error) {
+      console.error('Debug notification failed:', error);
+      throw error;
+    }
+  }
+
+  // Debug method to check reminder scheduling status
+  debugReminderSystem(reminders: any[], medications: any[]): void {
+    console.log('=== DEBUG REMINDER SYSTEM ===');
+    console.log('Total reminders:', reminders.length);
+    console.log('Active reminders:', reminders.filter(r => r.isActive).length);
+    console.log('Total medications:', medications.length);
+    console.log('Active medications:', medications.filter(m => m.isActive).length);
+    
+    console.log('\nREMINDER DETAILS:');
+    reminders.forEach((reminder, index) => {
+      const medication = medications.find(m => m.id === reminder.medicationId);
+      console.log(`${index + 1}. Reminder ${reminder.id}:`);
+      console.log(`   - Medication: ${medication?.name || 'NOT FOUND'}`);
+      console.log(`   - Time: ${reminder.time}`);
+      console.log(`   - Days: ${reminder.days?.join(', ') || 'NONE'}`);
+      console.log(`   - Active: ${reminder.isActive}`);
+      console.log(`   - Created: ${reminder.createdAt}`);
+      
+      if (reminder.isActive && medication) {
+        const nextTime = this.calculateNextNotificationTime(reminder, new Date());
+        console.log(`   - Next notification: ${nextTime ? nextTime.toLocaleString() : 'NONE CALCULATED'}`);
+      }
+    });
+    
+    console.log('\nCURRENT NOTIFICATION STATE:');
+    console.log(`- Scheduled notifications: ${this.scheduledNotifications.size}`);
+    console.log(`- Queued notifications: ${this.getNotificationQueue().length}`);
+    
+    console.log('\nSCHEDULED NOTIFICATIONS:');
+    this.scheduledNotifications.forEach((notification, id) => {
+      console.log(`- ${id}: ${notification.payload.title} at ${notification.scheduledTime.toLocaleString()}`);
+    });
+    
+    console.log('\nQUEUED NOTIFICATIONS:');
+    this.getNotificationQueue().forEach((notification, index) => {
+      console.log(`- ${index}: ${notification.payload?.title} at ${new Date(notification.scheduledTime).toLocaleString()}`);
+    });
   }
 
   // Clean up method

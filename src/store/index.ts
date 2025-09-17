@@ -50,6 +50,7 @@ import {
 import { DependencePreventionService } from '@/services/dependencePreventionService';
 import { suggestPauseDuration } from '@/services/medicationDatabase';
 import { PsychologicalSafetyService } from '@/services/psychologicalSafetyService';
+import { notificationService } from '@/services/notificationService';
 
 interface MedicationStore {
   // State
@@ -560,6 +561,9 @@ export const useMedicationStore = create<MedicationStore>()(
 
       // Reminder actions
       addReminder: async (reminderData) => {
+        console.log('=== Adding New Reminder ===');
+        console.log('Reminder data:', reminderData);
+        
         const reminder: Reminder = {
           ...reminderData,
           id: generateId(),
@@ -567,15 +571,28 @@ export const useMedicationStore = create<MedicationStore>()(
           updatedAt: new Date(),
         };
 
+        console.log('Created reminder object:', reminder);
+
         set((state) => ({
           reminders: [...state.reminders, reminder],
         }));
 
+        console.log('Added reminder to state');
+
         // Schedule push notification for the reminder
         try {
           const medication = get().medications.find(med => med.id === reminder.medicationId);
+          console.log('Found medication for reminder:', medication?.name);
+          
           if (medication && reminder.isActive) {
+            console.log('Scheduling notification for active reminder...');
             await notificationService.scheduleReminderEnhanced(reminder, medication);
+            console.log('Notification scheduled successfully');
+          } else {
+            console.log('Skipping notification scheduling:', { 
+              hasMedication: !!medication, 
+              isActive: reminder.isActive 
+            });
           }
         } catch (error) {
           console.error('Failed to schedule push notification:', error);

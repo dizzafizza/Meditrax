@@ -281,11 +281,27 @@ export function Settings() {
       const result = await notificationService.triggerNotificationCheck();
       toast.success(`Checked ${result.checked} notifications, sent ${result.sent} missed ones`);
       // Refresh diagnostics
-      setNotificationDiagnostics(notificationService.getNotificationDiagnostics());
+      setNotificationDiagnostics(await notificationService.getNotificationDiagnostics());
     } catch (error) {
       toast.error('Failed to check missed notifications');
       console.error('Failed to check missed notifications:', error);
     }
+  };
+
+  const handleDebugTestNotification = async () => {
+    try {
+      await notificationService.debugTestNotification();
+      toast.success('Debug test notification sent!');
+    } catch (error) {
+      toast.error('Debug notification failed - check console');
+      console.error('Debug notification failed:', error);
+    }
+  };
+
+  const handleDebugReminderSystem = () => {
+    const { reminders, medications } = useMedicationStore.getState();
+    notificationService.debugReminderSystem(reminders, medications);
+    toast.success('Reminder system debug info logged to console');
   };
 
   const NotificationDiagnostics = () => {
@@ -293,8 +309,9 @@ export function Settings() {
     const [showDetails, setShowDetails] = React.useState(false);
 
     React.useEffect(() => {
-      const loadDiagnostics = () => {
-        setDiagnostics(notificationService.getNotificationDiagnostics());
+      const loadDiagnostics = async () => {
+        const diag = await notificationService.getNotificationDiagnostics();
+        setDiagnostics(diag);
       };
       
       loadDiagnostics();
@@ -326,6 +343,27 @@ export function Settings() {
               <div className="flex justify-between">
                 <span>Queued:</span>
                 <span className="font-mono">{diagnostics.queuedCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Browser Support:</span>
+                <span className={`font-mono ${diagnostics.browserSupportsNotifications ? 'text-green-600' : 'text-red-600'}`}>
+                  {diagnostics.browserSupportsNotifications ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Permission:</span>
+                <span className={`font-mono ${
+                  diagnostics.notificationPermission === 'granted' ? 'text-green-600' : 
+                  diagnostics.notificationPermission === 'denied' ? 'text-red-600' : 'text-yellow-600'
+                }`}>
+                  {diagnostics.notificationPermission}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>VAPID Key:</span>
+                <span className={`font-mono ${diagnostics.vapidKeyConfigured ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {diagnostics.vapidKeyConfigured ? 'Yes' : 'No'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Push Available:</span>
@@ -569,20 +607,34 @@ export function Settings() {
                         <p className="text-sm text-green-600">
                           Notifications are enabled! You'll receive medication reminders.
                         </p>
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <button
                             type="button"
                             onClick={handleTestNotification}
-                            className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                            className="mobile-button px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                           >
-                            Send Test Notification
+                            Test Notification
                           </button>
                           <button
                             type="button"
                             onClick={handleCheckMissedNotifications}
-                            className="mobile-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            className="mobile-button px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                           >
                             Check Missed
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDebugTestNotification}
+                            className="mobile-button px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                          >
+                            Debug Test
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDebugReminderSystem}
+                            className="mobile-button px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                          >
+                            Debug Reminders
                           </button>
                         </div>
                         <NotificationDiagnostics />

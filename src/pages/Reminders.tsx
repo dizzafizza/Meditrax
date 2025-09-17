@@ -30,8 +30,8 @@ export function Reminders() {
     reminders,
     medications,
     logs,
-    // addReminder,
-    // updateReminder,
+    addReminder,
+    updateReminder,
     deleteReminder,
     toggleReminderActive,
     snoozeReminder
