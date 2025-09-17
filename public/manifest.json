@@ -1,6 +1,6 @@
 {
-  "name": "MedTrack - Medication Tracker",
-  "short_name": "MedTrack",
+  "name": "Meditrax - Medication Tracker",
+  "short_name": "Meditrax",
   "description": "Comprehensive medication tracking and management application",
   "lang": "en",
   "start_url": "/",
@@ -16,14 +16,14 @@
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "MedTrack Dashboard"
+      "label": "Meditrax Dashboard"
     },
     {
       "src": "/screenshots/mobile.png", 
       "sizes": "750x1334",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "MedTrack Mobile View"
+      "label": "Meditrax Mobile View"
     }
   ],
   "icons": [
@@ -145,4 +145,5 @@
     "client_mode": "navigate-existing"
   }
 }
+
 

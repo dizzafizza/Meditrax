@@ -70,7 +70,7 @@ export function Wiki() {
                 <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">1</div>
                 <div>
                   <h4 className="font-medium">Install as PWA (Recommended)</h4>
-                  <p className="text-gray-600">Look for "Add to Home Screen" (mobile) or "Install App" (desktop) to install MedTrack as a native-like app.</p>
+                  <p className="text-gray-600">Look for "Add to Home Screen" (mobile) or "Install App" (desktop) to install Meditrax as a native-like app.</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
@@ -600,7 +600,7 @@ export function Wiki() {
                   <div className="mt-6 p-4 bg-yellow-50 rounded-lg">
                     <h4 className="font-medium text-yellow-900 mb-2">📱 iOS Users</h4>
                     <p className="text-yellow-800 text-sm">
-                      For push notifications to work on iOS, you must install MedTrack as a PWA using 
+                      For push notifications to work on iOS, you must install Meditrax as a PWA using 
                       "Add to Home Screen" in Safari. Regular web browser notifications are not supported on iOS.
                     </p>
                   </div>
@@ -637,7 +637,7 @@ export function Wiki() {
                   <div className="mt-6 p-4 bg-green-50 rounded-lg">
                     <h4 className="font-medium text-green-900 mb-2">Privacy First Design</h4>
                     <p className="text-green-800 text-sm">
-                      MedTrack is designed with privacy as a core principle. Your sensitive medication and health data 
+                      Meditrax is designed with privacy as a core principle. Your sensitive medication and health data 
                       never leaves your device, ensuring complete confidentiality and control. Even with PWA installation 
                       and push notifications, all processing happens locally on your device.
                     </p>

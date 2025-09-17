@@ -36,11 +36,17 @@ class NotificationService {
   private pushSubscription: PushSubscription | null = null;
   
   private readonly VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || null;
-  private readonly NOTIFICATION_STORAGE_KEY = 'medtrack_scheduled_notifications';
+  private readonly NOTIFICATION_STORAGE_KEY = 'meditrax_scheduled_notifications';
+  private readonly NOTIFICATION_QUEUE_KEY = 'meditrax_notification_queue';
   private pushNotificationsAvailable = false;
+  private visibilityChangeHandler: (() => void) | null = null;
+  private isAppVisible = !document.hidden;
+  private lastVisibilityCheck = Date.now();
 
   constructor() {
     this.initializeService();
+    this.setupVisibilityHandling();
+    this.setupBeforeUnloadHandler();
   }
 
   private async initializeService(): Promise<void> {
@@ -58,6 +64,7 @@ class NotificationService {
 
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
       this.loadScheduledNotifications();
+      this.checkMissedNotifications();
 
       if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)) {
         this.subscribeToPushNotifications().catch(error => {
@@ -281,18 +288,34 @@ class NotificationService {
       return;
     }
 
-    setTimeout(async () => {
-      try {
-        await this.sendImmediateNotification(scheduledNotification.payload);
-        scheduledNotification.status = 'sent';
-        this.scheduledNotifications.delete(scheduledNotification.id);
-        this.saveScheduledNotifications();
-      } catch (error) {
-        console.error('Failed to send scheduled notification:', error);
-        scheduledNotification.status = 'failed';
-        scheduledNotification.retryCount = (scheduledNotification.retryCount || 0) + 1;
+    // For immediate notifications (within 5 minutes), use setTimeout
+    // For longer delays, rely on visibility check and background sync
+    if (delay <= 5 * 60 * 1000) {
+      setTimeout(async () => {
+        try {
+          await this.sendImmediateNotification(scheduledNotification.payload);
+          scheduledNotification.status = 'sent';
+          this.scheduledNotifications.delete(scheduledNotification.id);
+          this.saveScheduledNotifications();
+        } catch (error) {
+          console.error('Failed to send scheduled notification:', error);
+          scheduledNotification.status = 'failed';
+          scheduledNotification.retryCount = (scheduledNotification.retryCount || 0) + 1;
+        }
+      }, delay);
+    } else {
+      // Store in queue for later processing via visibility/background sync
+      this.addToNotificationQueue(scheduledNotification);
+      
+      // Try to register background sync
+      if (this.serviceWorkerRegistration && 'sync' in window.ServiceWorkerRegistration.prototype) {
+        try {
+          await this.serviceWorkerRegistration.sync.register('check-notifications');
+        } catch (error) {
+          console.log('Background sync not available:', error);
+        }
       }
-    }, delay);
+    }
   }
 
   private handleNotificationClick(data: any): void {
@@ -434,7 +457,7 @@ class NotificationService {
 
   async testNotification(): Promise<void> {
     const payload: NotificationPayload = {
-      title: 'MedTrack Test Notification',
+      title: 'Meditrax Test Notification',
       body: 'This is a test notification to verify everything is working correctly.',
       icon: '/pill-icon.svg',
       badge: '/pill-icon.svg',
@@ -443,6 +466,198 @@ class NotificationService {
     };
 
     await this.sendImmediateNotification(payload);
+  }
+
+  // New methods for enhanced background notification handling
+
+  private setupVisibilityHandling(): void {
+    this.visibilityChangeHandler = () => {
+      const isVisible = !document.hidden;
+      
+      if (!this.isAppVisible && isVisible) {
+        // App became visible, check for missed notifications
+        console.log('App became visible, checking for missed notifications');
+        this.checkMissedNotifications();
+      }
+      
+      this.isAppVisible = isVisible;
+      this.lastVisibilityCheck = Date.now();
+    };
+
+    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
+    
+    // Also check on page focus/blur
+    window.addEventListener('focus', () => {
+      if (!this.isAppVisible) {
+        this.checkMissedNotifications();
+        this.isAppVisible = true;
+      }
+    });
+    
+    window.addEventListener('blur', () => {
+      this.isAppVisible = false;
+      this.lastVisibilityCheck = Date.now();
+    });
+  }
+
+  private setupBeforeUnloadHandler(): void {
+    window.addEventListener('beforeunload', () => {
+      // Save current state before app closes
+      this.lastVisibilityCheck = Date.now();
+      this.saveScheduledNotifications();
+    });
+  }
+
+  private addToNotificationQueue(notification: ScheduledNotification): void {
+    try {
+      const queue = this.getNotificationQueue();
+      queue.push({
+        ...notification,
+        queuedAt: Date.now()
+      });
+      localStorage.setItem(this.NOTIFICATION_QUEUE_KEY, JSON.stringify(queue));
+    } catch (error) {
+      console.error('Failed to add notification to queue:', error);
+    }
+  }
+
+  private getNotificationQueue(): any[] {
+    try {
+      const stored = localStorage.getItem(this.NOTIFICATION_QUEUE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.error('Failed to load notification queue:', error);
+      return [];
+    }
+  }
+
+  async checkMissedNotifications(): Promise<void> {
+    try {
+      const now = Date.now();
+      const queue = this.getNotificationQueue();
+      const missedNotifications: any[] = [];
+      
+      // Check queued notifications
+      for (const notification of queue) {
+        const scheduledTime = new Date(notification.scheduledTime).getTime();
+        if (scheduledTime <= now && scheduledTime > (this.lastVisibilityCheck - 60000)) {
+          missedNotifications.push(notification);
+        }
+      }
+
+      // Check currently scheduled notifications
+      for (const [id, notification] of this.scheduledNotifications.entries()) {
+        const scheduledTime = notification.scheduledTime.getTime();
+        if (scheduledTime <= now && notification.status === 'scheduled') {
+          missedNotifications.push(notification);
+        }
+      }
+
+      // Send missed notifications
+      for (const notification of missedNotifications) {
+        try {
+          await this.sendImmediateNotification(notification.payload);
+          notification.status = 'sent';
+          
+          // Remove from scheduled notifications
+          if (this.scheduledNotifications.has(notification.id)) {
+            this.scheduledNotifications.delete(notification.id);
+          }
+        } catch (error) {
+          console.error('Failed to send missed notification:', error);
+          notification.status = 'failed';
+          notification.retryCount = (notification.retryCount || 0) + 1;
+        }
+      }
+
+      // Clean up processed notifications from queue
+      if (missedNotifications.length > 0) {
+        const remainingQueue = queue.filter(n => 
+          !missedNotifications.some(missed => missed.id === n.id)
+        );
+        localStorage.setItem(this.NOTIFICATION_QUEUE_KEY, JSON.stringify(remainingQueue));
+        this.saveScheduledNotifications();
+      }
+
+      if (missedNotifications.length > 0) {
+        console.log(`Processed ${missedNotifications.length} missed notifications`);
+      }
+
+    } catch (error) {
+      console.error('Failed to check missed notifications:', error);
+    }
+  }
+
+  // Enhanced scheduling that considers app state
+  async scheduleReminderEnhanced(reminder: any, medication: any): Promise<void> {
+    await this.scheduleReminder(reminder, medication);
+    
+    // If service worker supports periodic background sync, register it
+    if (this.serviceWorkerRegistration && 'periodicSync' in window.ServiceWorkerRegistration.prototype) {
+      try {
+        // @ts-ignore - periodicSync is experimental
+        await this.serviceWorkerRegistration.periodicSync.register('check-medication-reminders', {
+          minInterval: 15 * 60 * 1000, // 15 minutes minimum
+        });
+      } catch (error) {
+        console.log('Periodic background sync not available:', error);
+      }
+    }
+  }
+
+  // Get notification system diagnostics
+  getNotificationDiagnostics(): {
+    scheduledCount: number;
+    queuedCount: number;
+    pushAvailable: boolean;
+    serviceWorkerActive: boolean;
+    visibilitySupported: boolean;
+    backgroundSyncSupported: boolean;
+    periodicSyncSupported: boolean;
+    lastVisibilityCheck: string;
+  } {
+    return {
+      scheduledCount: this.scheduledNotifications.size,
+      queuedCount: this.getNotificationQueue().length,
+      pushAvailable: this.isPushNotificationAvailable(),
+      serviceWorkerActive: !!this.serviceWorkerRegistration?.active,
+      visibilitySupported: 'visibilityState' in document,
+      backgroundSyncSupported: this.serviceWorkerRegistration ? 'sync' in window.ServiceWorkerRegistration.prototype : false,
+      periodicSyncSupported: this.serviceWorkerRegistration ? 'periodicSync' in window.ServiceWorkerRegistration.prototype : false,
+      lastVisibilityCheck: new Date(this.lastVisibilityCheck).toLocaleString()
+    };
+  }
+
+  // Manual trigger to check and process missed notifications
+  async triggerNotificationCheck(): Promise<{
+    checked: number;
+    sent: number;
+    failed: number;
+  }> {
+    const beforeQueue = this.getNotificationQueue().length;
+    const beforeScheduled = this.scheduledNotifications.size;
+    
+    await this.checkMissedNotifications();
+    
+    const afterQueue = this.getNotificationQueue().length;
+    const afterScheduled = this.scheduledNotifications.size;
+    
+    return {
+      checked: beforeQueue + beforeScheduled,
+      sent: (beforeQueue - afterQueue) + (beforeScheduled - afterScheduled),
+      failed: 0 // TODO: Track failed notifications
+    };
+  }
+
+  // Clean up method
+  destroy(): void {
+    if (this.visibilityChangeHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+    }
+    
+    window.removeEventListener('focus', this.checkMissedNotifications);
+    window.removeEventListener('blur', () => {});
+    window.removeEventListener('beforeunload', () => {});
   }
 }
 

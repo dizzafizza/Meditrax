@@ -63,7 +63,7 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
         type: 'improved',
         icon: <Smartphone className="h-4 w-4" />,
         title: "Mobile Header Enhancement", 
-        description: "Moved MedTrack logo to header on mobile devices for better brand visibility and improved navigation space."
+        description: "Moved Meditrax logo to header on mobile devices for better brand visibility and improved navigation space."
       },
       {
         type: 'fixed',
@@ -165,7 +165,7 @@ export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps
           <div className="space-y-6">
             <div className="text-center mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                🎉 Welcome to MedTrack v{changelogEntry.version} (Beta)
+                🎉 Welcome to Meditrax v{changelogEntry.version} (Beta)
               </h3>
               <p className="text-gray-600">
                 We've been working hard to improve your medication tracking experience. Here's what's new:
@@ -214,7 +214,7 @@ export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps
         <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500">
-              Thank you for using MedTrack! 🏥
+              Thank you for using Meditrax! 🏥
             </p>
             <button
               onClick={onClose}

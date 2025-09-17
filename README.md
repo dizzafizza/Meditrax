@@ -84,7 +84,7 @@ A modern, responsive web application built with React and TypeScript for trackin
 
 ### PWA Installation
 
-MedTrack can be installed as a Progressive Web App for the best mobile experience:
+Meditrax can be installed as a Progressive Web App for the best mobile experience:
 
 **On Mobile (iOS/Android):**
 1. Open the app in your browser (Safari on iOS, Chrome on Android)

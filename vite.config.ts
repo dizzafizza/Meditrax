@@ -38,8 +38,8 @@ export default defineConfig({
       },
       includeAssets: ['pill-icon.svg'],
       manifest: {
-        name: 'MedTrack - Medication Tracker',
-        short_name: 'MedTrack',
+        name: 'Meditrax - Medication Tracker',
+        short_name: 'Meditrax',
         description: 'Comprehensive medication tracking and management application',
         theme_color: '#3b82f6',
         background_color: '#ffffff',

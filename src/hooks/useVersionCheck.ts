@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const CURRENT_VERSION = '1.2.0';
-const VERSION_STORAGE_KEY = 'medtrack-last-seen-version';
+const VERSION_STORAGE_KEY = 'meditrax-last-seen-version';
 
 export function useVersionCheck() {
   const [shouldShowChangelog, setShouldShowChangelog] = useState(false);

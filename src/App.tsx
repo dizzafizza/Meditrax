@@ -17,13 +17,14 @@ import { useVersionCheck } from '@/hooks/useVersionCheck';
 import { useNotificationHandler } from '@/hooks/useNotificationHandler';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
+import { notificationService } from '@/services/notificationService';
 
 function App() {
   const { userProfile } = useMedicationStore();
   const { shouldShowChangelog, currentVersion, markVersionSeen } = useVersionCheck();
 
   // Initialize notification handling
-  useNotificationHandler();
+  const { checkMissedNotifications } = useNotificationHandler();
 
   // Initialize user profile if it doesn't exist
   React.useEffect(() => {
@@ -32,6 +33,30 @@ function App() {
       // For now, let's create a default profile
     }
   }, [userProfile]);
+
+  // Check for missed notifications when the app loads
+  React.useEffect(() => {
+    const checkOnLoad = () => {
+      console.log('App loaded, checking for missed notifications');
+      notificationService.checkMissedNotifications();
+    };
+    
+    // Check immediately after a short delay
+    const timer = setTimeout(checkOnLoad, 1000);
+    
+    // Also check when the window gains focus
+    const handleFocus = () => {
+      console.log('Window gained focus, checking for missed notifications');
+      notificationService.checkMissedNotifications();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">

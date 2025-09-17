@@ -53,6 +53,7 @@ export function Settings() {
   const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermissionState>({ status: 'default', supported: false });
   const [isPWAInstalled, setIsPWAInstalled] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const [notificationDiagnostics, setNotificationDiagnostics] = React.useState<any>(null);
   // const [showPrivacyDashboard, setShowPrivacyDashboard] = React.useState(false); // DISABLED
   // const [showConsentModal, setShowConsentModal] = React.useState(false); // DISABLED
   // const [anonymousReportingPrefs, setAnonymousReportingPrefs] = React.useState<AnonymousReportingPreferences | null>(null); // DISABLED
@@ -275,6 +276,94 @@ export function Settings() {
     toast.info('Look for the "Add to Home Screen" or "Install App" option in your browser menu');
   };
 
+  const handleCheckMissedNotifications = async () => {
+    try {
+      const result = await notificationService.triggerNotificationCheck();
+      toast.success(`Checked ${result.checked} notifications, sent ${result.sent} missed ones`);
+      // Refresh diagnostics
+      setNotificationDiagnostics(notificationService.getNotificationDiagnostics());
+    } catch (error) {
+      toast.error('Failed to check missed notifications');
+      console.error('Failed to check missed notifications:', error);
+    }
+  };
+
+  const NotificationDiagnostics = () => {
+    const [diagnostics, setDiagnostics] = React.useState<any>(null);
+    const [showDetails, setShowDetails] = React.useState(false);
+
+    React.useEffect(() => {
+      const loadDiagnostics = () => {
+        setDiagnostics(notificationService.getNotificationDiagnostics());
+      };
+      
+      loadDiagnostics();
+      const interval = setInterval(loadDiagnostics, 5000); // Update every 5 seconds
+      
+      return () => clearInterval(interval);
+    }, []);
+
+    if (!diagnostics) return null;
+
+    return (
+      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+        <button
+          type="button"
+          onClick={() => setShowDetails(!showDetails)}
+          className="flex items-center justify-between w-full text-sm text-gray-600 hover:text-gray-800"
+        >
+          <span>Notification System Status</span>
+          <Settings2 className={`w-4 h-4 transform transition-transform ${showDetails ? 'rotate-90' : ''}`} />
+        </button>
+        
+        {showDetails && (
+          <div className="mt-3 space-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex justify-between">
+                <span>Scheduled:</span>
+                <span className="font-mono">{diagnostics.scheduledCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Queued:</span>
+                <span className="font-mono">{diagnostics.queuedCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Push Available:</span>
+                <span className={`font-mono ${diagnostics.pushAvailable ? 'text-green-600' : 'text-red-600'}`}>
+                  {diagnostics.pushAvailable ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Service Worker:</span>
+                <span className={`font-mono ${diagnostics.serviceWorkerActive ? 'text-green-600' : 'text-red-600'}`}>
+                  {diagnostics.serviceWorkerActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Visibility API:</span>
+                <span className={`font-mono ${diagnostics.visibilitySupported ? 'text-green-600' : 'text-red-600'}`}>
+                  {diagnostics.visibilitySupported ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Background Sync:</span>
+                <span className={`font-mono ${diagnostics.backgroundSyncSupported ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {diagnostics.backgroundSyncSupported ? 'Yes' : 'No'}
+                </span>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-gray-200">
+              <div className="flex justify-between text-xs">
+                <span>Last Check:</span>
+                <span className="font-mono">{diagnostics.lastVisibilityCheck}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -480,13 +569,23 @@ export function Settings() {
                         <p className="text-sm text-green-600">
                           Notifications are enabled! You'll receive medication reminders.
                         </p>
-                        <button
-                          type="button"
-                          onClick={handleTestNotification}
-                          className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          Send Test Notification
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleTestNotification}
+                            className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            Send Test Notification
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCheckMissedNotifications}
+                            className="mobile-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            Check Missed
+                          </button>
+                        </div>
+                        <NotificationDiagnostics />
                       </div>
                     )}
                   </div>
@@ -575,7 +674,7 @@ export function Settings() {
                     {!isPWAInstalled && (
                       <div className="space-y-2">
                         <p className="text-sm text-gray-600">
-                          Install MedTrack as a mobile app for the best experience:
+                          Install Meditrax as a mobile app for the best experience:
                         </p>
                         <ul className="text-sm text-gray-600 ml-4 space-y-1">
                           <li>• Works offline</li>
@@ -595,7 +694,7 @@ export function Settings() {
                     
                     {isPWAInstalled && (
                       <p className="text-sm text-green-600">
-                        Great! You're using the installed version of MedTrack.
+                        Great! You're using the installed version of Meditrax.
                       </p>
                     )}
                   </div>

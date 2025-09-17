@@ -38,6 +38,12 @@ export function useNotificationHandler() {
         case 'SYNC_REMINDERS_REQUEST':
           handleSyncRemindersRequest();
           break;
+        case 'CHECK_MISSED_NOTIFICATIONS':
+          handleCheckMissedNotifications();
+          break;
+        case 'NOTIFICATION_SENT':
+          handleNotificationSent(data);
+          break;
         default:
           break;
       }
@@ -131,7 +137,7 @@ export function useNotificationHandler() {
         .forEach(async (reminder) => {
           const medication = medications.find(m => m.id === reminder.medicationId);
           if (medication) {
-            await notificationService.scheduleReminder(reminder, medication);
+            await notificationService.scheduleReminderEnhanced(reminder, medication);
           }
         });
       
@@ -150,7 +156,7 @@ export function useNotificationHandler() {
         for (const reminder of activeReminders) {
           const medication = medications.find(m => m.id === reminder.medicationId);
           if (medication) {
-            await notificationService.scheduleReminder(reminder, medication);
+            await notificationService.scheduleReminderEnhanced(reminder, medication);
           }
         }
         
@@ -169,9 +175,33 @@ export function useNotificationHandler() {
         console.error('Failed to send test notification:', error);
         toast.error('Failed to send test notification');
       }
+    },
+    
+    checkMissedNotifications: () => {
+      handleCheckMissedNotifications();
+    }
+  };
+
+  const handleCheckMissedNotifications = () => {
+    try {
+      // Trigger the notification service to check for missed notifications
+      // This is called by the service worker
+      notificationService.checkMissedNotifications();
+    } catch (error) {
+      console.error('Failed to check missed notifications:', error);
+    }
+  };
+
+  const handleNotificationSent = (data: any) => {
+    try {
+      console.log('Service worker sent notification:', data);
+      // Could show a toast or update UI state here if needed
+    } catch (error) {
+      console.error('Failed to handle notification sent event:', error);
     }
   };
 }
 
 export default useNotificationHandler;
+
 

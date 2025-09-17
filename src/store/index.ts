@@ -575,7 +575,7 @@ export const useMedicationStore = create<MedicationStore>()(
         try {
           const medication = get().medications.find(med => med.id === reminder.medicationId);
           if (medication && reminder.isActive) {
-            await notificationService.scheduleReminder(reminder, medication);
+            await notificationService.scheduleReminderEnhanced(reminder, medication);
           }
         } catch (error) {
           console.error('Failed to schedule push notification:', error);
@@ -604,7 +604,7 @@ export const useMedicationStore = create<MedicationStore>()(
               // Schedule new notification if still active
               const updatedReminder = { ...currentReminder, ...updates };
               if (updatedReminder.isActive) {
-                await notificationService.scheduleReminder(updatedReminder, medication);
+                await notificationService.scheduleReminderEnhanced(updatedReminder, medication);
               }
             }
           }
@@ -645,7 +645,7 @@ export const useMedicationStore = create<MedicationStore>()(
             if (medication) {
               if (newActiveState) {
                 // Schedule notification
-                await notificationService.scheduleReminder({ ...reminder, isActive: true }, medication);
+                await notificationService.scheduleReminderEnhanced({ ...reminder, isActive: true }, medication);
               } else {
                 // Cancel notification
                 notificationService.cancelReminder(id);

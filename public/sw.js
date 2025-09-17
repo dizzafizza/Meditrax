@@ -1,10 +1,10 @@
 /**
- * MedTrack Service Worker
+ * Meditrax Service Worker
  * Handles push notifications, caching, and offline functionality
  */
 
-const CACHE_NAME = 'medtrack-v1';
-const NOTIFICATION_CACHE = 'medtrack-notifications-v1';
+const CACHE_NAME = 'meditrax-v1';
+const NOTIFICATION_CACHE = 'meditrax-notifications-v1';
 
 // Assets to cache on install
 const STATIC_ASSETS = [
@@ -113,7 +113,7 @@ self.addEventListener('push', (event) => {
   console.log('Service Worker: Push notification received');
   
   let notificationData = {
-    title: 'MedTrack Reminder',
+    title: 'Meditrax Reminder',
     body: 'Time to take your medication!',
     icon: '/pill-icon.svg',
     badge: '/pill-icon.svg',
@@ -265,6 +265,17 @@ self.addEventListener('sync', (event) => {
     event.waitUntil(syncMedicationLogs());
   } else if (event.tag === 'sync-reminders') {
     event.waitUntil(syncReminders());
+  } else if (event.tag === 'check-notifications') {
+    event.waitUntil(checkScheduledNotifications());
+  }
+});
+
+// Periodic Background sync - check notifications periodically
+self.addEventListener('periodicsync', (event) => {
+  console.log('Service Worker: Periodic sync triggered', event.tag);
+  
+  if (event.tag === 'check-medication-reminders') {
+    event.waitUntil(checkScheduledNotifications());
   }
 });
 
@@ -542,7 +553,7 @@ async function syncReminders() {
  */
 async function showTestNotification() {
   try {
-    await self.registration.showNotification('MedTrack Test', {
+    await self.registration.showNotification('Meditrax Test', {
       body: 'Service Worker notifications are working!',
       icon: '/pill-icon.svg',
       badge: '/pill-icon.svg',
@@ -554,5 +565,87 @@ async function showTestNotification() {
   }
 }
 
+/**
+ * Check for scheduled notifications that should be shown
+ */
+async function checkScheduledNotifications() {
+  try {
+    console.log('Service Worker: Checking scheduled notifications...');
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const requests = await cache.keys();
+    const now = Date.now();
+    
+    // Look for scheduled notifications
+    const scheduledRequests = requests.filter(request => 
+      request.url.includes('scheduled-') || request.url.includes('notification-queue-')
+    );
+    
+    for (const request of scheduledRequests) {
+      try {
+        const response = await cache.match(request);
+        if (response) {
+          const notificationData = await response.json();
+          const scheduledTime = new Date(notificationData.scheduledTime).getTime();
+          
+          // If notification time has passed, show it
+          if (scheduledTime <= now && notificationData.status !== 'sent') {
+            await self.registration.showNotification(
+              notificationData.title || 'Meditrax Reminder',
+              {
+                body: notificationData.body || 'Time to take your medication!',
+                icon: notificationData.icon || '/pill-icon.svg',
+                badge: notificationData.badge || '/pill-icon.svg',
+                data: notificationData.data || {},
+                requireInteraction: true,
+                tag: notificationData.tag || 'medication-reminder',
+                renotify: true,
+                actions: [
+                  {
+                    action: 'take',
+                    title: 'Mark as Taken',
+                    icon: '/icons/check.png'
+                  },
+                  {
+                    action: 'snooze',
+                    title: 'Snooze 15min',
+                    icon: '/icons/snooze.png'
+                  }
+                ]
+              }
+            );
+            
+            // Mark as sent
+            notificationData.status = 'sent';
+            notificationData.sentAt = new Date().toISOString();
+            await cache.put(request, new Response(JSON.stringify(notificationData)));
+            
+            // Notify main app
+            await sendMessageToClients({
+              type: 'NOTIFICATION_SENT',
+              notificationId: notificationData.id,
+              timestamp: new Date().toISOString()
+            });
+            
+            console.log(`Service Worker: Sent scheduled notification ${notificationData.id}`);
+          }
+        }
+      } catch (error) {
+        console.error('Service Worker: Error processing scheduled notification:', error);
+      }
+    }
+    
+    // Also check localStorage-based notification queue by sending message to clients
+    await sendMessageToClients({
+      type: 'CHECK_MISSED_NOTIFICATIONS'
+    });
+    
+    console.log('Service Worker: Notification check complete');
+  } catch (error) {
+    console.error('Service Worker: Failed to check scheduled notifications:', error);
+  }
+}
+
 console.log('Service Worker: Loaded and ready');
+
 
