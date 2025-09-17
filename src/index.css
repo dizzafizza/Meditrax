@@ -140,6 +140,28 @@
     @apply fixed inset-y-0 left-0 z-50 w-full sm:w-64 transform transition-transform duration-300 ease-in-out;
   }
   
+  /* Sidebar scrollable navigation */
+  .sidebar-nav-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+  
+  .sidebar-nav-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .sidebar-nav-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .sidebar-nav-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+  }
+  
   /* Better mobile card spacing */
   .mobile-card-container {
     @apply p-3 sm:p-4 space-y-3 sm:space-y-4;
