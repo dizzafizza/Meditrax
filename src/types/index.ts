@@ -164,7 +164,7 @@ export interface EmergencyContact {
 }
 
 export interface UserPreferences {
-  theme: 'light' | 'dark' | 'system';
+  theme: 'light' | 'system';
   notifications: {
     push: boolean;
     sound: boolean;

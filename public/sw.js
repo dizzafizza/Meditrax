@@ -555,3 +555,4 @@ async function showTestNotification() {
 }
 
 console.log('Service Worker: Loaded and ready');
+

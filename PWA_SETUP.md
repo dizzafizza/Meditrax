@@ -232,3 +232,4 @@ For PWA-related issues:
 5. Clear browser cache and data if needed
 
 The PWA functionality is designed to degrade gracefully - if push notifications aren't available, the app still functions normally with in-app reminders.
+

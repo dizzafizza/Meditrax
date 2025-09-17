@@ -254,9 +254,3 @@
   animation: pulse-ring 2s infinite;
 }
 
-/* Dark mode styles */
-@media (prefers-color-scheme: dark) {
-  :root {
-    @apply bg-gray-900 text-gray-100;
-  }
-}

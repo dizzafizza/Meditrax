@@ -20,6 +20,36 @@ interface ChangelogEntry {
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "1.2.0",
+    date: "2025-9-17",
+    changes: [
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Settings Page Mobile Optimization",
+        description: "Fixed mobile scaling issues in settings page with improved responsive design, better touch targets, and proper mobile-first styling."
+      },
+      {
+        type: 'fixed',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "Changelog Version Detection",
+        description: "Fixed changelog modal not appearing for new versions when previously dismissed. The changelog now properly detects version changes."
+      },
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Enhanced Mobile Navigation",
+        description: "Improved tab navigation and form layouts throughout the app for better mobile experience with optimized touch targets."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Progressive Web App Features",
+        description: "Enhanced PWA capabilities with better offline functionality, improved notification handling, and native app-like experience."
+      }
+    ]
+  },
+  {
     version: "1.1.0",
     date: "2025-9-16",
     changes: [

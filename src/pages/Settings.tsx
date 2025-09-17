@@ -285,42 +285,43 @@ export function Settings() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-4xl mx-auto p-3 sm:p-4 lg:p-6">
         <div className="bg-white rounded-lg shadow">
           {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-            <p className="text-gray-600">Manage your account and application preferences</p>
+          <div className="px-4 py-4 sm:px-6 border-b border-gray-200">
+            <h1 className="mobile-title text-gray-900">Settings</h1>
+            <p className="text-gray-600 mobile-text mt-1">Manage your account and application preferences</p>
           </div>
 
           {/* Tab Navigation */}
           <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
+            <nav className="flex space-x-4 sm:space-x-8 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                  className={`flex items-center space-x-2 py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap touch-manipulation min-h-[44px] ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <tab.icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
+                  <tab.icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
                 </button>
               ))}
             </nav>
           </div>
 
           {/* Content */}
-          <form onSubmit={handleSubmit(onSubmit)} className="p-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6">
             {/* Profile Tab */}
             {activeTab === 'profile' && (
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Full Name
@@ -328,7 +329,7 @@ export function Settings() {
                       <input
                         type="text"
                         {...register('name', { required: 'Name is required' })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                       {errors.name && (
                         <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>
@@ -342,7 +343,7 @@ export function Settings() {
                       <input
                         type="date"
                         {...register('dateOfBirth')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
 
@@ -354,7 +355,7 @@ export function Settings() {
                         type="text"
                         placeholder="Separate with commas"
                         {...register('allergies')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
 
@@ -366,7 +367,7 @@ export function Settings() {
                         type="text"
                         placeholder="Separate with commas"
                         {...register('conditions')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
                   </div>
@@ -374,7 +375,7 @@ export function Settings() {
 
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Emergency Contact</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Contact Name
@@ -382,7 +383,7 @@ export function Settings() {
                       <input
                         type="text"
                         {...register('emergencyContactName')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
 
@@ -393,7 +394,7 @@ export function Settings() {
                       <input
                         type="text"
                         {...register('emergencyContactRelationship')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
 
@@ -404,7 +405,7 @@ export function Settings() {
                       <input
                         type="tel"
                         {...register('emergencyContactPhone')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
 
@@ -415,7 +416,7 @@ export function Settings() {
                       <input
                         type="email"
                         {...register('emergencyContactEmail')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
                   </div>
@@ -466,7 +467,7 @@ export function Settings() {
                           <button
                             type="button"
                             onClick={handleRequestNotificationPermission}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            className="mobile-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                           >
                             Enable Notifications
                           </button>
@@ -482,7 +483,7 @@ export function Settings() {
                         <button
                           type="button"
                           onClick={handleTestNotification}
-                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                          className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                         >
                           Send Test Notification
                         </button>
@@ -532,10 +533,10 @@ export function Settings() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Reminder advance time (minutes)
                       </label>
-                      <select
-                        {...register('reminderAdvance')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
+                        <select
+                          {...register('reminderAdvance')}
+                          className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
                         <option value={0}>On time (no advance)</option>
                         <option value={5}>5 minutes before</option>
                         <option value={10}>10 minutes before</option>
@@ -585,7 +586,7 @@ export function Settings() {
                         <button
                           type="button"
                           onClick={handleInstallPWA}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                          className="mobile-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                           Install App
                         </button>
@@ -637,10 +638,9 @@ export function Settings() {
                         </label>
                         <select
                           {...register('theme')}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="light">Light</option>
-                          <option value="dark">Dark</option>
                           <option value="system">System (Auto)</option>
                         </select>
                       </div>
@@ -651,7 +651,7 @@ export function Settings() {
                         </label>
                         <select
                           {...register('timeFormat')}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="12h">12 hour (AM/PM)</option>
                           <option value="24h">24 hour</option>
@@ -664,7 +664,7 @@ export function Settings() {
                         </label>
                         <select
                           {...register('dateFormat')}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                           <option value="DD/MM/YYYY">DD/MM/YYYY</option>
@@ -678,7 +678,7 @@ export function Settings() {
                         </label>
                         <select
                           {...register('defaultView')}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="dashboard">Dashboard</option>
                           <option value="medications">Medications</option>
@@ -704,7 +704,7 @@ export function Settings() {
                     <button
                       type="button"
                       onClick={() => setShowExportModal(true)}
-                      className="flex items-center justify-center space-x-2 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+                      className="mobile-button flex items-center justify-center space-x-2 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors bg-white"
                     >
                       <Download className="w-5 h-5 text-gray-600" />
                       <span>Export Data</span>
@@ -713,7 +713,7 @@ export function Settings() {
                     <button
                       type="button"
                       onClick={() => setShowImportModal(true)}
-                      className="flex items-center justify-center space-x-2 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+                      className="mobile-button flex items-center justify-center space-x-2 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors bg-white"
                     >
                       <Upload className="w-5 h-5 text-gray-600" />
                       <span>Import Data</span>
@@ -731,7 +731,7 @@ export function Settings() {
                         <button
                           type="button"
                           onClick={() => setShowClearDataDialog(true)}
-                          className="flex items-center space-x-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                          className="mobile-button flex items-center space-x-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                           <span>Clear All Data</span>
@@ -747,7 +747,7 @@ export function Settings() {
             <div className="flex justify-end pt-6 border-t border-gray-200">
               <button
                 type="submit"
-                className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="btn-primary flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Save className="w-4 h-4" />
                 <span>Save Settings</span>
