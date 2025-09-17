@@ -16,7 +16,11 @@ import {
   TestTube,
   Activity,
   Brain,
-  Clock
+  Clock,
+  Smartphone,
+  Bell,
+  Wifi,
+  Download
 } from 'lucide-react';
 
 interface WikiSection {
@@ -48,8 +52,11 @@ export function Wiki() {
               <h3 className="font-semibold text-blue-900 mb-2">Key Features</h3>
               <ul className="space-y-2 text-blue-800">
                 <li className="flex items-center"><Pill className="h-4 w-4 mr-2" />Comprehensive medication database with harm reduction info</li>
+                <li className="flex items-center"><Bell className="h-4 w-4 mr-2" />Push notifications that work even when app is closed</li>
+                <li className="flex items-center"><Smartphone className="h-4 w-4 mr-2" />Progressive Web App - install like a native mobile app</li>
                 <li className="flex items-center"><Calendar className="h-4 w-4 mr-2" />Smart scheduling and reminder system</li>
                 <li className="flex items-center"><BarChart3 className="h-4 w-4 mr-2" />Analytics and adherence tracking</li>
+                <li className="flex items-center"><Wifi className="h-4 w-4 mr-2" />Works offline with automatic sync</li>
                 <li className="flex items-center"><TrendingDown className="h-4 w-4 mr-2" />Evidence-based tapering plans</li>
                 <li className="flex items-center"><Settings className="h-4 w-4 mr-2" />Privacy-focused with local data storage</li>
               </ul>
@@ -62,26 +69,40 @@ export function Wiki() {
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">1</div>
                 <div>
+                  <h4 className="font-medium">Install as PWA (Recommended)</h4>
+                  <p className="text-gray-600">Look for "Add to Home Screen" (mobile) or "Install App" (desktop) to install MedTrack as a native-like app.</p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">2</div>
+                <div>
+                  <h4 className="font-medium">Enable Push Notifications</h4>
+                  <p className="text-gray-600">Go to Settings → Notifications and enable push notifications to receive medication reminders even when the app is closed.</p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">3</div>
+                <div>
                   <h4 className="font-medium">Add Your First Medication</h4>
                   <p className="text-gray-600">Go to Medications → Add Medication and search our comprehensive database or add custom entries.</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">2</div>
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">4</div>
                 <div>
                   <h4 className="font-medium">Set Up Reminders</h4>
                   <p className="text-gray-600">Configure your dosing schedule and notification preferences for consistent tracking.</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">3</div>
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">5</div>
                 <div>
                   <h4 className="font-medium">Track Your Progress</h4>
                   <p className="text-gray-600">Use the dashboard to log doses and monitor adherence patterns over time.</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">4</div>
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">6</div>
                 <div>
                   <h4 className="font-medium">Review Analytics</h4>
                   <p className="text-gray-600">Analyze your patterns, identify trends, and get insights for better medication management.</p>
@@ -499,6 +520,95 @@ export function Wiki() {
 
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                  <Smartphone className="h-5 w-5 mr-2 text-indigo-500" />
+                  Progressive Web App Features
+                </h3>
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-medium mb-3">PWA Installation</h4>
+                      <ul className="space-y-1 text-gray-700 text-sm">
+                        <li>• Install as native-like app on any device</li>
+                        <li>• Works offline with cached data</li>
+                        <li>• Faster loading and app-like experience</li>
+                        <li>• Home screen shortcuts and integration</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-3">Push Notifications</h4>
+                      <ul className="space-y-1 text-gray-700 text-sm">
+                        <li>• Receive reminders when app is closed</li>
+                        <li>• Interactive notifications (take/snooze/skip)</li>
+                        <li>• Cross-platform support (iOS/Android/Desktop)</li>
+                        <li>• Automatic scheduling from reminders</li>
+                      </ul>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6">
+                    <h4 className="font-medium mb-3">Installation Instructions</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div className="bg-blue-50 p-3 rounded">
+                        <p className="font-medium text-blue-900 mb-1">📱 Mobile (iOS/Android)</p>
+                        <p className="text-blue-800">Look for "Add to Home Screen" option in your browser menu</p>
+                      </div>
+                      <div className="bg-green-50 p-3 rounded">
+                        <p className="font-medium text-green-900 mb-1">💻 Desktop</p>
+                        <p className="text-green-800">Click the install icon in your browser's address bar</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                  <Bell className="h-5 w-5 mr-2 text-yellow-500" />
+                  Notification System
+                </h3>
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <h4 className="font-medium mb-3">Smart Scheduling</h4>
+                      <ul className="space-y-1 text-gray-700 text-sm">
+                        <li>• Automatic scheduling from reminders</li>
+                        <li>• Advance warning options</li>
+                        <li>• Respects user preferences</li>
+                        <li>• Handles multiple medications</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-3">Interactive Actions</h4>
+                      <ul className="space-y-1 text-gray-700 text-sm">
+                        <li>• "Mark as Taken" button</li>
+                        <li>• "Snooze 15min" option</li>
+                        <li>• "Skip Dose" functionality</li>
+                        <li>• Direct app navigation</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-3">Platform Support</h4>
+                      <ul className="space-y-1 text-gray-700 text-sm">
+                        <li>• iOS 16.4+ (PWA required)</li>
+                        <li>• Android Chrome (all versions)</li>
+                        <li>• Desktop Chrome/Edge</li>
+                        <li>• macOS Safari (limited)</li>
+                      </ul>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 p-4 bg-yellow-50 rounded-lg">
+                    <h4 className="font-medium text-yellow-900 mb-2">📱 iOS Users</h4>
+                    <p className="text-yellow-800 text-sm">
+                      For push notifications to work on iOS, you must install MedTrack as a PWA using 
+                      "Add to Home Screen" in Safari. Regular web browser notifications are not supported on iOS.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                   <Settings className="h-5 w-5 mr-2 text-gray-500" />
                   Privacy & Data Management
                 </h3>
@@ -527,8 +637,9 @@ export function Wiki() {
                   <div className="mt-6 p-4 bg-green-50 rounded-lg">
                     <h4 className="font-medium text-green-900 mb-2">Privacy First Design</h4>
                     <p className="text-green-800 text-sm">
-                      Meditrax is designed with privacy as a core principle. Your sensitive medication and health data 
-                      never leaves your device, ensuring complete confidentiality and control.
+                      MedTrack is designed with privacy as a core principle. Your sensitive medication and health data 
+                      never leaves your device, ensuring complete confidentiality and control. Even with PWA installation 
+                      and push notifications, all processing happens locally on your device.
                     </p>
                   </div>
                 </div>

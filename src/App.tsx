@@ -14,12 +14,16 @@ import { Wiki } from '@/pages/Wiki';
 import { CyclicDosing } from '@/pages/CyclicDosing';
 import { ChangelogModal } from '@/components/ui/ChangelogModal';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
+import { useNotificationHandler } from '@/hooks/useNotificationHandler';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
 
 function App() {
   const { userProfile } = useMedicationStore();
   const { shouldShowChangelog, currentVersion, markVersionSeen } = useVersionCheck();
+
+  // Initialize notification handling
+  useNotificationHandler();
 
   // Initialize user profile if it doesn't exist
   React.useEffect(() => {

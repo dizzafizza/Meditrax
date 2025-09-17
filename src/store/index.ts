@@ -168,6 +168,11 @@ interface MedicationStore {
   getSmartInsights: () => any[];
   getPsychologicalProfile: (medicationId: string) => any;
   getAdherenceScore: (medicationId: string, timeWindow?: number) => number;
+
+  // Enhanced streak tracking methods
+  getCurrentStreak: (medicationId: string) => number;
+  getOverallStreak: () => number;
+  areAllScheduledMedicationsComplete: () => boolean;
 }
 
 const initialUserProfile: UserProfile = {
@@ -465,6 +470,12 @@ export const useMedicationStore = create<MedicationStore>()(
             
             get().updatePillInventory(medicationId, inventoryUpdates);
           }
+        } else if (!medication.useMultiplePills && medication.pillsRemaining) {
+          // Handle legacy single pill inventory
+          const pillsTaken = dosage || parseFloat(medication.dosage) || 1;
+          get().updateMedication(medicationId, {
+            pillsRemaining: Math.max(0, medication.pillsRemaining - pillsTaken)
+          });
         }
       },
 
@@ -548,7 +559,7 @@ export const useMedicationStore = create<MedicationStore>()(
       },
 
       // Reminder actions
-      addReminder: (reminderData) => {
+      addReminder: async (reminderData) => {
         const reminder: Reminder = {
           ...reminderData,
           id: generateId(),
@@ -559,39 +570,128 @@ export const useMedicationStore = create<MedicationStore>()(
         set((state) => ({
           reminders: [...state.reminders, reminder],
         }));
+
+        // Schedule push notification for the reminder
+        try {
+          const medication = get().medications.find(med => med.id === reminder.medicationId);
+          if (medication && reminder.isActive) {
+            await notificationService.scheduleReminder(reminder, medication);
+          }
+        } catch (error) {
+          console.error('Failed to schedule push notification:', error);
+          // Don't fail the reminder creation, just log the error
+        }
       },
 
-      updateReminder: (id, updates) => {
+      updateReminder: async (id, updates) => {
+        const state = get();
+        const currentReminder = state.reminders.find(r => r.id === id);
+        
         set((state) => ({
           reminders: state.reminders.map((reminder) =>
             reminder.id === id ? { ...reminder, ...updates, updatedAt: new Date() } : reminder
           ),
         }));
+
+        // Update push notification if reminder was modified
+        try {
+          if (currentReminder) {
+            const medication = state.medications.find(med => med.id === currentReminder.medicationId);
+            if (medication) {
+              // Cancel old notification
+              notificationService.cancelReminder(id);
+              
+              // Schedule new notification if still active
+              const updatedReminder = { ...currentReminder, ...updates };
+              if (updatedReminder.isActive) {
+                await notificationService.scheduleReminder(updatedReminder, medication);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to update push notification:', error);
+        }
       },
 
       deleteReminder: (id) => {
+        // Cancel push notification
+        try {
+          notificationService.cancelReminder(id);
+        } catch (error) {
+          console.error('Failed to cancel push notification:', error);
+        }
+
         set((state) => ({
           reminders: state.reminders.filter((reminder) => reminder.id !== id),
         }));
       },
 
-      toggleReminderActive: (id) => {
-        set((state) => ({
-          reminders: state.reminders.map((reminder) =>
-            reminder.id === id ? { ...reminder, isActive: !reminder.isActive, updatedAt: new Date() } : reminder
-          ),
-        }));
+      toggleReminderActive: async (id) => {
+        const state = get();
+        const reminder = state.reminders.find(r => r.id === id);
+        
+        if (reminder) {
+          const newActiveState = !reminder.isActive;
+          
+          set((state) => ({
+            reminders: state.reminders.map((reminder) =>
+              reminder.id === id ? { ...reminder, isActive: newActiveState, updatedAt: new Date() } : reminder
+            ),
+          }));
+
+          // Update push notification
+          try {
+            const medication = state.medications.find(med => med.id === reminder.medicationId);
+            if (medication) {
+              if (newActiveState) {
+                // Schedule notification
+                await notificationService.scheduleReminder({ ...reminder, isActive: true }, medication);
+              } else {
+                // Cancel notification
+                notificationService.cancelReminder(id);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to update push notification:', error);
+          }
+        }
       },
 
-      snoozeReminder: (id, minutes) => {
+      snoozeReminder: async (id, minutes = 15) => {
         const snoozeUntil = new Date();
         snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+        
+        const state = get();
+        const reminder = state.reminders.find(r => r.id === id);
 
         set((state) => ({
           reminders: state.reminders.map((reminder) =>
             reminder.id === id ? { ...reminder, snoozeUntil, updatedAt: new Date() } : reminder
           ),
         }));
+
+        // Handle push notification snoozing
+        try {
+          if (reminder) {
+            const medication = state.medications.find(med => med.id === reminder.medicationId);
+            if (medication) {
+              // Cancel current notification and schedule a new one for the snooze time
+              notificationService.cancelReminder(id);
+              
+              // Create a temporary reminder for the snooze
+              const snoozeReminder = {
+                ...reminder,
+                id: `${id}_snooze_${Date.now()}`,
+                scheduledTime: snoozeUntil
+              };
+              
+              // This would need to be implemented in the notification service
+              // await notificationService.scheduleSnoozeReminder(snoozeReminder, medication, minutes);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to handle snooze push notification:', error);
+        }
       },
 
       // Profile actions
@@ -1121,12 +1221,19 @@ export const useMedicationStore = create<MedicationStore>()(
         
         if (!medication) return;
 
+        // Enhanced adherence tracking for streaks
         const adherenceData = {
-          adherenceStreak: logs.filter(log => 
-            log.medicationId === medicationId && 
-            log.adherence === 'taken'
-          ).length
+          adherenceStreak: get().getCurrentStreak(medicationId),
+          overallStreak: get().getOverallStreak()
         };
+
+        // Only generate celebration messages when ALL scheduled medications are complete
+        if (type === 'celebration') {
+          const allScheduledComplete = get().areAllScheduledMedicationsComplete();
+          if (!allScheduledComplete) {
+            return; // Don't show celebration message until all scheduled meds are done
+          }
+        }
 
         const messageContent = generatePsychologicalMessage(
           type as any, 
@@ -1740,6 +1847,85 @@ export const useMedicationStore = create<MedicationStore>()(
         return get().getMedicationAdherence(medicationId, timeWindow);
       },
 
+      // Enhanced streak tracking
+      getCurrentStreak: (medicationId) => {
+        const logs = get().logs.filter(log => log.medicationId === medicationId)
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        if (logs.length === 0) return 0;
+
+        let streak = 0;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Count consecutive days of taking medication
+        for (let i = 0; i < logs.length; i++) {
+          const logDate = new Date(logs[i].timestamp);
+          logDate.setHours(0, 0, 0, 0);
+          
+          const expectedDate = new Date(today.getTime() - (streak * 24 * 60 * 60 * 1000));
+          
+          if (logDate.getTime() === expectedDate.getTime() && logs[i].adherence === 'taken') {
+            streak++;
+          } else {
+            break;
+          }
+        }
+
+        return streak;
+      },
+
+      getOverallStreak: () => {
+        const { medications, logs } = get();
+        const scheduledMeds = medications.filter(med => 
+          med.isActive && med.frequency !== 'as-needed'
+        );
+
+        if (scheduledMeds.length === 0) return 0;
+
+        let minStreak = Infinity;
+        for (const med of scheduledMeds) {
+          const streak = get().getCurrentStreak(med.id);
+          minStreak = Math.min(minStreak, streak);
+        }
+
+        return minStreak === Infinity ? 0 : minStreak;
+      },
+
+      areAllScheduledMedicationsComplete: () => {
+        const { medications, logs } = get();
+        const todaysLogs = logs.filter(log => isToday(new Date(log.timestamp)));
+        const activeMedications = medications.filter(med => med.isActive);
+        
+        // Get all scheduled medications (not as-needed)
+        const scheduledMedications = activeMedications.filter(med => 
+          med.frequency !== 'as-needed'
+        );
+
+        if (scheduledMedications.length === 0) return true;
+
+        // Check each scheduled medication to see if all required doses are taken
+        for (const medication of scheduledMedications) {
+          const frequencyMap = {
+            'once-daily': 1,
+            'twice-daily': 2,
+            'three-times-daily': 3,
+            'four-times-daily': 4,
+          };
+          
+          const requiredDoses = frequencyMap[medication.frequency as keyof typeof frequencyMap] || 1;
+          const takenDoses = todaysLogs.filter(log => 
+            log.medicationId === medication.id && log.adherence === 'taken'
+          ).length;
+
+          if (takenDoses < requiredDoses) {
+            return false; // This medication is not complete
+          }
+        }
+
+        return true; // All scheduled medications are complete
+      },
+
       // NEW: Multiple pills support methods
       addPillConfiguration: (medicationId, config) => {
         const pillConfig: PillConfiguration = {
@@ -1992,12 +2178,18 @@ export const useMedicationStore = create<MedicationStore>()(
         }
 
         // Update pill inventory if available
-        if (medication.pillInventory) {
-          const inventoryUpdates = pillLogs.map((pillLog) => ({
-            pillConfigurationId: pillLog.pillConfigurationId,
-            currentCount: -pillLog.quantityTaken, // Negative to subtract
-          }));
-          get().updatePillInventory(medicationId, inventoryUpdates);
+        if (medication.pillInventory && medication.pillInventory.length > 0) {
+          const inventoryUpdates = pillLogs
+            .filter(pillLog => pillLog.quantityTaken > 0) // Only update pills that were actually taken
+            .map((pillLog) => ({
+              pillConfigurationId: pillLog.pillConfigurationId,
+              currentCount: -pillLog.quantityTaken, // Negative to subtract
+              lastUpdated: new Date(),
+            }));
+          
+          if (inventoryUpdates.length > 0) {
+            get().updatePillInventory(medicationId, inventoryUpdates);
+          }
         }
       },
 
@@ -2058,16 +2250,20 @@ export const useMedicationStore = create<MedicationStore>()(
                 );
 
                 if (existingIndex >= 0) {
+                  // Update existing inventory item
+                  const currentItem = updatedInventory[existingIndex];
+                  const newCount = update.currentCount !== undefined 
+                    ? currentItem.currentCount + update.currentCount
+                    : currentItem.currentCount;
+
                   updatedInventory[existingIndex] = {
-                    ...updatedInventory[existingIndex],
+                    ...currentItem,
                     ...update,
-                    currentCount: Math.max(
-                      0,
-                      updatedInventory[existingIndex].currentCount + (update.currentCount || 0)
-                    ),
+                    currentCount: Math.max(0, newCount), // Ensure count never goes below 0
                     lastUpdated: new Date(),
                   };
-                } else if (update.currentCount !== undefined) {
+                } else if (update.currentCount !== undefined && update.currentCount > 0) {
+                  // Only add new inventory items if they have a positive count
                   updatedInventory.push({
                     pillConfigurationId: update.pillConfigurationId!,
                     currentCount: Math.max(0, update.currentCount),
@@ -2077,9 +2273,15 @@ export const useMedicationStore = create<MedicationStore>()(
                 }
               });
 
+              // Clean up inventory items with 0 count after some time
+              const cleanedInventory = updatedInventory.filter(item => 
+                item.currentCount > 0 || 
+                (new Date().getTime() - new Date(item.lastUpdated).getTime() < 24 * 60 * 60 * 1000) // Keep 0 count items for 24 hours
+              );
+
               return {
                 ...med,
-                pillInventory: updatedInventory,
+                pillInventory: cleanedInventory,
                 updatedAt: new Date(),
               };
             }

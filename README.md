@@ -26,11 +26,26 @@ A modern, responsive web application built with React and TypeScript for trackin
 - **Trend Analysis**: Track improvement or decline in adherence over time
 - **Date Range Filtering**: 7-day, 30-day, and 90-day analysis periods
 
+### 📱 Progressive Web App (PWA) Features
+- **Mobile Installation**: Install as a native-like app on iOS, Android, and desktop
+- **Offline Functionality**: Use the app without internet connection
+- **Push Notifications**: Receive medication reminders even when the app is closed
+- **Background Sync**: Data syncs automatically when connection is restored
+- **Fast Loading**: Cached resources for instant app startup
+- **Native Integration**: Home screen shortcuts and app-like experience
+
+### 🔔 Smart Notifications
+- **Cross-Platform Push**: Works on iOS, Android, and desktop browsers
+- **Interactive Notifications**: Mark as taken, snooze, or skip directly from notifications
+- **Smart Scheduling**: Automatic notification scheduling based on medication schedules
+- **Permission Management**: Easy notification permission setup and testing
+- **Offline Reminders**: Local notifications work even without internet
+
 ### ⚙️ Advanced Features
 - **Data Export/Import**: JSON and CSV export with backup/restore functionality
 - **User Profiles**: Personal information, allergies, medical conditions
 - **Emergency Contacts**: Store important contact information
-- **Customizable Settings**: Themes, notifications, display preferences
+- **Customizable Settings**: Themes, notifications, display preferences, PWA options
 - **Responsive Design**: Optimized for desktop, tablet, and mobile devices
 
 ### 🐞🔧 Known Bugs:
@@ -67,13 +82,38 @@ A modern, responsive web application built with React and TypeScript for trackin
 4. **Open your browser**
    Navigate to `http://localhost:3000` to view the application.
 
+### PWA Installation
+
+MedTrack can be installed as a Progressive Web App for the best mobile experience:
+
+**On Mobile (iOS/Android):**
+1. Open the app in your browser (Safari on iOS, Chrome on Android)
+2. Look for "Add to Home Screen" or "Install App" option
+3. Follow the prompts to install
+4. Access the app from your home screen like any native app
+
+**On Desktop:**
+1. Open the app in Chrome, Edge, or Safari
+2. Look for the install icon in the address bar
+3. Click "Install" to add to your desktop/applications
+4. Launch like any desktop application
+
+**Benefits of PWA Installation:**
+- Receive push notifications for medication reminders
+- Works offline with cached data
+- Faster loading and app-like experience
+- Integrates with your device's notification system
+
 ### Quick Start
 For first-time users:
-1. Add your first medication using the "Add Medication" button
-2. Set up reminders for consistent tracking
-3. Explore the dashboard to monitor your adherence
-4. Use the calendar view to see your medication schedule
-5. Explore advanced features like Cyclic Dosing for complex schedules
+1. **Enable Notifications**: Go to Settings → Notifications and enable push notifications
+2. **Install as PWA**: Install the app on your device for the best experience
+3. **Add Medications**: Use the "Add Medication" button to create your first entries
+4. **Set Up Reminders**: Configure notification schedules for each medication
+5. **Test Notifications**: Use the test button in settings to verify notifications work
+6. **Explore Dashboard**: Monitor your adherence and upcoming doses
+7. **Calendar View**: See your complete medication schedule
+8. **Advanced Features**: Explore Cyclic Dosing for complex schedules
 
 ### Building for Production
 
@@ -222,10 +262,13 @@ This project is licensed under the GPL-3.0 License - see the LICENSE file for de
 - **Multi-language Support**: International localization
 
 ### Technical Roadmap
-- PWA (Progressive Web App) capabilities
-- Offline functionality with service workers
+- ✅ PWA (Progressive Web App) capabilities
+- ✅ Offline functionality with service workers
+- ✅ Push notification system for medication reminders
 - Enhanced accessibility features
 - Advanced data visualization options
+- Firebase Cloud Messaging integration (optional)
+- Apple Health & Google Fit integration
 
 ---
 

@@ -11,7 +11,10 @@ export function TodaysMedications() {
     medications,
     smartMessages,
     getCurrentDose,
-    markMessageAsRead
+    markMessageAsRead,
+    getOverallStreak,
+    getCurrentStreak,
+    areAllScheduledMedicationsComplete
   } = useMedicationStore();
 
   const todaysReminders = getTodaysReminders();
@@ -75,15 +78,25 @@ export function TodaysMedications() {
     const percentage = getCompletionPercentage();
     const completed = getCompletedCount();
     const total = getTotalMedicationsForToday();
+    const overallStreak = getOverallStreak();
+    const allScheduledComplete = areAllScheduledMedicationsComplete();
     
-    if (percentage === 100) {
+    // Only show milestone/celebration when ALL scheduled medications are complete
+    if (allScheduledComplete && overallStreak > 0) {
+      const streakEmoji = overallStreak >= 30 ? "🔥🔥🔥" : overallStreak >= 7 ? "🔥🔥" : overallStreak >= 3 ? "🔥" : "✨";
+      return {
+        message: `🎉 Milestone reached! ${streakEmoji} ${overallStreak} day streak! All medications completed!`,
+        color: "text-green-600 bg-green-50 border-green-200"
+      };
+    } else if (percentage === 100) {
       return {
         message: "🎉 Perfect! You've completed all your medications for today!",
         color: "text-green-600 bg-green-50 border-green-200"
       };
     } else if (percentage >= 75) {
+      const streakDisplay = overallStreak > 0 ? ` 🔥 ${overallStreak} day streak!` : "";
       return {
-        message: `🌟 Great progress! ${completed}/${total} completed. You're doing amazing!`,
+        message: `🌟 Great progress! ${completed}/${total} completed.${streakDisplay} You're doing amazing!`,
         color: "text-blue-600 bg-blue-50 border-blue-200"
       };
     } else if (percentage >= 50) {

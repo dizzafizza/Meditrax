@@ -1002,11 +1002,15 @@ export function generatePsychologicalMessage(
     },
     'motivation': {
       title: 'You\'re Doing Great!',
-      message: `Your consistency with ${medicationName} is impressive! Every dose you take as prescribed is an investment in your health. Keep up the excellent work! 🌟`
+      message: personalizedData?.adherenceStreak && personalizedData.adherenceStreak > 0
+        ? `Your consistency with ${medicationName} is impressive! ${personalizedData.adherenceStreak} day streak! 🔥 Every dose you take as prescribed is an investment in your health. Keep up the excellent work! 🌟`
+        : `Your consistency with ${medicationName} is impressive! Every dose you take as prescribed is an investment in your health. Keep up the excellent work! 🌟`
     },
     'celebration': {
       title: 'Milestone Achieved! 🎉',
-      message: `Congratulations! You've maintained excellent adherence with ${medicationName} this week. Your dedication to your health is inspiring and making a real difference!`
+      message: personalizedData?.overallStreak 
+        ? `Congratulations! ${personalizedData.overallStreak} day streak! 🔥 You've completed all scheduled medications consistently. Your dedication to your health is inspiring and making a real difference!`
+        : `Congratulations! You've maintained excellent adherence with ${medicationName} this week. Your dedication to your health is inspiring and making a real difference!`
     },
     'risk-alert': {
       title: 'Supportive Check-In',

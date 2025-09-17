@@ -11,7 +11,11 @@ import {
   AlertTriangle,
   Moon,
   Sun,
-  Monitor
+  Monitor,
+  Smartphone,
+  Wifi,
+  WifiOff,
+  Settings2
   // Eye, // DISABLED - no longer needed
   // UserCheck, // DISABLED - no longer needed
   // CheckCircle // DISABLED - no longer needed
@@ -22,6 +26,7 @@ import { UserProfile } from '@/types';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ExportModal } from '@/components/ui/ExportModal';
 import { ImportModal } from '@/components/ui/ImportModal';
+import { notificationService, NotificationPermissionState } from '@/services/notificationService';
 // import { PrivacyDashboardModal } from '@/components/modals/PrivacyDashboardModal'; // DISABLED
 // import { ConsentManagementModal } from '@/components/modals/ConsentManagementModal'; // DISABLED  
 // import { anonymousReportingService } from '@/services/anonymousReportingService'; // DISABLED
@@ -41,28 +46,48 @@ export function Settings() {
     // backupData
   } = useMedicationStore();
 
-  const [activeTab, setActiveTab] = React.useState<'profile' | 'notifications' | 'data'>('profile');
+  const [activeTab, setActiveTab] = React.useState<'profile' | 'notifications' | 'pwa' | 'data'>('profile');
   const [showClearDataDialog, setShowClearDataDialog] = React.useState(false);
   const [showExportModal, setShowExportModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
+  const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermissionState>({ status: 'default', supported: false });
+  const [isPWAInstalled, setIsPWAInstalled] = React.useState(false);
+  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   // const [showPrivacyDashboard, setShowPrivacyDashboard] = React.useState(false); // DISABLED
   // const [showConsentModal, setShowConsentModal] = React.useState(false); // DISABLED
   // const [anonymousReportingPrefs, setAnonymousReportingPrefs] = React.useState<AnonymousReportingPreferences | null>(null); // DISABLED
   // const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Load anonymous reporting preferences on component mount
-  // React.useEffect(() => { // DISABLED
-  //   loadAnonymousReportingPreferences();
-  // }, []);
+  // Load PWA and notification state on component mount
+  React.useEffect(() => {
+    loadPWAState();
+    checkNotificationPermission();
+    
+    // Listen for online/offline events
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
-  // const loadAnonymousReportingPreferences = async () => { // DISABLED
-  //   try {
-  //     const prefs = await anonymousReportingService.getConsentStatus();
-  //     setAnonymousReportingPrefs(prefs);
-  //   } catch (error) {
-  //     console.error('Error loading anonymous reporting preferences:', error);
-  //   }
-  // };
+  const loadPWAState = () => {
+    // Check if app is installed as PWA
+    const isInstalled = window.matchMedia('(display-mode: standalone)').matches ||
+                       window.navigator.standalone === true ||
+                       document.referrer.includes('android-app://');
+    setIsPWAInstalled(isInstalled);
+  };
+
+  const checkNotificationPermission = async () => {
+    const permission = await notificationService.getPermissionState();
+    setNotificationPermission(permission);
+  };
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm({
     defaultValues: {
@@ -218,9 +243,42 @@ export function Settings() {
     toast.success('All data cleared');
   };
 
+  const handleRequestNotificationPermission = async () => {
+    try {
+      const granted = await notificationService.requestPermission();
+      if (granted) {
+        await notificationService.subscribeToPushNotifications();
+        toast.success('Notification permission granted!');
+      } else {
+        toast.error('Notification permission denied');
+      }
+      await checkNotificationPermission();
+    } catch (error) {
+      toast.error('Failed to request notification permission');
+      console.error('Failed to request notification permission:', error);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    try {
+      await notificationService.testNotification();
+      toast.success('Test notification sent!');
+    } catch (error) {
+      toast.error('Failed to send test notification');
+      console.error('Failed to send test notification:', error);
+    }
+  };
+
+  const handleInstallPWA = () => {
+    // This would be handled by the PWA install prompt
+    // The actual install prompt is triggered by the browser
+    toast.info('Look for the "Add to Home Screen" or "Install App" option in your browser menu');
+  };
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'pwa', label: 'App Settings', icon: Smartphone },
     // { id: 'privacy', label: 'Privacy', icon: Shield }, // DISABLED
     { id: 'data', label: 'Data', icon: Download },
   ];
@@ -369,17 +427,80 @@ export function Settings() {
             {activeTab === 'notifications' && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Settings</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Push Notification Settings</h3>
+                  
+                  {/* Permission Status */}
+                  <div className="mb-6 p-4 rounded-lg border">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <Bell className="w-5 h-5 text-gray-600" />
+                        <span className="font-medium text-gray-900">Notification Permission</span>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        notificationPermission.status === 'granted' 
+                          ? 'bg-green-100 text-green-800' 
+                          : notificationPermission.status === 'denied'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {notificationPermission.status === 'granted' ? 'Enabled' : 
+                         notificationPermission.status === 'denied' ? 'Blocked' : 'Not Set'}
+                      </div>
+                    </div>
+                    
+                    {!notificationPermission.supported && (
+                      <p className="text-sm text-red-600 mb-3">
+                        Push notifications are not supported in this browser.
+                      </p>
+                    )}
+                    
+                    {notificationPermission.supported && notificationPermission.status !== 'granted' && (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-600">
+                          {notificationPermission.status === 'denied' 
+                            ? 'Notifications are blocked. Please enable them in your browser settings.'
+                            : 'Enable notifications to receive medication reminders even when the app is closed.'
+                          }
+                        </p>
+                        {notificationPermission.status !== 'denied' && (
+                          <button
+                            type="button"
+                            onClick={handleRequestNotificationPermission}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            Enable Notifications
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    
+                    {notificationPermission.status === 'granted' && (
+                      <div className="space-y-2">
+                        <p className="text-sm text-green-600">
+                          Notifications are enabled! You'll receive medication reminders.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleTestNotification}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          Send Test Notification
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-4">
                     <div className="flex items-center space-x-3">
                       <input
                         type="checkbox"
                         id="pushNotifications"
                         {...register('pushNotifications')}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={notificationPermission.status !== 'granted'}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50"
                       />
                       <label htmlFor="pushNotifications" className="text-sm text-gray-700">
-                        Enable push notifications
+                        Enable push notifications for medication reminders
                       </label>
                     </div>
 
@@ -403,7 +524,7 @@ export function Settings() {
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
                       <label htmlFor="vibrationNotifications" className="text-sm text-gray-700">
-                        Enable vibration for notifications
+                        Enable vibration for notifications (mobile devices)
                       </label>
                     </div>
 
@@ -415,12 +536,156 @@ export function Settings() {
                         {...register('reminderAdvance')}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
-                        <option value={5}>5 minutes</option>
-                        <option value={10}>10 minutes</option>
-                        <option value={15}>15 minutes</option>
-                        <option value={30}>30 minutes</option>
-                        <option value={60}>1 hour</option>
+                        <option value={0}>On time (no advance)</option>
+                        <option value={5}>5 minutes before</option>
+                        <option value={10}>10 minutes before</option>
+                        <option value={15}>15 minutes before</option>
+                        <option value={30}>30 minutes before</option>
+                        <option value={60}>1 hour before</option>
                       </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PWA Tab */}
+            {activeTab === 'pwa' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Progressive Web App Settings</h3>
+                  
+                  {/* PWA Installation Status */}
+                  <div className="mb-6 p-4 rounded-lg border">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <Smartphone className="w-5 h-5 text-gray-600" />
+                        <span className="font-medium text-gray-900">App Installation</span>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        isPWAInstalled 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {isPWAInstalled ? 'Installed' : 'Web Version'}
+                      </div>
+                    </div>
+                    
+                    {!isPWAInstalled && (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-600">
+                          Install MedTrack as a mobile app for the best experience:
+                        </p>
+                        <ul className="text-sm text-gray-600 ml-4 space-y-1">
+                          <li>• Works offline</li>
+                          <li>• Faster loading</li>
+                          <li>• Reliable push notifications</li>
+                          <li>• Native app-like experience</li>
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={handleInstallPWA}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          Install App
+                        </button>
+                      </div>
+                    )}
+                    
+                    {isPWAInstalled && (
+                      <p className="text-sm text-green-600">
+                        Great! You're using the installed version of MedTrack.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Offline Status */}
+                  <div className="mb-6 p-4 rounded-lg border">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        {isOnline ? (
+                          <Wifi className="w-5 h-5 text-green-600" />
+                        ) : (
+                          <WifiOff className="w-5 h-5 text-red-600" />
+                        )}
+                        <span className="font-medium text-gray-900">Connection Status</span>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        isOnline 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {isOnline ? 'Online' : 'Offline'}
+                      </div>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600">
+                      {isOnline 
+                        ? 'Your data will sync automatically and you can receive push notifications.'
+                        : 'You can still use the app offline. Data will sync when connection is restored.'
+                      }
+                    </p>
+                  </div>
+
+                  {/* Display Preferences */}
+                  <div>
+                    <h4 className="text-base font-medium text-gray-900 mb-4">Display Preferences</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Theme
+                        </label>
+                        <select
+                          {...register('theme')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="light">Light</option>
+                          <option value="dark">Dark</option>
+                          <option value="system">System (Auto)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Time Format
+                        </label>
+                        <select
+                          {...register('timeFormat')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="12h">12 hour (AM/PM)</option>
+                          <option value="24h">24 hour</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Date Format
+                        </label>
+                        <select
+                          {...register('dateFormat')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                          <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                          <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Default Page on Open
+                        </label>
+                        <select
+                          {...register('defaultView')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="dashboard">Dashboard</option>
+                          <option value="medications">Medications</option>
+                          <option value="calendar">Calendar</option>
+                          <option value="analytics">Analytics</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>
