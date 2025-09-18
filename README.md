@@ -4,9 +4,11 @@
 
 A modern, responsive web application built with React and TypeScript for tracking medications, managing schedules, and monitoring adherence.
 
-### 🐞🔧 Known Bugs:
+## 🐞🔧 Known Bugs:
 - **Tapering System:** Sometimes you may get an incorrect dosage. *WIP*
-- **PWA Push Notifications:** Push notifications may not send when app is closed. *WIP*
+- **PWA Push Notifications:** Push notifications may not send when app is closed due to iOS PWA limitations. *WIP*
+**Workaround:** Keep app open (don't swipe up/close the app)
+- **App Doesn't Update Properly:** Previous versions are loaded fron cache, clear your cache to update to the latest version.
 
 ## ✨ Features
 
