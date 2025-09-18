@@ -1,7 +1,7 @@
 {
   "name": "meditrax",
   "private": false,
-  "version": "1.2.0",
+  "version": "1.1.1",
   "type": "module",
   "description": "A modern, responsive web application for comprehensive medication tracking and management",
   "keywords": [

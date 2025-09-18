@@ -176,6 +176,7 @@ export function Calendar() {
       startDate = startOfWeek(startOfMonth(selectedDate));
       endDate = endOfWeek(endOfMonth(selectedDate));
     }
+    
 
     // 1. Add logged medication events (within date range)
     logs.forEach(log => {
@@ -496,12 +497,11 @@ export function Calendar() {
       <button
         onClick={() => setSelectedDate(date)}
         className={`
-          relative w-full h-24 sm:h-32 p-1 sm:p-2 border border-gray-200 
-          hover:bg-gray-50 transition-colors text-left
+          relative w-full h-16 sm:h-24 lg:h-32 p-1 sm:p-2 border border-gray-200 
+          hover:bg-gray-50 transition-colors text-left min-h-[44px] touch-manipulation
           ${isSelected ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-500' : ''}
           ${isCurrentDay ? 'bg-yellow-50 border-yellow-300' : ''}
           ${!isCurrentMonth ? 'text-gray-400 bg-gray-50' : ''}
-          touch-target
         `}
       >
         {/* Date number */}
@@ -513,24 +513,99 @@ export function Calendar() {
           {format(date, 'd')}
         </div>
 
-        {/* Event indicators */}
+        {/* Event indicators - responsive display */}
         <div className="space-y-0.5">
-          {dayEvents.slice(0, 3).map((event) => (
-            <div
-              key={event.id}
-              className="flex items-center space-x-1 text-xs"
-              style={{ color: event.medicationColor }}
-            >
-              <EventStatusIcon status={event.status} />
-              <span className="truncate font-medium">{event.medicationName}</span>
+           {/* Show events on larger screens */}
+            <div className="hidden sm:block">
+              {(() => {
+                // Group events by medication name to get unique medications
+                const medicationMap = new Map();
+                dayEvents.forEach(event => {
+                  if (!medicationMap.has(event.medicationName)) {
+                    medicationMap.set(event.medicationName, {
+                      ...event,
+                      count: dayEvents.filter(e => e.medicationName === event.medicationName).length
+                    });
+                  }
+                });
+                
+                const uniqueMeds = Array.from(medicationMap.values());
+                const displayMeds = uniqueMeds.slice(0, 2);
+                const extraCount = Math.max(0, uniqueMeds.length - 2);
+                
+                return (
+                  <>
+                    {displayMeds.map((event) => (
+                      <div
+                        key={event.medicationName}
+                        className="flex items-center space-x-1 text-xs"
+                        style={{ color: event.medicationColor }}
+                        title={`${event.medicationName} - ${event.count} dose(s) today`}
+                      >
+                        <EventStatusIcon status={event.status} />
+                        <span className="font-medium">
+                          {(() => {
+                            const name = event.medicationName;
+                            const words = name.split(' ').filter(w => w.length > 0);
+                            
+                            if (words.length >= 2) {
+                              return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+                            } else {
+                              return name.substring(0, 2).toUpperCase();
+                            }
+                          })()}
+                        </span>
+                      </div>
+                    ))}
+                    
+                  </>
+                );
+              })()}
             </div>
-          ))}
           
-          {dayEvents.length > 3 && (
-            <div className="text-xs text-gray-500 font-medium">
-              +{dayEvents.length - 3} more
-            </div>
-          )}
+          {/* Show medication names on mobile */}
+          <div className="sm:hidden flex flex-wrap gap-1">
+            {(() => {
+              // Group events by medication name to get unique medications
+              const medicationMap = new Map();
+              dayEvents.forEach(event => {
+                if (!medicationMap.has(event.medicationName)) {
+                  medicationMap.set(event.medicationName, {
+                    ...event,
+                    count: dayEvents.filter(e => e.medicationName === event.medicationName).length
+                  });
+                }
+              });
+              
+              const uniqueMeds = Array.from(medicationMap.values());
+              const displayMeds = uniqueMeds.slice(0, 2);
+              const extraCount = Math.max(0, uniqueMeds.length - 2);
+              
+              return (
+                <>
+                  {displayMeds.map((event) => (
+                    <span 
+                      key={event.medicationName} 
+                      className="text-xs font-medium" 
+                      style={{ color: event.medicationColor }}
+                      title={`${event.medicationName} - ${event.count} dose(s) today`}
+                    >
+                      {(() => {
+                        const name = event.medicationName;
+                        const words = name.split(' ').filter(w => w.length > 0);
+                        
+                        if (words.length >= 2) {
+                          return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+                        } else {
+                          return name.substring(0, 2).toUpperCase();
+                        }
+                      })()}
+                    </span>
+                  ))}
+                </>
+              );
+            })()}
+          </div>
         </div>
 
         {/* Summary dots for mobile */}
@@ -552,24 +627,27 @@ export function Calendar() {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Track your medication history and upcoming doses
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">Calendar</h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                Track your medication history and upcoming doses
+              </p>
+            </div>
 
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Medication Filter */}
-          <select
-            value={selectedMedication}
-            onChange={(e) => setSelectedMedication(e.target.value)}
-            className="mobile-input sm:w-48"
-          >
+            {/* Controls */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Medication Filter */}
+              <select
+                value={selectedMedication}
+                onChange={(e) => setSelectedMedication(e.target.value)}
+                className="mobile-input sm:w-48"
+                style={{ fontSize: '16px' }}
+              >
             <option value="all">All Medications</option>
             {medications.filter(med => med.isActive).map((med) => (
               <option key={med.id} value={med.id}>
@@ -601,14 +679,16 @@ export function Calendar() {
               Month
             </button>
           </div>
+          </div>
         </div>
-      </div>
 
-      {/* Main Calendar Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
+        {/* Main Calendar Layout */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 sm:p-6 max-h-[calc(100vh-300px)] overflow-y-auto mobile-scroll">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
         {/* Calendar Grid */}
         <div className="lg:col-span-3">
-          <div className="card">
+          <div className="mobile-card">
             {/* Calendar Header */}
             <div className="card-header pb-4">
               <div className="flex items-center justify-between">
@@ -619,21 +699,21 @@ export function Calendar() {
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => navigateCalendar('prev')}
-                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 touch-target"
+                    className="mobile-button p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 min-h-[44px] touch-manipulation"
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   
                   <button
                     onClick={goToToday}
-                    className="px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg touch-target"
+                    className="mobile-button px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg min-h-[44px] touch-manipulation"
                   >
                     Today
                   </button>
                   
                   <button
                     onClick={() => navigateCalendar('next')}
-                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 touch-target"
+                    className="mobile-button p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 min-h-[44px] touch-manipulation"
                   >
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -642,19 +722,19 @@ export function Calendar() {
             </div>
 
             {/* Calendar Grid */}
-            <div className="card-content pt-0">
+            <div className="mobile-card pt-0 overflow-hidden">
               {/* Days of week header */}
-              <div className="grid grid-cols-7 border-b border-gray-200 mb-2">
+              <div className="grid grid-cols-7 border-b border-gray-200 mb-3">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                  <div key={day} className="p-2 text-center text-sm font-medium text-gray-700">
+                  <div key={day} className="p-2 sm:p-3 text-center mobile-text font-semibold text-gray-700">
                     <span className="hidden sm:inline">{day}</span>
-                    <span className="sm:hidden">{day.charAt(0)}</span>
+                    <span className="sm:hidden text-xs">{day.charAt(0)}</span>
                   </div>
                 ))}
               </div>
 
               {/* Calendar body */}
-              <div className="grid grid-cols-7 gap-0 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="grid grid-cols-7 gap-0 border border-gray-300 rounded-lg overflow-hidden shadow-sm">
                 {calendarDays.map((date) => (
                   <CalendarDay key={date.toISOString()} date={date} />
                 ))}
@@ -665,12 +745,12 @@ export function Calendar() {
 
         {/* Selected Date Details */}
         <div className="space-y-4">
-          <div className="card">
+          <div className="mobile-card">
             <div className="card-header">
-              <h3 className="text-lg font-medium text-gray-900">
+              <h3 className="mobile-subtitle text-gray-900">
                 {format(selectedDate, 'EEEE')}
               </h3>
-              <p className="text-sm text-gray-500">
+              <p className="mobile-text text-gray-500">
                 {format(selectedDate, 'MMMM d, yyyy')}
               </p>
             </div>
@@ -707,7 +787,7 @@ export function Calendar() {
                               className="w-3 h-3 rounded-full flex-shrink-0"
                               style={{ backgroundColor: event.medicationColor }}
                             />
-                            <p className="text-sm font-medium text-gray-900 truncate">
+                            <p className="text-sm font-medium text-gray-900">
                               {event.medicationName}
                               {isHighlighted && (
                                 <span className="ml-2 text-xs px-2 py-1 bg-primary-200 text-primary-800 rounded-full font-medium">
@@ -761,29 +841,33 @@ export function Calendar() {
           </div>
 
           {/* Legend */}
-          <div className="card">
+          <div className="mobile-card">
             <div className="card-header">
-              <h3 className="text-sm font-medium text-gray-900">Legend</h3>
+              <h3 className="mobile-subtitle text-gray-900">Legend</h3>
             </div>
             <div className="card-content">
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-gray-700">Taken</span>
+                  <span className="mobile-text text-gray-700">Taken</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <XCircle className="h-4 w-4 text-red-500" />
-                  <span className="text-sm text-gray-700">Missed/Skipped</span>
+                  <span className="mobile-text text-gray-700">Missed/Skipped</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Clock className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm text-gray-700">Scheduled</span>
+                  <span className="mobile-text text-gray-700">Scheduled</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
+            </div>
+          </div>
+        </div>
       </div>
+    </div>
     </div>
   );
 }

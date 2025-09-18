@@ -71,6 +71,53 @@ jobs:
         echo "🏗️ Building application with Firebase configuration..."
         npm run build
         echo "📦 Build completed successfully"
+    
+    - name: Install Firebase CLI
+      run: |
+        npm install -g firebase-tools
+        echo "🔥 Firebase CLI installed"
+    
+    - name: Build and Deploy Cloud Functions  
+      run: |
+        echo "☁️ Building and deploying Cloud Functions..."
+        
+        # Check if Firebase CLI token is available
+        if [ -z "${{ secrets.FIREBASE_TOKEN }}" ]; then
+          echo "⚠️ FIREBASE_TOKEN not available - skipping backend deployment"
+          echo "📋 To enable backend notifications, add FIREBASE_TOKEN to GitHub Secrets:"
+          echo "   1. Run: npm install -g firebase-tools && firebase login:ci"
+          echo "   2. Add the token to GitHub Secrets as FIREBASE_TOKEN"
+          echo "📱 App will work with client-side notifications only"
+          exit 0
+        fi
+        
+        # Deploy Cloud Functions using existing Firebase project ID
+        cd functions
+        npm ci
+        npm run build
+        cd ..
+        
+        echo "🚀 Deploying to Firebase project: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}"
+        firebase deploy --only functions --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}"
+        echo "✅ Cloud Functions deployed successfully"
+      env:
+        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        
+    - name: Deploy Firestore rules and indexes
+      run: |
+        # Only deploy Firestore if Firebase token is available  
+        if [ -z "${{ secrets.FIREBASE_TOKEN }}" ]; then
+          echo "⚠️ Skipping Firestore deployment - no FIREBASE_TOKEN"
+          exit 0
+        fi
+        
+        echo "🗂️ Deploying Firestore rules and indexes..."
+        firebase deploy --only firestore --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}"
+        echo "✅ Firestore rules and indexes deployed"
+      env:
+        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
         
     - name: Prepare deployment
       run: |

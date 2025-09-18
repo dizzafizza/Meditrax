@@ -30,6 +30,7 @@ import {
   Cell
 } from 'recharts';
 import { ChartErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { ExportModal } from '@/components/ui/ExportModal';
 import { subDays, format, eachDayOfInterval, isSameDay } from 'date-fns';
 
 export function Analytics() {
@@ -376,84 +377,94 @@ export function Analytics() {
     };
   }, [medications, activeMedications.length]);
 
+  const [showExportModal, setShowExportModal] = React.useState(false);
+
   const handleExportData = () => {
-    // This would implement data export functionality
-    console.log('Exporting analytics data...');
+    setShowExportModal(true);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Track your medication adherence and progress
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">Analytics</h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                Track your medication adherence and progress
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <select
+                value={selectedMedication}
+                onChange={(e) => setSelectedMedication(e.target.value)}
+                className="mobile-input flex-1 sm:flex-none sm:w-48"
+                style={{ fontSize: '16px' }}
+              >
+                <option value="all">All Medications</option>
+                {allMedications.map(med => (
+                  <option key={med.id} value={med.id}>
+                    {med.name} {!med.isActive && '(Inactive)'}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value as '7d' | '30d' | '90d')}
+                className="mobile-input flex-1 sm:flex-none sm:w-36"
+                style={{ fontSize: '16px' }}
+              >
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+              </select>
+              <button
+                onClick={handleExportData}
+                className="mobile-button btn-secondary inline-flex items-center justify-center space-x-2"
+              >
+                <Download className="h-4 w-4" />
+                <span>Export</span>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="mt-4 sm:mt-0 flex items-center space-x-3">
-          <select
-            value={selectedMedication}
-            onChange={(e) => setSelectedMedication(e.target.value)}
-            className="input"
-          >
-            <option value="all">All Medications</option>
-            {allMedications.map(med => (
-              <option key={med.id} value={med.id}>
-                {med.name} {!med.isActive && '(Inactive)'}
-              </option>
+
+        {/* Tab Navigation */}
+        <div className="bg-white rounded-lg shadow border-b border-gray-200">
+          <nav className="flex space-x-4 sm:space-x-8 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
+            {[
+              { id: 'adherence', label: 'Adherence', icon: TrendingUp },
+              { id: 'withdrawal', label: 'Withdrawal Progress', icon: Activity },
+              { id: 'side-effects', label: 'Side Effects', icon: AlertTriangle },
+              { id: 'risk', label: 'Risk Assessment', icon: Shield }
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id as any)}
+                className={`flex items-center space-x-2 py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap touch-manipulation min-h-[44px] ${
+                  activeTab === id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden">{label.split(' ')[0]}</span>
+              </button>
             ))}
-          </select>
-          <select
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value as '7d' | '30d' | '90d')}
-            className="input"
-          >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
-          </select>
-          <button
-            onClick={handleExportData}
-            className="btn-secondary inline-flex items-center space-x-2"
-          >
-            <Download className="h-4 w-4" />
-            <span>Export</span>
-          </button>
+          </nav>
         </div>
-      </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'adherence', label: 'Adherence', icon: TrendingUp },
-            { id: 'withdrawal', label: 'Withdrawal Progress', icon: Activity },
-            { id: 'side-effects', label: 'Side Effects', icon: AlertTriangle },
-            { id: 'risk', label: 'Risk Assessment', icon: Shield }
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id as any)}
-              className={`flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Adherence Tab */}
-      {activeTab === 'adherence' && (
-        <div className="space-y-6">
-          {/* Stats Overview */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="card">
+        {/* Content */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 sm:p-6 max-h-[calc(100vh-300px)] overflow-y-auto mobile-scroll">
+            {/* Adherence Tab */}
+            {activeTab === 'adherence' && (
+              <div className="space-y-6">
+                {/* Stats Overview */}
+                <div className="mobile-dashboard-grid">
+                  <div className="mobile-card">
           <div className="card-content p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -1276,8 +1287,17 @@ export function Analytics() {
               </div>
             </div>
           </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+      />
     </div>
   );
 }

@@ -581,25 +581,28 @@ export function Medications() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Medications</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your medications and prescriptions
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">Medications</h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                Manage your medications and prescriptions
+              </p>
+            </div>
+            <div>
+              <button
+                onClick={handleAddMedication}
+                className="mobile-button btn-primary inline-flex items-center justify-center space-x-2 w-full sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Medication</span>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="mt-4 sm:mt-0">
-          <button
-            onClick={handleAddMedication}
-            className="btn-primary mobile-button inline-flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Medication</span>
-          </button>
-        </div>
-      </div>
 
       {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
@@ -611,6 +614,7 @@ export function Medications() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="mobile-input pl-10"
+            style={{ fontSize: '16px' }}
           />
         </div>
         
@@ -620,6 +624,7 @@ export function Medications() {
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value as MedicationCategory | 'all')}
             className="mobile-input w-auto min-w-[140px]"
+            style={{ fontSize: '16px' }}
           >
             <option value="all">All Categories</option>
             <option value="prescription">Prescription</option>
@@ -760,13 +765,14 @@ export function Medications() {
         />
       )}
 
-      {dependencyModalOpen && dependencyMedication && (
-        <DependencyPreventionModal
-          isOpen={dependencyModalOpen}
-          onClose={handleCloseDependency}
-          medication={dependencyMedication}
-        />
-      )}
+        {dependencyModalOpen && dependencyMedication && (
+          <DependencyPreventionModal
+            isOpen={dependencyModalOpen}
+            onClose={handleCloseDependency}
+            medication={dependencyMedication}
+          />
+        )}
+      </div>
     </div>
   );
 }

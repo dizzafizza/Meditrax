@@ -220,29 +220,35 @@ export function Reminders() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reminders</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your medication reminders and notifications
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">Reminders</h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                Manage your medication reminders and notifications
+              </p>
+            </div>
+            <div>
+              <button
+                onClick={handleAddReminder}
+                disabled={activeMedications.length === 0}
+                className="mobile-button btn-primary inline-flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Reminder</span>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="mt-4 sm:mt-0">
-          <button
-            onClick={handleAddReminder}
-            disabled={activeMedications.length === 0}
-            className="btn-primary inline-flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Reminder</span>
-          </button>
-        </div>
-      </div>
 
-      {/* Smart Adherence Insights */}
-      {adherencePatterns.length > 0 && showInsights && (
+        {/* Content */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 sm:p-6 max-h-[calc(100vh-300px)] overflow-y-auto mobile-scroll">
+            {/* Smart Adherence Insights */}
+            {adherencePatterns.length > 0 && showInsights && (
         <div className="space-y-4">
           {/* Insights Overview */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -644,15 +650,19 @@ export function Reminders() {
         reminder={editingReminder}
       />
 
-      {/* Confirm Delete Dialog */}
-      <ConfirmDialog
-        isOpen={!!confirmDelete}
-        onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && handleDeleteReminder(confirmDelete)}
-        title="Delete Reminder"
-        message="Are you sure you want to delete this reminder? This action cannot be undone."
-        confirmText="Delete"
-      />
+          </div>
+        </div>
+
+        {/* Confirm Delete Dialog */}
+        <ConfirmDialog
+          isOpen={!!confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => confirmDelete && handleDeleteReminder(confirmDelete)}
+          title="Delete Reminder"
+          message="Are you sure you want to delete this reminder? This action cannot be undone."
+          confirmText="Delete"
+        />
+      </div>
     </div>
   );
 }

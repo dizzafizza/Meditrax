@@ -20,7 +20,61 @@ interface ChangelogEntry {
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
-    version: "1.2.0",
+    version: "1.1.1",
+    date: "2025-9-18",
+    changes: [
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Complete UI Consistency Overhaul",
+        description: "Applied consistent mobile-responsive design across all pages including Reports, Health Profile, Reminders, Calendar, and Inventory with standardized mobile classes and proper scaling."
+      },
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Enhanced Dialog and Modal Experience",
+        description: "Fixed scrolling issues in all dialog pop-up boxes, added body scroll prevention, and improved mobile responsiveness for ConfirmDialog, MedicationModal, ReminderModal, and ExportModal."
+      },
+      {
+        type: 'improved',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "Calendar Mobile Optimization",
+        description: "Completely redesigned calendar grid for mobile devices with responsive day heights, smart event display, touch-friendly navigation, and optimized spacing for small screens."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Advanced Dosing Page Enhancements",
+        description: "Fixed Create tab styling with proper mobile inputs and iOS-compatible form elements, and made Tapering tab fully functional with complete tapering plan management and active schedule display."
+      },
+      {
+        type: 'fixed',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "iOS Input Compatibility",
+        description: "Added fontSize: '16px' to all input fields and select dropdowns to prevent iOS zoom behavior, ensuring smooth mobile experience across all forms and pages."
+      },
+      {
+        type: 'fixed',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "React Import and Build Fixes",
+        description: "Resolved React reference errors in ConfirmDialog component and fixed JSX syntax issues in Calendar component to ensure clean builds and error-free functionality."
+      },
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Touch-Friendly Interface",
+        description: "Implemented proper touch targets with minimum 44px heights, touch-manipulation CSS, and optimized button layouts for better mobile usability across the entire application."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Responsive Layout Standards",
+        description: "Established consistent layout patterns with mobile-safe-area, mobile-scroll, mobile-card, and mobile-button classes, ensuring uniform responsive behavior across all components."
+      }
+    ]
+  },
+  {
+    version: "1.1.0",
     date: "2025-9-17",
     changes: [
       {
@@ -46,13 +100,7 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
         icon: <Zap className="h-4 w-4" />,
         title: "Progressive Web App Features",
         description: "Enhanced PWA capabilities with better offline functionality, improved notification handling, and native app-like experience."
-      }
-    ]
-  },
-  {
-    version: "1.1.0",
-    date: "2025-9-16",
-    changes: [
+      },
       {
         type: 'improved',
         icon: <Smartphone className="h-4 w-4" />,
@@ -108,13 +156,76 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
         description: "Implemented this changelog popup system to keep users informed about new features and improvements with each update."
       }
     ]
+  },
+  {
+    version: "1.0.0",
+    date: "2025-9-15",
+    changes: [
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "Initial Release",
+        description: "First stable release of Meditrax with comprehensive medication tracking, scheduling, and analytics features."
+      },
+      {
+        type: 'new',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Core Medication Management",
+        description: "Complete medication management system with custom entries, pre-categorized types, dosage tracking, and inventory management with refill reminders."
+      },
+      {
+        type: 'new',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Smart Scheduling & Reminders",
+        description: "Flexible scheduling system with daily, weekly, and custom frequencies, smart notifications, calendar views, and quick action capabilities."
+      },
+      {
+        type: 'new',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "Analytics & Insights",
+        description: "Comprehensive adherence tracking with visual charts, medication reports, trend analysis, and date range filtering for 7, 30, and 90-day periods."
+      },
+      {
+        type: 'new',
+        icon: <Shield className="h-4 w-4" />,
+        title: "Progressive Web App Support",
+        description: "Full PWA capabilities with mobile installation, offline functionality, push notifications, background sync, and native app-like experience."
+      },
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "User Profiles & Data Management",
+        description: "Personal health profiles with emergency contacts, data export/import functionality, customizable settings, and responsive design for all devices."
+      },
+      {
+        type: 'new',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Advanced Features",
+        description: "Comprehensive medication database, harm reduction information, cyclic dosing patterns, tapering schedules, and withdrawal tracking capabilities."
+      }
+    ]
   }
 ];
 
 export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps) {
+  const [showAllVersions, setShowAllVersions] = React.useState(false);
+
+  // Prevent body scroll when modal is open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [isOpen]);
+
   const changelogEntry = CHANGELOG_DATA.find(entry => entry.version === version);
   
   if (!isOpen || !changelogEntry) return null;
+
+  const versionsToShow = showAllVersions ? CHANGELOG_DATA : [changelogEntry];
+  const hasOlderVersions = CHANGELOG_DATA.length > 1;
 
   const getTypeColor = (type: string) => {
     switch (type) {
@@ -137,61 +248,93 @@ export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-3 sm:p-4 z-50 mobile-safe-area">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] sm:max-h-[90vh] overflow-hidden mobile-modal flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 text-white">
+        <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 py-3 sm:py-4 text-white">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="h-10 w-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                <Star className="h-6 w-6 text-white" />
+            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+              <div className="h-8 w-8 sm:h-10 sm:w-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Star className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold">What's New</h2>
-                <p className="text-primary-100">Version {changelogEntry.version} • {changelogEntry.date}</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg sm:text-xl font-bold truncate">What's New</h2>
+                <p className="text-primary-100 text-sm sm:text-base truncate">Version {changelogEntry.version} • {changelogEntry.date}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-white hover:text-primary-100 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg"
+              className="text-white hover:text-primary-100 transition-colors p-1 sm:p-2 hover:bg-white hover:bg-opacity-10 rounded-lg flex-shrink-0 ml-2"
             >
-              <X className="h-6 w-6" />
+              <X className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 max-h-[70vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 flex-1 overflow-y-auto mobile-scroll">
           <div className="space-y-6">
-            <div className="text-center mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                🎉 Welcome to Meditrax v{changelogEntry.version} (Beta)
-              </h3>
-              <p className="text-gray-600">
-                We've been working hard to improve your medication tracking experience. Here's what's new:
-              </p>
-            </div>
+            {!showAllVersions ? (
+              <div className="text-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  🎉 Welcome to Meditrax v{changelogEntry.version} (Beta)
+                </h3>
+                <p className="text-gray-600">
+                  We've been working hard to improve your medication tracking experience. Here's what's new:
+                </p>
+              </div>
+            ) : (
+              <div className="text-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  📋 Meditrax Version History
+                </h3>
+                <p className="text-gray-600">
+                  Complete changelog showing all updates and improvements to Meditrax:
+                </p>
+              </div>
+            )}
 
-            <div className="space-y-4">
-              {changelogEntry.changes.map((change, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
-                  <div className="flex items-start space-x-3">
-                    <div className={`flex items-center justify-center w-8 h-8 rounded-full ${getTypeColor(change.type)} border`}>
-                      {change.icon}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h4 className="font-medium text-gray-900">{change.title}</h4>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getTypeColor(change.type)}`}>
-                          {getTypeLabel(change.type)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600">{change.description}</p>
+            {versionsToShow.map((versionEntry, versionIndex) => (
+              <div key={versionEntry.version} className="space-y-4">
+                {showAllVersions && (
+                  <div className="border-l-4 border-primary-500 pl-4 mb-4">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Version {versionEntry.version}
+                      </h3>
+                      <span className="px-2 py-1 bg-primary-100 text-primary-800 text-xs font-medium rounded-full">
+                        {versionEntry.date}
+                      </span>
                     </div>
                   </div>
+                )}
+                
+                <div className="space-y-4">
+                  {versionEntry.changes.map((change, index) => (
+                    <div key={`${versionEntry.version}-${index}`} className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
+                      <div className="flex items-start space-x-3">
+                        <div className={`flex items-center justify-center w-8 h-8 rounded-full ${getTypeColor(change.type)} border`}>
+                          {change.icon}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h4 className="font-medium text-gray-900">{change.title}</h4>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getTypeColor(change.type)}`}>
+                              {getTypeLabel(change.type)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">{change.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                
+                {showAllVersions && versionIndex < versionsToShow.length - 1 && (
+                  <div className="border-b border-gray-200 pb-6"></div>
+                )}
+              </div>
+            ))}
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
               <div className="flex items-start space-x-3">
@@ -211,16 +354,34 @@ export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              Thank you for using Meditrax! 🏥
-            </p>
+        <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex-shrink-0">
+          <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+            <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+              <p className="text-sm text-gray-500 text-center sm:text-left">
+                Thank you for using Meditrax! 🏥
+              </p>
+              {hasOlderVersions && !showAllVersions && (
+                <button
+                  onClick={() => setShowAllVersions(true)}
+                  className="mobile-button text-sm text-primary-600 hover:text-primary-700 font-medium underline min-h-[44px] flex items-center justify-center"
+                >
+                  Show Previous Versions
+                </button>
+              )}
+              {showAllVersions && (
+                <button
+                  onClick={() => setShowAllVersions(false)}
+                  className="mobile-button text-sm text-primary-600 hover:text-primary-700 font-medium underline min-h-[44px] flex items-center justify-center"
+                >
+                  Show Current Only
+                </button>
+              )}
+            </div>
             <button
               onClick={onClose}
-              className="btn-primary"
+              className="mobile-button btn-primary w-full sm:w-auto min-h-[44px] flex items-center justify-center"
             >
-              Get Started
+              {showAllVersions ? 'Close' : 'Get Started'}
             </button>
           </div>
         </div>

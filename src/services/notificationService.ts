@@ -44,6 +44,7 @@ class NotificationService {
   // Firebase Cloud Messaging support
   private fcmSubscription: FCMSubscription | null = null;
   private useFirebase = false;
+  private firebaseConfigSentAt: number = 0; // Track when Firebase config was last sent
   
   private readonly NOTIFICATION_STORAGE_KEY = 'meditrax_scheduled_notifications';
   private readonly NOTIFICATION_QUEUE_KEY = 'meditrax_notification_queue';
@@ -106,14 +107,13 @@ class NotificationService {
         return;
       }
 
-      this.serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/'
-      });
+      // Use existing service worker registration (registered in main.tsx)
+      this.serviceWorkerRegistration = await navigator.serviceWorker.ready;
 
-      console.log('Service Worker registered successfully');
+      console.log('✅ Service Worker registration obtained successfully');
 
+      // Single message listener to handle all service worker messages
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
-      navigator.serviceWorker.addEventListener('message', this.handleFirebaseConfigRequest.bind(this));
       
       this.loadScheduledNotifications();
       this.loadBadgeCount();
@@ -268,6 +268,22 @@ class NotificationService {
       case 'SYNC_MEDICATION_ACTION':
       case 'NOTIFICATION_SENT':
         // These messages are handled by useNotificationHandler hook
+        break;
+      case 'REQUEST_FIREBASE_CONFIG':
+        // Handle Firebase config request from service worker
+        this.handleFirebaseConfigRequest(event);
+        break;
+      case 'FIREBASE_READY':
+        // Firebase initialization confirmation - handled by async handlers
+        break;
+      case 'DIAGNOSTIC_PONG':
+        // Diagnostic ping response - handled by async handlers  
+        break;
+      case 'CACHE_UPDATED':
+        // Cache update notification from PWA system - already handled in main.tsx
+        break;
+      case 'OFFLINE_FALLBACK':
+        // Offline mode notification from PWA system  
         break;
       default:
         console.log('Unknown service worker message:', type, data);
@@ -1365,27 +1381,53 @@ class NotificationService {
   // **SERVICE WORKER DIAGNOSTIC**: Test responsiveness
   private async testServiceWorkerResponsiveness(): Promise<boolean> {
     return new Promise((resolve) => {
-      if (!this.serviceWorkerRegistration?.active) {
+      // Check if we have a service worker (active, waiting, or installing)
+      const sw = this.serviceWorkerRegistration?.active || 
+                 this.serviceWorkerRegistration?.waiting || 
+                 this.serviceWorkerRegistration?.installing;
+      
+      if (!sw) {
+        console.warn('⚠️ No service worker available, marking as unresponsive');
         resolve(false);
         return;
       }
 
-      const timeout = setTimeout(() => resolve(false), 3000);
+      // If service worker is installing, wait for it to be ready
+      if (sw.state === 'installing' || sw.state === 'redundant') {
+        console.log('⏳ Service worker still installing, waiting...');
+        setTimeout(() => resolve(false), 1000); // Short timeout for installing state
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        console.warn('⚠️ Service worker diagnostic ping timeout (5s)');
+        navigator.serviceWorker.removeEventListener('message', handleMessage);
+        resolve(false);
+      }, 5000); // Increased timeout
       
       const handleMessage = (event: MessageEvent) => {
         if (event.data && event.data.type === 'DIAGNOSTIC_PONG') {
           clearTimeout(timeout);
           navigator.serviceWorker.removeEventListener('message', handleMessage);
+          console.log('✅ Service worker diagnostic ping successful');
           resolve(true);
         }
       };
 
-      navigator.serviceWorker.addEventListener('message', handleMessage);
-      
-      this.serviceWorkerRegistration.active.postMessage({
-        type: 'DIAGNOSTIC_PING',
-        timestamp: Date.now()
-      });
+      try {
+        navigator.serviceWorker.addEventListener('message', handleMessage);
+        
+        sw.postMessage({
+          type: 'DIAGNOSTIC_PING',
+          timestamp: Date.now()
+        });
+        
+        console.log('📤 Service worker diagnostic ping sent');
+      } catch (error) {
+        console.error('❌ Failed to send diagnostic ping:', error);
+        clearTimeout(timeout);
+        resolve(false);
+      }
     });
   }
 
@@ -1762,12 +1804,12 @@ class NotificationService {
 
         console.log('✅ Firebase configuration sent to service worker');
 
-        // Timeout after 3 seconds if no confirmation
+        // Timeout after 8 seconds if no confirmation (increased for slow networks)
         setTimeout(() => {
           navigator.serviceWorker.removeEventListener('message', confirmationHandler);
-          console.warn('⚠️ Service worker Firebase confirmation timeout');
+          console.warn('⚠️ Service worker Firebase confirmation timeout - continuing without backend sync');
           resolve(false);
-        }, 3000);
+        }, 8000);
 
       } catch (error) {
         console.error('Failed to send Firebase config to service worker:', error);
@@ -1778,7 +1820,15 @@ class NotificationService {
 
   private handleFirebaseConfigRequest(event: MessageEvent): void {
     if (event.data && event.data.type === 'REQUEST_FIREBASE_CONFIG') {
+      // Prevent spamming Firebase config requests - only send once per 5 seconds
+      const now = Date.now();
+      if (now - this.firebaseConfigSentAt < 5000) {
+        console.log('⚠️ Firebase config request ignored - sent recently');
+        return;
+      }
+      
       console.log('Service worker requested Firebase config');
+      this.firebaseConfigSentAt = now;
       this.sendFirebaseConfigToServiceWorker();
     }
   }
@@ -1898,7 +1948,6 @@ class NotificationService {
     window.removeEventListener('focus', this.checkMissedNotifications);
     window.removeEventListener('blur', () => {});
     window.removeEventListener('beforeunload', () => {});
-    navigator.serviceWorker.removeEventListener('message', this.handleFirebaseConfigRequest);
   }
 }
 

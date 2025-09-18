@@ -130,25 +130,28 @@ export function HealthProfile() {
 
   if (!isEditing && userProfile) {
     return (
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Health Profile</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Your personal health information and emergency contacts
-            </p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+          {/* Page Header */}
+          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="mobile-title text-gray-900">Health Profile</h1>
+                <p className="mobile-text text-gray-500 mt-1">
+                  Your personal health information and emergency contacts
+                </p>
+              </div>
+              <div>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="mobile-button btn-primary inline-flex items-center justify-center space-x-2 w-full sm:w-auto"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  <span>Edit Profile</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="mt-4 sm:mt-0">
-            <button
-              onClick={() => setIsEditing(true)}
-              className="btn-primary inline-flex items-center space-x-2"
-            >
-              <Edit2 className="h-4 w-4" />
-              <span>Edit Profile</span>
-            </button>
-          </div>
-        </div>
 
         {/* Profile Overview */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -336,29 +339,35 @@ export function HealthProfile() {
             )}
           </div>
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {userProfile ? 'Edit' : 'Create'} Health Profile
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {userProfile 
-              ? 'Update your personal health information' 
-              : 'Set up your personal health information and emergency contacts'
-            }
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">
+                {userProfile ? 'Edit' : 'Create'} Health Profile
+              </h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                {userProfile 
+                  ? 'Update your personal health information' 
+                  : 'Set up your personal health information and emergency contacts'
+                }
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Profile Form */}
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Profile Form */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 sm:p-6 max-h-[calc(100vh-300px)] overflow-y-auto mobile-scroll">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" id="health-profile-form">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Personal Information */}
           <div className="card">
@@ -392,6 +401,7 @@ export function HealthProfile() {
                   type="date"
                   {...register('dateOfBirth')}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  style={{ fontSize: '16px' }}
                 />
               </div>
 
@@ -568,13 +578,16 @@ export function HealthProfile() {
           )}
           <button
             type="submit"
-            className="btn-primary inline-flex items-center space-x-2"
+            className="mobile-button btn-primary inline-flex items-center justify-center space-x-2"
           >
             <Save className="h-4 w-4" />
             <span>{userProfile ? 'Update' : 'Create'} Profile</span>
           </button>
         </div>
-      </form>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

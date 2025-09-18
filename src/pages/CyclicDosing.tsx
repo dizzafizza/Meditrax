@@ -173,72 +173,77 @@ export function CyclicDosing() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border border-gray-200">
-        <div className="flex items-center mb-4">
-          <Activity className="h-8 w-8 text-blue-600 mr-3" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Cyclic Dosing & Tapering</h1>
-            <p className="text-gray-600">Manage complex medication schedules and withdrawal protocols</p>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <Activity className="h-5 w-5 text-blue-500" />
-              <h3 className="font-semibold text-gray-900">Cyclic Patterns</h3>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 sm:p-6 rounded-lg border border-gray-200 shadow">
+          <div className="flex flex-col sm:flex-row sm:items-center mb-4 gap-3">
+            <Activity className="h-8 w-8 text-blue-600 flex-shrink-0" />
+            <div className="flex-1">
+              <h1 className="mobile-title text-gray-900">Cyclic Dosing & Tapering</h1>
+              <p className="mobile-text text-gray-600 mt-1">Manage complex medication schedules and withdrawal protocols</p>
             </div>
-            <p className="text-sm text-gray-600">On/off cycles, variable dosing, holiday schedules</p>
           </div>
           
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <TrendingDown className="h-5 w-5 text-orange-500" />
-              <h3 className="font-semibold text-gray-900">Tapering Schedules</h3>
+          <div className="mobile-dashboard-grid">
+            <div className="mobile-card">
+              <div className="flex items-center space-x-2 mb-2">
+                <Activity className="h-5 w-5 text-blue-500" />
+                <h3 className="font-semibold text-gray-900">Cyclic Patterns</h3>
+              </div>
+              <p className="mobile-text text-gray-600">On/off cycles, variable dosing, holiday schedules</p>
             </div>
-            <p className="text-sm text-gray-600">Gradual dose reduction with medical supervision</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <h3 className="font-semibold text-gray-900">Smart Monitoring</h3>
+            
+            <div className="mobile-card">
+              <div className="flex items-center space-x-2 mb-2">
+                <TrendingDown className="h-5 w-5 text-orange-500" />
+                <h3 className="font-semibold text-gray-900">Tapering Schedules</h3>
+              </div>
+              <p className="mobile-text text-gray-600">Gradual dose reduction with medical supervision</p>
             </div>
-            <p className="text-sm text-gray-600">Withdrawal tracking and safety alerts</p>
+            
+            <div className="mobile-card">
+              <div className="flex items-center space-x-2 mb-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <h3 className="font-semibold text-gray-900">Smart Monitoring</h3>
+              </div>
+              <p className="mobile-text text-gray-600">Withdrawal tracking and safety alerts</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'active', name: 'Active Schedules', icon: Activity },
-            { id: 'patterns', name: 'Create Pattern', icon: Calendar },
-            { id: 'tapering', name: 'Tapering Plans', icon: TrendingDown }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <tab.icon className="h-4 w-4" />
-              <span>{tab.name}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
+        {/* Tabs */}
+        <div className="bg-white rounded-lg shadow border-b border-gray-200">
+          <nav className="flex space-x-4 sm:space-x-8 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
+            {[
+              { id: 'active', name: 'Active Schedules', icon: Activity },
+              { id: 'patterns', name: 'Create Pattern', icon: Calendar },
+              { id: 'tapering', name: 'Tapering Plans', icon: TrendingDown }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-sm flex items-center space-x-2 whitespace-nowrap touch-manipulation min-h-[44px] ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <tab.icon className="w-4 h-4 flex-shrink-0" />
+                <span className="hidden sm:inline">{tab.name}</span>
+                <span className="sm:hidden">{tab.name.split(' ')[0]}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
 
-      {/* Active Schedules */}
-      {activeTab === 'active' && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Active Cyclic Dosing & Tapering</h2>
+        {/* Content */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 sm:p-6 max-h-[calc(100vh-400px)] overflow-y-auto mobile-scroll">
+            {/* Active Schedules */}
+            {activeTab === 'active' && (
+              <div className="space-y-4">
+                <h2 className="mobile-subtitle text-gray-900">Active Cyclic Dosing & Tapering</h2>
           
           {activeCyclicMedications.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-lg">
@@ -314,18 +319,19 @@ export function CyclicDosing() {
       {/* Create Pattern */}
       {activeTab === 'patterns' && (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-gray-900">Create Cyclic Dosing Pattern</h2>
+          <h2 className="mobile-subtitle text-gray-900">Create Cyclic Dosing Pattern</h2>
           
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="mobile-card">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block mobile-text font-medium text-gray-700 mb-2">
                   Select Medication
                 </label>
                 <select
                   value={selectedMedication}
                   onChange={(e) => setSelectedMedication(e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mobile-input w-full"
+                  style={{ fontSize: '16px' }}
                 >
                   <option value="">Choose a medication...</option>
                   {medications.filter(med => med.isActive && !med.cyclicDosing?.isActive && !med.tapering?.isActive).map((med) => (
@@ -378,12 +384,12 @@ export function CyclicDosing() {
                   </div>
 
                   <div className="border-t pt-6">
-                    <h3 className="text-md font-medium text-gray-900 mb-4">Custom Pattern Builder</h3>
+                    <h3 className="mobile-subtitle text-gray-900 mb-4">Custom Pattern Builder</h3>
                     
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block mobile-text font-medium text-gray-700 mb-1">
                             Pattern Name
                           </label>
                           <input
@@ -391,18 +397,20 @@ export function CyclicDosing() {
                             value={customPatternName}
                             onChange={(e) => setCustomPatternName(e.target.value)}
                             placeholder="e.g., Weekend Break Pattern"
-                            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            className="mobile-input w-full"
+                            style={{ fontSize: '16px' }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block mobile-text font-medium text-gray-700 mb-1">
                             Start Date
                           </label>
                           <input
                             type="date"
                             value={customStartDate}
                             onChange={(e) => setCustomStartDate(e.target.value)}
-                            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            className="mobile-input w-full"
+                            style={{ fontSize: '16px' }}
                           />
                         </div>
                       </div>
@@ -425,7 +433,8 @@ export function CyclicDosing() {
                                       newPhases[index].phase = e.target.value;
                                       setCustomPhases(newPhases);
                                     }}
-                                    className="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    className="mobile-input w-full text-sm"
+                                    style={{ fontSize: '14px' }}
                                   />
                                 </div>
                                 <div>
@@ -439,7 +448,8 @@ export function CyclicDosing() {
                                       newPhases[index].duration = parseInt(e.target.value) || 1;
                                       setCustomPhases(newPhases);
                                     }}
-                                    className="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    className="mobile-input w-full text-sm"
+                                    style={{ fontSize: '14px' }}
                                   />
                                 </div>
                                 <div>
@@ -451,7 +461,8 @@ export function CyclicDosing() {
                                       newPhases[index].multiplier = parseFloat(e.target.value);
                                       setCustomPhases(newPhases);
                                     }}
-                                    className="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    className="mobile-input w-full text-sm"
+                                    style={{ fontSize: '14px' }}
                                   >
                                     <option value={0}>0x (Skip)</option>
                                     <option value={0.25}>0.25x (Quarter)</option>
@@ -473,7 +484,8 @@ export function CyclicDosing() {
                                       setCustomPhases(newPhases);
                                     }}
                                     placeholder="Optional phase message"
-                                    className="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    className="mobile-input w-full text-sm"
+                                    style={{ fontSize: '14px' }}
                                   />
                                 </div>
                               </div>
@@ -492,17 +504,17 @@ export function CyclicDosing() {
                           ))}
                         </div>
                         
-                        <div className="flex space-x-3">
+                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
                           <button
                             onClick={() => setCustomPhases([...customPhases, { phase: 'phase', duration: 1, multiplier: 1.0, message: '' }])}
-                            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                            className="mobile-button text-sm text-indigo-600 hover:text-indigo-700 font-medium min-h-[44px]"
                           >
                             + Add Phase
                           </button>
                           <button
                             onClick={() => handleCreateCustomPattern(selectedMedication)}
                             disabled={!customPatternName.trim()}
-                            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="mobile-button px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
                           >
                             Create Custom Pattern
                           </button>
@@ -520,19 +532,109 @@ export function CyclicDosing() {
       {/* Tapering Plans */}
       {activeTab === 'tapering' && (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-gray-900">Tapering Plans</h2>
+          <h2 className="mobile-subtitle text-gray-900">Tapering Plans</h2>
           
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <div className="text-center py-8">
-              <TrendingDown className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">Advanced Tapering Plans</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Detailed tapering schedule management is available through the Medications page.
-              </p>
+          <div className="mobile-card">
+            <div>
+              <label className="block mobile-text font-medium text-gray-700 mb-2">
+                Select Medication for Tapering
+              </label>
+              <select 
+                value={selectedMedication}
+                onChange={(e) => setSelectedMedication(e.target.value)}
+                className="mobile-input w-full"
+                style={{ fontSize: '16px' }}
+              >
+                <option value="">Choose a medication...</option>
+                {medications.filter(med => med.isActive && !med.cyclicDosing?.isActive && !med.tapering?.isActive).map((med) => (
+                  <option key={med.id} value={med.id}>
+                    {med.name} ({med.dosage} {med.unit})
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {selectedMedication && (
+              <div className="border-t pt-6">
+                <div className="text-center">
+                  <TrendingDown className="mx-auto h-12 w-12 text-orange-500 mb-4" />
+                  <h3 className="mobile-subtitle text-gray-900 mb-2">Create Tapering Plan</h3>
+                  <p className="mobile-text text-gray-600 mb-6">
+                    Create a medically supervised gradual dose reduction plan
+                  </p>
+                  <button
+                    onClick={() => {
+                      const medication = medications.find(m => m.id === selectedMedication);
+                      if (medication) {
+                        setEditingMedication(medication);
+                        setTaperingModalOpen(true);
+                      }
+                    }}
+                    className="mobile-button btn-primary inline-flex items-center space-x-2"
+                  >
+                    <TrendingDown className="h-4 w-4" />
+                    <span>Create Tapering Plan</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {selectedMedication === '' && (
+              <div className="border-t pt-6">
+                <div className="text-center py-8">
+                  <TrendingDown className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 mobile-text font-medium text-gray-900">Select a Medication</h3>
+                  <p className="mt-1 mobile-text text-gray-500">
+                    Choose a medication from the dropdown above to create a tapering plan
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Show existing tapering plans */}
+          {activeCyclicMedications.filter(med => med.tapering?.isActive).length > 0 && (
+            <div className="space-y-4">
+              <h3 className="mobile-subtitle text-gray-900">Active Tapering Plans</h3>
+              <div className="mobile-grid">
+                {activeCyclicMedications.filter(med => med.tapering?.isActive).map((medication) => (
+                  <div key={medication.id} className="mobile-card">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">{medication.name}</h3>
+                        <p className="text-sm text-gray-500">{medication.dosage} {medication.unit}</p>
+                      </div>
+                      <button
+                        onClick={() => handleStopPattern(medication.id)}
+                        className="mobile-button text-red-600 hover:text-red-700 text-sm"
+                      >
+                        Stop
+                      </button>
+                    </div>
+
+                    {medication.tapering?.isActive && (
+                      <div className="mb-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <TrendingDown className="h-4 w-4 text-orange-500" />
+                          <span className="text-sm font-medium text-gray-700">Tapering Schedule</span>
+                        </div>
+                        <div className="mobile-text text-gray-600">
+                          <p>Start: {new Date(medication.tapering.startDate).toLocaleDateString()}</p>
+                          <p>End: {new Date(medication.tapering.endDate).toLocaleDateString()}</p>
+                          <p>Current Phase: {medication.tapering.currentPhase + 1} / {medication.tapering.phases.length}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+          </div>
+        </div>
+      </div>
 
       {/* Tapering Plan Modal */}
       {taperingModalOpen && editingMedication && (

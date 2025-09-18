@@ -287,28 +287,31 @@ export function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Overview of your medications and health tracking
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">Dashboard</h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                Overview of your medications and health tracking
+              </p>
+            </div>
+            <div>
+              <Link
+                to="/medications"
+                className="mobile-button btn-primary inline-flex items-center justify-center space-x-2 w-full sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Medication</span>
+              </Link>
+            </div>
+          </div>
         </div>
-        <div className="mt-4 sm:mt-0">
-          <Link
-            to="/medications"
-            className="btn-primary inline-flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Medication</span>
-          </Link>
-        </div>
-      </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Stats Grid */}
+        <div className="mobile-dashboard-grid">
         {stats.map((stat) => (
           <Link
             key={stat.name}
@@ -1025,14 +1028,15 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Withdrawal Symptom Tracker Modal */}
-      {selectedWithdrawalMedication && (
-        <WithdrawalSymptomTracker
-          medication={selectedWithdrawalMedication}
-          isOpen={!!selectedWithdrawalMedication}
-          onClose={() => setSelectedWithdrawalMedication(null)}
-        />
-      )}
+        {/* Withdrawal Symptom Tracker Modal */}
+        {selectedWithdrawalMedication && (
+          <WithdrawalSymptomTracker
+            medication={selectedWithdrawalMedication}
+            isOpen={!!selectedWithdrawalMedication}
+            onClose={() => setSelectedWithdrawalMedication(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

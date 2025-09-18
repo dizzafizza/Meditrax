@@ -585,6 +585,7 @@ export function Settings() {
                         type="date"
                         {...register('dateOfBirth')}
                         className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        style={{ fontSize: '16px' }}
                       />
                     </div>
 

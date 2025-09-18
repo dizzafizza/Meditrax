@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const CURRENT_VERSION = '1.2.0';
+const CURRENT_VERSION = '1.1.1';
 const VERSION_STORAGE_KEY = 'meditrax-last-seen-version';
 
 export function useVersionCheck() {

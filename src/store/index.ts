@@ -51,6 +51,7 @@ import { DependencePreventionService } from '@/services/dependencePreventionServ
 import { suggestPauseDuration } from '@/services/medicationDatabase';
 import { PsychologicalSafetyService } from '@/services/psychologicalSafetyService';
 import { notificationService } from '@/services/notificationService';
+import { backendSyncService } from '@/services/backendSyncService';
 
 interface MedicationStore {
   // State
@@ -584,24 +585,38 @@ export const useMedicationStore = create<MedicationStore>()(
 
         console.log('Added reminder to state');
 
-        // Schedule push notification for the reminder
-        try {
-          const medication = get().medications.find(med => med.id === reminder.medicationId);
-          console.log('Found medication for reminder:', medication?.name);
-          
-          if (medication && reminder.isActive) {
-            console.log('Scheduling notification for active reminder...');
+        // **HYBRID APPROACH**: Schedule both client-side AND backend notifications
+        const medication = get().medications.find(med => med.id === reminder.medicationId);
+        
+        if (medication && reminder.isActive) {
+          // 1. Client-side scheduling (existing system for immediate reliability)
+          try {
+            console.log('🔔 Scheduling client-side notification...');
             await notificationService.scheduleReminderEnhanced(reminder, medication);
-            console.log('Notification scheduled successfully');
-          } else {
-            console.log('Skipping notification scheduling:', { 
-              hasMedication: !!medication, 
-              isActive: reminder.isActive 
-            });
+            console.log('✅ Client-side notification scheduled successfully');
+          } catch (error) {
+            console.error('❌ Failed to schedule client-side notification:', error);
           }
-        } catch (error) {
-          console.error('Failed to schedule push notification:', error);
-          // Don't fail the reminder creation, just log the error
+
+          // 2. Backend sync for iOS PWA reliability
+          try {
+            console.log('🔄 Syncing to backend for iOS PWA support...');
+            const state = get();
+            const success = await backendSyncService.syncUserDataToBackend(
+              state.reminders, 
+              state.medications, 
+              state.userProfile
+            );
+            
+            if (success) {
+              console.log('✅ Backend sync successful - iOS PWA notifications enabled');
+            } else {
+              console.warn('⚠️ Backend sync failed - falling back to client-side only');
+            }
+          } catch (error) {
+            console.error('❌ Backend sync error:', error);
+            // Don't fail the reminder creation, backend is supplementary
+          }
         }
       },
 
@@ -615,38 +630,81 @@ export const useMedicationStore = create<MedicationStore>()(
           ),
         }));
 
-        // Update push notification if reminder was modified
-        try {
-          if (currentReminder) {
-            const medication = state.medications.find(med => med.id === currentReminder.medicationId);
-            if (medication) {
-              // Cancel old notification
+        // **HYBRID APPROACH**: Update both client-side AND backend notifications
+        if (currentReminder) {
+          const medication = state.medications.find(med => med.id === currentReminder.medicationId);
+          if (medication) {
+            // 1. Client-side notification updates
+            try {
+              console.log('🔔 Updating client-side notifications...');
               notificationService.cancelReminder(id);
               
-              // Schedule new notification if still active
               const updatedReminder = { ...currentReminder, ...updates };
               if (updatedReminder.isActive) {
                 await notificationService.scheduleReminderEnhanced(updatedReminder, medication);
+                console.log('✅ Client-side reminder updated and rescheduled');
+              } else {
+                console.log('✅ Client-side reminder updated and notifications cancelled');
               }
+            } catch (error) {
+              console.error('❌ Failed to update client-side reminder notifications:', error);
+            }
+
+            // 2. Backend sync for iOS PWA reliability
+            try {
+              console.log('🔄 Syncing updated reminder to backend...');
+              const newState = get();
+              const success = await backendSyncService.syncUserDataToBackend(
+                newState.reminders, 
+                newState.medications, 
+                newState.userProfile
+              );
+              
+              if (success) {
+                console.log('✅ Backend sync successful - reminder updated in backend');
+              } else {
+                console.warn('⚠️ Backend sync failed - client-side update successful');
+              }
+            } catch (error) {
+              console.error('❌ Backend sync error:', error);
             }
           }
-        } catch (error) {
-          console.error('Failed to update push notification:', error);
         }
       },
 
       deleteReminder: async (id) => {
-        // **FIX**: Cancel push notification with proper cleanup (now async)
+        // **HYBRID APPROACH**: Delete from both client-side AND backend
+        
+        // 1. Client-side deletion
         try {
           await notificationService.cancelReminder(id);
-          console.log('✅ Reminder deleted and all notifications cancelled');
+          console.log('✅ Client-side reminder deleted and notifications cancelled');
         } catch (error) {
-          console.error('Failed to cancel push notification:', error);
+          console.error('❌ Failed to cancel client-side notifications:', error);
         }
 
         set((state) => ({
           reminders: state.reminders.filter((reminder) => reminder.id !== id),
         }));
+
+        // 2. Backend sync to remove from backend scheduling
+        try {
+          console.log('🔄 Syncing reminder deletion to backend...');
+          const state = get();
+          const success = await backendSyncService.syncUserDataToBackend(
+            state.reminders, 
+            state.medications, 
+            state.userProfile
+          );
+          
+          if (success) {
+            console.log('✅ Backend sync successful - reminder deleted from backend');
+          } else {
+            console.warn('⚠️ Backend sync failed - client-side deletion successful');
+          }
+        } catch (error) {
+          console.error('❌ Backend sync error:', error);
+        }
       },
 
       toggleReminderActive: async (id) => {

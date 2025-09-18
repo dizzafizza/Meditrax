@@ -370,14 +370,15 @@ export function Reports() {
   }) => (
     <button
       onClick={onClick}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+      className={`flex items-center space-x-2 py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap touch-manipulation min-h-[44px] transition-colors ${
         isActive
-          ? 'bg-blue-100 text-blue-700 border border-blue-200'
-          : 'text-gray-600 hover:bg-gray-100'
+          ? 'border-blue-500 text-blue-600'
+          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
       }`}
     >
-      <Icon className="h-4 w-4" />
-      <span>{name}</span>
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      <span className="hidden sm:inline">{name}</span>
+      <span className="sm:hidden">{name.split(' ')[0]}</span>
     </button>
   );
 
@@ -447,42 +448,49 @@ export function Reports() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Generate and export detailed medication reports
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+        {/* Page Header */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col space-y-4">
+            <div>
+              <h1 className="mobile-title text-gray-900">Reports</h1>
+              <p className="mobile-text text-gray-500 mt-1">
+                Generate and export detailed medication reports
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="date"
+                  value={dateRange.start.toISOString().split('T')[0]}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: new Date(e.target.value) }))}
+                  className="mobile-input flex-1"
+                  style={{ fontSize: '16px' }}
+                />
+                <span className="text-gray-500">to</span>
+                <input
+                  type="date"
+                  value={dateRange.end.toISOString().split('T')[0]}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: new Date(e.target.value) }))}
+                  className="mobile-input flex-1"
+                  style={{ fontSize: '16px' }}
+                />
+              </div>
+              <button
+                onClick={loadSampleData}
+                disabled={isLoadingSampleData}
+                className="mobile-button text-gray-600 hover:text-gray-900 border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center justify-center"
+                title="Add sample data for testing"
+              >
+                <Database className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="mt-4 sm:mt-0 flex items-center space-x-3">
-          <input
-            type="date"
-            value={dateRange.start.toISOString().split('T')[0]}
-            onChange={(e) => setDateRange(prev => ({ ...prev, start: new Date(e.target.value) }))}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-          />
-          <span className="text-gray-500">to</span>
-          <input
-            type="date"
-            value={dateRange.end.toISOString().split('T')[0]}
-            onChange={(e) => setDateRange(prev => ({ ...prev, end: new Date(e.target.value) }))}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-          />
-          <button
-            onClick={loadSampleData}
-            disabled={isLoadingSampleData}
-            className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
-            title="Add sample data for testing"
-          >
-            <Database className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Summary Cards */}
+        <div className="mobile-dashboard-grid">
         <div className="card">
           <div className="card-content p-5">
             <div className="flex items-center">
@@ -572,32 +580,34 @@ export function Reports() {
         </div>
       </div>
 
-      {/* Report Tabs */}
-      <div className="flex space-x-2">
-        <ReportTab
-          name="Adherence"
-          icon={BarChart3}
-          isActive={selectedReport === 'adherence'}
-          onClick={() => setSelectedReport('adherence')}
-        />
-        <ReportTab
-          name="Side Effects"
-          icon={AlertTriangle}
-          isActive={selectedReport === 'side-effects'}
-          onClick={() => setSelectedReport('side-effects')}
-        />
-        <ReportTab
-          name="Summary"
-          icon={FileText}
-          isActive={selectedReport === 'summary'}
-          onClick={() => setSelectedReport('summary')}
-        />
-      </div>
+        {/* Report Tabs */}
+        <div className="bg-white rounded-lg shadow border-b border-gray-200">
+          <nav className="flex space-x-4 sm:space-x-8 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
+            <ReportTab
+              name="Adherence"
+              icon={BarChart3}
+              isActive={selectedReport === 'adherence'}
+              onClick={() => setSelectedReport('adherence')}
+            />
+            <ReportTab
+              name="Side Effects"
+              icon={AlertTriangle}
+              isActive={selectedReport === 'side-effects'}
+              onClick={() => setSelectedReport('side-effects')}
+            />
+            <ReportTab
+              name="Summary"
+              icon={FileText}
+              isActive={selectedReport === 'summary'}
+              onClick={() => setSelectedReport('summary')}
+            />
+          </nav>
+        </div>
 
-      {/* Report Content */}
-      <div className="card">
-        <div className="card-content">
-          {selectedReport === 'adherence' && (
+        {/* Report Content */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 sm:p-6 max-h-[calc(100vh-400px)] overflow-y-auto mobile-scroll">
+            {selectedReport === 'adherence' && (
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-medium text-gray-900">Adherence Report</h3>
@@ -857,7 +867,8 @@ export function Reports() {
                 </div>
               </div>
             </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

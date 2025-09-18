@@ -34,9 +34,37 @@ export default defineConfig({
     firebaseServiceWorkerPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'generateSW',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,vue,txt,woff2}'],
+        additionalManifestEntries: [
+          { url: '/firebase-messaging-sw.js', revision: null },
+          { url: '/notification-sw.js', revision: null }
+        ],
         runtimeCaching: [
+          // Network-first strategy for main app assets (HTML, JS, CSS) to ensure updates
+          {
+            urlPattern: /.*\.(js|css|html)$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-shell-cache',
+              networkTimeoutSeconds: 3, // Fast timeout to fall back to cache when offline
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+              }
+            }
+          },
+          // Network-first for the root document to ensure latest version
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pages-cache',
+              networkTimeoutSeconds: 3
+            }
+          },
+          // Cache-first for fonts (these rarely change)
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
@@ -58,8 +86,24 @@ export default defineConfig({
                 maxAgeSeconds: 60 * 60 * 24 * 365 // 365 days
               }
             }
+          },
+          // Cache-first for images and static assets (with cache busting)
+          {
+            urlPattern: /.*\.(png|jpg|jpeg|svg|gif|webp|ico)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+              }
+            }
           }
-        ]
+        ],
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        importScripts: ['/notification-sw.js']
       },
       includeAssets: ['pill-icon.svg'],
       manifest: {

@@ -13,16 +13,19 @@ import { HealthProfile } from '@/pages/HealthProfile';
 import { Wiki } from '@/pages/Wiki';
 import { CyclicDosing } from '@/pages/CyclicDosing';
 import { ChangelogModal } from '@/components/ui/ChangelogModal';
+import { UpdateNotification, useUpdateNotification } from '@/components/ui/UpdateNotification';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
 import { useNotificationHandler } from '@/hooks/useNotificationHandler';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
 import { notificationService } from '@/services/notificationService';
+import { backendSyncService } from '@/services/backendSyncService';
 import { consoleCapture } from '@/utils/consoleCapture';
 
 function App() {
   const { userProfile } = useMedicationStore();
   const { shouldShowChangelog, currentVersion, markVersionSeen } = useVersionCheck();
+  const { showUpdate, showUpdateNotification, handleUpdate, handleDismiss } = useUpdateNotification();
 
   // Initialize notification handling
   const { checkMissedNotifications } = useNotificationHandler();
@@ -47,6 +50,32 @@ function App() {
       // Get current reminders and medications from store
       const { reminders, medications } = useMedicationStore.getState();
       
+      // **BACKEND SYNC**: Initialize backend sync service for iOS PWA reliability
+      try {
+        console.log('🔄 Initializing backend sync service...');
+        await backendSyncService.initialize();
+        console.log('✅ Backend sync service initialized successfully');
+
+        // Sync existing data to backend if available
+        if (reminders.length > 0 || medications.length > 0) {
+          console.log('📤 Syncing existing data to backend...');
+          const syncSuccess = await backendSyncService.syncUserDataToBackend(
+            reminders, 
+            medications, 
+            useMedicationStore.getState().userProfile
+          );
+          
+          if (syncSuccess) {
+            console.log('✅ Initial backend sync completed - iOS PWA notifications enabled');
+          } else {
+            console.warn('⚠️ Initial backend sync failed - using client-side only');
+          }
+        }
+      } catch (error) {
+        console.error('❌ Backend sync initialization failed:', error);
+        console.log('📱 Falling back to client-side notifications only');
+      }
+
       // **iOS PWA FIX**: Migrate existing reminders to multi-instance system
       if (reminders.length > 0 && medications.length > 0) {
         try {
@@ -99,6 +128,17 @@ function App() {
     };
   }, []);
 
+  // Expose the update notification to global scope for service worker integration
+  React.useEffect(() => {
+    (window as any).showAppUpdateNotification = (callback: () => void) => {
+      showUpdateNotification(callback);
+    };
+    
+    return () => {
+      delete (window as any).showAppUpdateNotification;
+    };
+  }, [showUpdateNotification]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Layout>
@@ -121,6 +161,13 @@ function App() {
       
       {/* Hidden Admin Integration - tracks UI sequences for admin access */}
       {/* <AdminIntegration /> */}
+      
+      {/* Update Notification */}
+      <UpdateNotification
+        isVisible={showUpdate}
+        onUpdate={handleUpdate}
+        onDismiss={handleDismiss}
+      />
       
       {/* Changelog Modal */}
       <ChangelogModal
