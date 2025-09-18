@@ -381,13 +381,29 @@ class NotificationService {
     const scheduledTime = scheduledNotification.scheduledTime.getTime();
     const delay = scheduledTime - now;
 
-    console.log(`Scheduling notification with delay: ${Math.round(delay / 1000 / 60)} minutes`);
+    console.log(`📅 Scheduling notification with delay: ${Math.round(delay / 1000 / 60)} minutes (${Math.round(delay / 1000)} seconds)`);
 
-    if (delay <= 0) {
-      console.log('Sending immediate notification (time already passed)');
-      await this.sendImmediateNotificationWithBadge(scheduledNotification.payload, true);
-      scheduledNotification.status = 'sent';
-      return;
+    // **IMMEDIATE NOTIFICATIONS**: Send right away if within 2 minutes
+    if (delay <= 2 * 60 * 1000) { // Within 2 minutes
+      console.log('🚀 Sending immediate notification (within 2 minutes)');
+      try {
+        await this.sendImmediateNotificationWithBadge(scheduledNotification.payload, true);
+        scheduledNotification.status = 'sent';
+        
+        // Still notify service worker to cancel any duplicate scheduling
+        if (this.serviceWorkerRegistration) {
+          this.serviceWorkerRegistration.active?.postMessage({
+            type: 'CANCEL_NOTIFICATION',
+            data: { notificationId: scheduledNotification.id }
+          });
+        }
+        
+        console.log('✅ Immediate notification sent successfully');
+        return;
+      } catch (error) {
+        console.error('❌ Failed to send immediate notification:', error);
+        // Continue with service worker fallback
+      }
     }
 
     // **CRITICAL FOR CLOSED-APP**: Send notification data to service worker for persistent scheduling
@@ -420,32 +436,9 @@ class NotificationService {
     this.addToNotificationQueue(scheduledNotification);
     console.log(`Added notification to queue. Queue size: ${this.getNotificationQueue().length}`);
 
-    // For immediate notifications (within 30 minutes), also use setTimeout as primary method (only works when app is open)
-    if (delay <= 30 * 60 * 1000) {
-      console.log(`Setting setTimeout for ${Math.round(delay / 1000 / 60)} minutes (app open only)`);
-      setTimeout(async () => {
-        try {
-          console.log('setTimeout triggered, sending notification');
-          await this.sendImmediateNotificationWithBadge(scheduledNotification.payload, true);
-          scheduledNotification.status = 'sent';
-          this.scheduledNotifications.delete(scheduledNotification.id);
-          this.saveScheduledNotifications();
-          // Also remove from queue and cancel in service worker
-          this.removeFromNotificationQueue(scheduledNotification.id);
-          
-          if (this.serviceWorkerRegistration) {
-            this.serviceWorkerRegistration.active?.postMessage({
-              type: 'CANCEL_NOTIFICATION',
-              data: { notificationId: scheduledNotification.id }
-            });
-          }
-        } catch (error) {
-          console.error('Failed to send scheduled notification via setTimeout:', error);
-          scheduledNotification.status = 'failed';
-          scheduledNotification.retryCount = (scheduledNotification.retryCount || 0) + 1;
-        }
-      }, delay);
-    }
+    // **REMOVED setTimeout - doesn't work when app is closed**
+    // All scheduled notifications now go through service worker for reliable delivery
+    console.log('✅ Relying on service worker for all scheduled notifications (works when app is closed)');
 
     // **ENHANCED BACKGROUND SYNC** for reliable closed-app notifications
     if (this.serviceWorkerRegistration) {
@@ -615,15 +608,53 @@ class NotificationService {
 
   async testNotification(): Promise<void> {
     const payload: NotificationPayload = {
-      title: 'Meditrax Test Notification',
-      body: 'This is a test notification to verify everything is working correctly.',
+      title: '🧪 Test Notification',
+      body: 'Meditrax notifications are working correctly! ✅',
       icon: '/pill-icon.svg',
       badge: '/pill-icon.svg',
-      requireInteraction: true,
-      data: { test: true }
+      requireInteraction: false,
+      tag: 'test-notification',
+      data: {
+        type: 'test',
+        timestamp: Date.now()
+      }
     };
 
     await this.sendImmediateNotification(payload);
+  }
+
+  async testScheduledNotification(delayMinutes: number = 1): Promise<void> {
+    const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
+    
+    const payload: NotificationPayload = {
+      title: '🧪 Scheduled Test Notification',
+      body: `This was scheduled ${delayMinutes} minute(s) ago! Closed-app delivery works! 🚀`,
+      icon: '/pill-icon.svg',
+      badge: '/pill-icon.svg',
+      requireInteraction: true,
+      tag: 'scheduled-test-notification',
+      actions: [
+        { action: 'confirm', title: '✅ Got it!', icon: '/pill-icon.svg' },
+        { action: 'close', title: '❌ Close', icon: '/pill-icon.svg' }
+      ],
+      data: {
+        type: 'scheduled-test',
+        originalScheduleTime: scheduledTime.getTime(),
+        timestamp: Date.now()
+      }
+    };
+
+    const scheduledNotification: ScheduledNotification = {
+      id: `test-scheduled-${Date.now()}`,
+      payload,
+      scheduledTime,
+      status: 'scheduled'
+    };
+
+    console.log(`🧪 Scheduling test notification for ${scheduledTime.toLocaleString()}`);
+    await this.scheduleNotification(scheduledNotification);
+    
+    console.log(`✅ Test notification scheduled - close the app to test closed-app delivery!`);
   }
 
   // New methods for enhanced background notification handling

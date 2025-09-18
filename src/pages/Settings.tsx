@@ -271,6 +271,18 @@ export function Settings() {
     }
   };
 
+  const handleTestScheduledNotification = async () => {
+    try {
+      await notificationService.testScheduledNotification(1); // Schedule for 1 minute
+      console.log('Test scheduled notification created - close the app to test!');
+      
+      toast.success('Test notification scheduled for 1 minute!\n Close the app to test closed-app delivery.');
+    } catch (error) {
+      console.error('Failed to create test scheduled notification:', error);
+      toast.error('❌ Failed to schedule test notification');
+    }
+  };
+
   const handleInstallPWA = () => {
     // This would be handled by the PWA install prompt
     // The actual install prompt is triggered by the browser
@@ -657,22 +669,32 @@ export function Settings() {
                         <p className="text-sm text-green-600">
                           Notifications are enabled! You'll receive medication reminders.
                         </p>
-                        <div className="flex space-x-2">
-                          <button
-                            type="button"
-                            onClick={handleTestNotification}
-                            className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                          >
-                            Send Test Notification
-                          </button>
-                          <button
-                            type="button"
-                            onClick={checkNotificationPermission}
-                            className="mobile-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                          >
-                            Refresh Status
-                          </button>
-                        </div>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={handleTestNotification}
+                        className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                        Test Immediate
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleTestScheduledNotification}
+                        className="mobile-button px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                        Test in 1 min
+                    </button>
+                    <button
+                        type="button"
+                        onClick={checkNotificationPermission}
+                        className="mobile-button px-2 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                    >
+                        Refresh
+                    </button>
+                </div>
+                <p className="text-xs text-gray-600 mt-2">
+                    💡 "Test in 1 min" - Close the app after clicking to test closed-app delivery
+                </p>
                         <NotificationDiagnostics />
                         <IOSPWAGuidance />
                       </div>

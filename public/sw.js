@@ -27,8 +27,12 @@ self.addEventListener('install', (event) => {
       })
       .then(() => {
         console.log('Service Worker: Installation complete');
-        // Try to enable periodic background sync immediately
-        return setupPeriodicNotificationCheck();
+        // Start notification checking immediately after install
+        setTimeout(() => {
+          setupPeriodicNotificationCheck();
+          checkScheduledNotifications();
+        }, 1000);
+        return Promise.resolve();
       })
       .then(() => self.skipWaiting())
       .catch((error) => {
@@ -412,57 +416,84 @@ async function showSnoozeNotification(data) {
 }
 
 /**
- * Schedule a local notification (without push server) - ENHANCED for closed-app support
+ * Schedule a local notification - RELIABLE closed-app support using cache-based scheduling
  */
 async function scheduleLocalNotification(notificationData) {
   try {
     const { scheduledTime, ...notificationOptions } = notificationData;
     const delay = scheduledTime - Date.now();
     
-    console.log(`Service Worker: Scheduling notification for ${new Date(scheduledTime).toLocaleString()}, delay: ${Math.round(delay / 1000 / 60)} minutes`);
+    console.log(`Service Worker: 📅 Scheduling notification "${notificationOptions.title}" for ${new Date(scheduledTime).toLocaleString()}, delay: ${Math.round(delay / 1000 / 60)} minutes`);
     
-    if (delay <= 0) {
-      // Show immediately if time has passed
-      console.log('Service Worker: Showing immediate notification (time passed)');
-      await self.registration.showNotification(notificationOptions.title, {
-        ...notificationOptions,
-        timestamp: Date.now(),
-        renotify: true
-      });
-    } else if (delay <= 10 * 60 * 1000) { // Up to 10 minutes for setTimeout
-      // Use setTimeout for short delays (works when service worker is active)
-      console.log(`Service Worker: Using setTimeout for ${Math.round(delay / 1000)} second delay`);
-      setTimeout(async () => {
-        try {
-          await self.registration.showNotification(notificationOptions.title, {
-            ...notificationOptions,
-            timestamp: Date.now(),
-            renotify: true
-          });
-          console.log('Service Worker: setTimeout notification sent');
-        } catch (error) {
-          console.error('Service Worker: setTimeout notification failed:', error);
-        }
-      }, delay);
-    }
-    
-    // **ALWAYS store for persistent scheduling** (critical for closed-app notifications)
+    // **CRITICAL**: Always store first for persistence
     const cache = await caches.open(NOTIFICATION_CACHE);
     const persistentNotification = {
       ...notificationData,
       id: notificationData.id || `scheduled-${Date.now()}`,
       persistedAt: Date.now(),
-      status: delay <= 0 ? 'sent' : 'scheduled'
+      status: 'scheduled',
+      scheduledTime: scheduledTime // Ensure this is preserved
     };
     
     await cache.put(
       `scheduled-${persistentNotification.id}`,
       new Response(JSON.stringify(persistentNotification))
     );
-    console.log(`Service Worker: Persisted notification ${persistentNotification.id} for closed-app delivery`);
+    console.log(`Service Worker: ✅ Persisted notification ${persistentNotification.id} in cache`);
+    
+    // **IMMEDIATE NOTIFICATIONS**: Send right away if time has passed or is very close (within 1 minute)
+    if (delay <= 60 * 1000) { // Within 1 minute - send immediately
+      console.log('Service Worker: 🚀 Sending immediate notification (within 1 minute)');
+      try {
+        await self.registration.showNotification(notificationOptions.title, {
+          ...notificationOptions,
+          timestamp: Date.now(),
+          renotify: true,
+          vibrate: [200, 100, 200],
+          silent: false
+        });
+        
+        // Mark as sent in cache
+        persistentNotification.status = 'sent';
+        persistentNotification.sentAt = Date.now();
+        persistentNotification.sentByServiceWorker = true;
+        
+        await cache.put(
+          `scheduled-${persistentNotification.id}`,
+          new Response(JSON.stringify(persistentNotification))
+        );
+        
+        console.log('Service Worker: ✅ Immediate notification sent successfully');
+        
+        // Notify app if it's open
+        await sendMessageToClients({
+          type: 'NOTIFICATION_SENT',
+          notificationId: persistentNotification.id,
+          immediate: true,
+          timestamp: new Date().toISOString()
+        });
+        
+      } catch (error) {
+        console.error('Service Worker: ❌ Failed to send immediate notification:', error);
+        persistentNotification.status = 'failed';
+        await cache.put(
+          `scheduled-${persistentNotification.id}`,
+          new Response(JSON.stringify(persistentNotification))
+        );
+      }
+    } else {
+      // **FUTURE NOTIFICATIONS**: Schedule for later processing
+      console.log(`Service Worker: ⏰ Scheduled for future processing - will be checked every 1-5 minutes`);
+      
+      // Force an immediate check to establish timing
+      setTimeout(() => {
+        console.log('Service Worker: Triggering check in 10 seconds for testing');
+        checkScheduledNotifications();
+      }, 10000);
+    }
     
   } catch (error) {
-    console.error('Service Worker: Failed to schedule notification:', error);
+    console.error('Service Worker: ❌ Failed to schedule notification:', error);
   }
 }
 
@@ -742,17 +773,49 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// **CRITICAL**: Enhanced periodic check trigger
-setInterval(() => {
-  const timeSinceLastCheck = Date.now() - lastNotificationCheck;
+// **AGGRESSIVE NOTIFICATION CHECKING** - Essential for closed-app delivery
+let notificationCheckInterval = null;
+
+function startAggressiveNotificationChecking() {
+  // Clear any existing interval
+  if (notificationCheckInterval) {
+    clearInterval(notificationCheckInterval);
+  }
   
-  // If more than 10 minutes since last check and app might be closed, check notifications
-  if (timeSinceLastCheck > 10 * 60 * 1000) {
-    console.log('Service Worker: Periodic notification check triggered (app potentially closed)');
+  // **SUPER FREQUENT CHECKS** - Every 1 minute for reliable delivery
+  notificationCheckInterval = setInterval(() => {
+    console.log('Service Worker: 🔄 Aggressive notification check triggered');
     checkScheduledNotifications();
     lastNotificationCheck = Date.now();
+  }, 60 * 1000); // Check every 1 minute!
+  
+  // Also trigger immediate check
+  checkScheduledNotifications();
+  console.log('Service Worker: 🚀 Started aggressive notification checking (every 1 minute)');
+}
+
+// Start aggressive checking as soon as service worker loads
+startAggressiveNotificationChecking();
+
+// **BACKUP CHECKS**: Also check on any service worker activity
+self.addEventListener('fetch', () => {
+  const timeSinceLastCheck = Date.now() - lastNotificationCheck;
+  // If more than 2 minutes since last check, do a quick check
+  if (timeSinceLastCheck > 2 * 60 * 1000) {
+    setTimeout(() => checkScheduledNotifications(), 100);
   }
-}, 5 * 60 * 1000); // Check every 5 minutes
+});
+
+// **SELF-TRIGGERING CHECK CHAIN** - Ensures continuous operation
+function triggerNextCheck(delayMs = 60000) {
+  setTimeout(() => {
+    checkScheduledNotifications();
+    triggerNextCheck(); // Chain the next check
+  }, delayMs);
+}
+
+// Start the check chain
+triggerNextCheck();
 
 console.log('Service Worker: ✅ Loaded and ready with enhanced closed-app notification support');
 
