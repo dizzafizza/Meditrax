@@ -62,6 +62,8 @@ jobs:
     - name: Validate Firebase configuration
       run: |
         echo "🔍 Checking Firebase configuration..."
+        echo "🔍 Loading .env file for validation..."
+        set -a && source .env && set +a
         npm run check-firebase
       
     - name: Build application
