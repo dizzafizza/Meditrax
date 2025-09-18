@@ -640,16 +640,6 @@ export function Reminders() {
         </div>
       )}
 
-      {/* Reminder Modal */}
-      <ReminderModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingReminder(null);
-        }}
-        reminder={editingReminder}
-      />
-
           </div>
         </div>
 
@@ -663,6 +653,16 @@ export function Reminders() {
           confirmText="Delete"
         />
       </div>
+
+      {/* Reminder Modal - Moved outside scrollable container to appear on top */}
+      <ReminderModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingReminder(null);
+        }}
+        reminder={editingReminder}
+      />
     </div>
   );
 }
