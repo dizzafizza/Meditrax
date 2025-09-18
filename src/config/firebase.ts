@@ -19,16 +19,15 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Debug logging for environment variables (only in development)
-if (import.meta.env.DEV) {
-  console.log('🔍 Firebase Environment Variables Debug:', {
-    hasApiKey: !!firebaseConfig.apiKey,
-    hasProjectId: !!firebaseConfig.projectId,
-    hasMessagingSenderId: !!firebaseConfig.messagingSenderId,
-    hasVapidKey: !!import.meta.env.VITE_FIREBASE_VAPID_KEY,
-    projectId: firebaseConfig.projectId?.substring(0, 8) + '...' || 'missing'
-  });
-}
+// Debug logging for environment variables (in development and production for troubleshooting)
+console.log('🔍 Firebase Environment Variables Debug:', {
+  hasApiKey: !!firebaseConfig.apiKey,
+  hasProjectId: !!firebaseConfig.projectId,
+  hasMessagingSenderId: !!firebaseConfig.messagingSenderId,
+  hasVapidKey: !!import.meta.env.VITE_FIREBASE_VAPID_KEY,
+  projectId: firebaseConfig.projectId?.substring(0, 8) + '...' || 'missing',
+  mode: import.meta.env.MODE
+});
 
 // VAPID key for web push notifications  
 export const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
