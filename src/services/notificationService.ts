@@ -111,10 +111,15 @@ class NotificationService {
       console.log('Service Worker registered successfully');
 
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
+      navigator.serviceWorker.addEventListener('message', this.handleFirebaseConfigRequest.bind(this));
+      
       this.loadScheduledNotifications();
       this.loadBadgeCount();
       this.loadFCMToken();
       this.checkMissedNotifications();
+
+      // Send Firebase config to service worker
+      await this.sendFirebaseConfigToServiceWorker();
 
       // Try Firebase first, then fallback to legacy VAPID
       await this.initializePushNotifications();
@@ -126,6 +131,21 @@ class NotificationService {
 
   private async initializePushNotifications(): Promise<void> {
     try {
+      // iOS PWA specific handling
+      if (this.isIOSPWA()) {
+        console.log('📱 iOS PWA detected - applying iOS-specific notification handling');
+        
+        // For iOS PWA, we need to be more careful about push notification setup
+        // iOS can unsubscribe if notifications are not user-visible
+        if (this.isIOSWebPushSupported()) {
+          console.log('🔥 iOS Web Push supported (iOS 16.4+) - attempting Firebase setup...');
+        } else {
+          console.log('⚠️ iOS Web Push not supported - using enhanced service worker notifications');
+          this.fallbackToServiceWorkerNotifications();
+          return;
+        }
+      }
+
       // Check if Firebase is configured and available
       if (isFirebaseConfigured()) {
         console.log('🔥 Attempting Firebase Cloud Messaging setup...');
@@ -137,7 +157,9 @@ class NotificationService {
           console.log('✅ Firebase Cloud Messaging initialized successfully');
           
           if (this.isIOSPWA()) {
-            console.log('📱 iOS PWA detected - Firebase FCM provides optimal push notification support');
+            console.log('📱 iOS PWA - Firebase FCM configured for reliable delivery');
+            // iOS specific: ensure service worker is properly configured
+            await this.configureIOSFirebaseNotifications();
           }
           return;
         }
@@ -146,6 +168,11 @@ class NotificationService {
       // Fallback to legacy VAPID if Firebase not available
       if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)) {
         console.log('🔄 Firebase unavailable - using legacy VAPID push notifications...');
+        
+        if (this.isIOSPWA()) {
+          console.log('⚠️ iOS PWA with VAPID fallback - reliability may be limited');
+        }
+        
         this.subscribeToPushNotifications().catch(error => {
           console.info('Legacy push notifications not initialized:', error.message);
           this.fallbackToServiceWorkerNotifications();
@@ -1371,6 +1398,103 @@ class NotificationService {
   }
 
 
+  // iOS PWA Firebase Configuration
+
+  private async configureIOSFirebaseNotifications(): Promise<void> {
+    try {
+      console.log('🍎 Configuring Firebase notifications for iOS PWA...');
+      
+      // Ensure service worker can handle Firebase messages properly
+      if (this.serviceWorkerRegistration) {
+        // Send iOS-specific configuration to service worker
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'CONFIGURE_IOS_FIREBASE',
+          data: {
+            isIOSPWA: true,
+            requireUserVisible: true, // Critical for iOS - all notifications must be user-visible
+            preventSilentNotifications: true,
+            useAggressiveChecking: true
+          }
+        });
+      }
+
+      // Set up additional iOS-specific handling for Firebase
+      firebaseMessaging.setMessageHandler((payload) => {
+        console.log('📱 iOS PWA: Firebase foreground message received:', payload);
+        
+        // For iOS PWA, we MUST show a notification even in foreground
+        // Otherwise iOS may unsubscribe from push notifications
+        const notification = {
+          title: payload.notification?.title || 'MedTrack Reminder',
+          body: payload.notification?.body || 'Time for your medication',
+          icon: '/pill-icon.svg',
+          badge: '/pill-icon.svg',
+          requireInteraction: true,
+          tag: `ios-fcm-${Date.now()}`,
+          data: payload.data || {}
+        };
+        
+        // Show notification immediately for iOS PWA
+        this.sendImmediateNotification(notification)
+          .then(() => console.log('✅ iOS PWA: Firebase foreground notification displayed'))
+          .catch(error => console.error('❌ iOS PWA: Failed to show Firebase foreground notification:', error));
+      });
+      
+      console.log('✅ iOS PWA Firebase configuration complete');
+    } catch (error) {
+      console.error('❌ Failed to configure iOS Firebase notifications:', error);
+    }
+  }
+
+  // Firebase Service Worker Configuration Methods
+
+  private async sendFirebaseConfigToServiceWorker(): Promise<void> {
+    try {
+      if (!this.serviceWorkerRegistration) {
+        console.warn('Service worker not available for Firebase config');
+        return;
+      }
+
+      // Get Firebase configuration from environment
+      const firebaseConfig = {
+        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+        appId: import.meta.env.VITE_FIREBASE_APP_ID
+      };
+
+      // Check if config is available
+      if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+        console.warn('Firebase configuration not available at runtime');
+        return;
+      }
+
+      // Send config to service worker
+      this.serviceWorkerRegistration.active?.postMessage({
+        type: 'FIREBASE_CONFIG',
+        config: firebaseConfig
+      });
+
+      // Also send init message
+      this.serviceWorkerRegistration.active?.postMessage({
+        type: 'INIT_FIREBASE'
+      });
+
+      console.log('✅ Firebase configuration sent to service worker');
+    } catch (error) {
+      console.error('Failed to send Firebase config to service worker:', error);
+    }
+  }
+
+  private handleFirebaseConfigRequest(event: MessageEvent): void {
+    if (event.data && event.data.type === 'REQUEST_FIREBASE_CONFIG') {
+      console.log('Service worker requested Firebase config');
+      this.sendFirebaseConfigToServiceWorker();
+    }
+  }
+
   // Clean up method
   destroy(): void {
     if (this.visibilityChangeHandler) {
@@ -1380,6 +1504,7 @@ class NotificationService {
     window.removeEventListener('focus', this.checkMissedNotifications);
     window.removeEventListener('blur', () => {});
     window.removeEventListener('beforeunload', () => {});
+    navigator.serviceWorker.removeEventListener('message', this.handleFirebaseConfigRequest);
   }
 }
 
