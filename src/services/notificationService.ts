@@ -118,8 +118,14 @@ class NotificationService {
       this.loadFCMToken();
       this.checkMissedNotifications();
 
-      // Send Firebase config to service worker
-      await this.sendFirebaseConfigToServiceWorker();
+      // Send Firebase config to service worker and wait for confirmation
+      const firebaseReady = await this.sendFirebaseConfigToServiceWorker();
+      
+      if (firebaseReady) {
+        console.log('✅ Service worker confirmed Firebase is ready');
+      } else {
+        console.warn('⚠️ Service worker Firebase initialization timed out');
+      }
 
       // Try Firebase first, then fallback to legacy VAPID
       await this.initializePushNotifications();
@@ -189,6 +195,11 @@ class NotificationService {
 
   private async initializeFirebaseMessaging(): Promise<boolean> {
     try {
+      console.log('🔥 Starting Firebase messaging initialization...');
+      
+      // First, explicitly initialize the Firebase messaging service
+      await firebaseMessaging.initialize();
+      
       // Test Firebase messaging availability
       const fcmStatus = await firebaseMessaging.getStatus();
       
@@ -1448,44 +1459,68 @@ class NotificationService {
 
   // Firebase Service Worker Configuration Methods
 
-  private async sendFirebaseConfigToServiceWorker(): Promise<void> {
-    try {
-      if (!this.serviceWorkerRegistration) {
-        console.warn('Service worker not available for Firebase config');
-        return;
+  private async sendFirebaseConfigToServiceWorker(): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        if (!this.serviceWorkerRegistration) {
+          console.warn('Service worker not available for Firebase config');
+          resolve(false);
+          return;
+        }
+
+        // Get Firebase configuration from environment
+        const firebaseConfig = {
+          apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+          projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+          appId: import.meta.env.VITE_FIREBASE_APP_ID
+        };
+
+        // Check if config is available
+        if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+          console.warn('Firebase configuration not available at runtime');
+          resolve(false);
+          return;
+        }
+
+        // Set up listener for confirmation from service worker
+        const confirmationHandler = (event: MessageEvent) => {
+          if (event.data && event.data.type === 'FIREBASE_READY') {
+            navigator.serviceWorker.removeEventListener('message', confirmationHandler);
+            console.log('🔥 Service worker confirmed Firebase initialization');
+            resolve(true);
+          }
+        };
+
+        navigator.serviceWorker.addEventListener('message', confirmationHandler);
+
+        // Send config to service worker
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'FIREBASE_CONFIG',
+          config: firebaseConfig
+        });
+
+        // Also send init message
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'INIT_FIREBASE'
+        });
+
+        console.log('✅ Firebase configuration sent to service worker');
+
+        // Timeout after 3 seconds if no confirmation
+        setTimeout(() => {
+          navigator.serviceWorker.removeEventListener('message', confirmationHandler);
+          console.warn('⚠️ Service worker Firebase confirmation timeout');
+          resolve(false);
+        }, 3000);
+
+      } catch (error) {
+        console.error('Failed to send Firebase config to service worker:', error);
+        resolve(false);
       }
-
-      // Get Firebase configuration from environment
-      const firebaseConfig = {
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-        appId: import.meta.env.VITE_FIREBASE_APP_ID
-      };
-
-      // Check if config is available
-      if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-        console.warn('Firebase configuration not available at runtime');
-        return;
-      }
-
-      // Send config to service worker
-      this.serviceWorkerRegistration.active?.postMessage({
-        type: 'FIREBASE_CONFIG',
-        config: firebaseConfig
-      });
-
-      // Also send init message
-      this.serviceWorkerRegistration.active?.postMessage({
-        type: 'INIT_FIREBASE'
-      });
-
-      console.log('✅ Firebase configuration sent to service worker');
-    } catch (error) {
-      console.error('Failed to send Firebase config to service worker:', error);
-    }
+    });
   }
 
   private handleFirebaseConfigRequest(event: MessageEvent): void {

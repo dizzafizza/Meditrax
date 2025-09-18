@@ -112,13 +112,36 @@ async function initializeFirebaseMessaging() {
       });
 
       console.log('✅ Firebase messaging service worker ready');
+      
+      // Notify main app that Firebase is ready
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'FIREBASE_READY', success: true });
+        });
+      });
+      
     } else {
       console.warn('⚠️ Firebase configuration not available - FCM disabled');
+      
+      // Notify main app that Firebase failed to initialize
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'FIREBASE_READY', success: false });
+        });
+      });
+      
       throw new Error('Firebase configuration incomplete');
     }
 
   } catch (error) {
     console.error('❌ Failed to initialize Firebase in service worker:', error);
+    
+    // Notify main app that Firebase failed
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({ type: 'FIREBASE_READY', success: false });
+      });
+    });
     
     // Create fallback messaging object
     messaging = {

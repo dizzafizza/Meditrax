@@ -37,11 +37,17 @@ class FirebaseMessagingService {
   private messageHandler: ((payload: MessagePayload) => void) | null = null;
 
   constructor() {
-    this.initializeAsync();
+    // Don't initialize immediately, wait for explicit initialization
   }
 
-  private async initializeAsync(): Promise<void> {
+  async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      return; // Already initialized
+    }
+
     try {
+      console.log('🔥 Initializing Firebase messaging service...');
+      
       // Initialize Firebase messaging
       this.messaging = await initializeMessaging();
       
@@ -60,6 +66,11 @@ class FirebaseMessagingService {
       console.error('Failed to initialize Firebase messaging service:', error);
       this.messaging = null;
     }
+  }
+
+  private async initializeAsync(): Promise<void> {
+    // Deprecated - use initialize() instead
+    await this.initialize();
   }
 
   /**
@@ -286,6 +297,9 @@ class FirebaseMessagingService {
   }
 }
 
+// Create singleton instance but don't initialize yet
+const firebaseMessagingInstance = new FirebaseMessagingService();
+
 // Export singleton instance
-export const firebaseMessaging = new FirebaseMessagingService();
-export default firebaseMessaging;
+export const firebaseMessaging = firebaseMessagingInstance;
+export default firebaseMessagingInstance;
