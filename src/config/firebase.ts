@@ -19,6 +19,17 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Debug logging for environment variables (only in development)
+if (import.meta.env.DEV) {
+  console.log('🔍 Firebase Environment Variables Debug:', {
+    hasApiKey: !!firebaseConfig.apiKey,
+    hasProjectId: !!firebaseConfig.projectId,
+    hasMessagingSenderId: !!firebaseConfig.messagingSenderId,
+    hasVapidKey: !!import.meta.env.VITE_FIREBASE_VAPID_KEY,
+    projectId: firebaseConfig.projectId?.substring(0, 8) + '...' || 'missing'
+  });
+}
+
 // VAPID key for web push notifications  
 export const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
@@ -29,9 +40,17 @@ export const initializeFirebase = (): FirebaseApp => {
   try {
     // Check if Firebase is already initialized
     if (getApps().length === 0) {
-      // Validate required configuration
-      if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-        console.warn('Firebase configuration incomplete. Push notifications will use fallback mode.');
+      // Detailed validation of required configuration
+      const missingKeys = [];
+      if (!firebaseConfig.apiKey) missingKeys.push('VITE_FIREBASE_API_KEY');
+      if (!firebaseConfig.projectId) missingKeys.push('VITE_FIREBASE_PROJECT_ID');
+      if (!firebaseConfig.messagingSenderId) missingKeys.push('VITE_FIREBASE_MESSAGING_SENDER_ID');
+      if (!VAPID_KEY) missingKeys.push('VITE_FIREBASE_VAPID_KEY');
+
+      if (missingKeys.length > 0) {
+        const errorMsg = `Firebase configuration incomplete. Missing: ${missingKeys.join(', ')}. Push notifications will use fallback mode.`;
+        console.warn(errorMsg);
+        console.log('🔍 Current config status:', getFirebaseStatus());
         throw new Error('Firebase configuration missing');
       }
 
