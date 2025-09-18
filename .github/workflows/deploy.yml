@@ -36,6 +36,11 @@ jobs:
     - name: Create .env file with Firebase configuration
       run: |
         echo "🔧 Creating .env file with Firebase configuration..."
+        echo "🔍 Debug - checking if secrets are available:"
+        echo "API_KEY length: ${#VITE_FIREBASE_API_KEY}"
+        echo "PROJECT_ID length: ${#VITE_FIREBASE_PROJECT_ID}"
+        echo "VAPID_KEY length: ${#VITE_FIREBASE_VAPID_KEY}"
+        
         echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" > .env
         echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
         echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
@@ -44,7 +49,14 @@ jobs:
         echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
         echo "VITE_FIREBASE_MEASUREMENT_ID=${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}" >> .env
         echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
+        
+        echo "📋 .env file contents:"
+        cat .env | sed 's/=.*$/=<hidden>/'
         echo "✅ .env file created successfully"
+      env:
+        VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+        VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
         
     - name: Validate Firebase configuration
       run: |
