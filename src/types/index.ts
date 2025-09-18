@@ -169,7 +169,6 @@ export interface UserPreferences {
     push: boolean;
     sound: boolean;
     vibration: boolean;
-    reminderAdvance: number; // minutes before
   };
   privacy: {
     shareData: boolean;

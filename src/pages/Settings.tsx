@@ -1,6 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
-import { 
+import {
   User, 
   Bell, 
   // Shield, // DISABLED - no longer needed
@@ -9,9 +9,6 @@ import {
   Trash2,
   Save,
   AlertTriangle,
-  Moon,
-  Sun,
-  Monitor,
   Smartphone,
   Wifi,
   WifiOff,
@@ -53,7 +50,6 @@ export function Settings() {
   const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermissionState>({ status: 'default', supported: false });
   const [isPWAInstalled, setIsPWAInstalled] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
-  const [notificationDiagnostics, setNotificationDiagnostics] = React.useState<any>(null);
   // const [showPrivacyDashboard, setShowPrivacyDashboard] = React.useState(false); // DISABLED
   // const [showConsentModal, setShowConsentModal] = React.useState(false); // DISABLED
   // const [anonymousReportingPrefs, setAnonymousReportingPrefs] = React.useState<AnonymousReportingPreferences | null>(null); // DISABLED
@@ -80,7 +76,7 @@ export function Settings() {
   const loadPWAState = () => {
     // Check if app is installed as PWA
     const isInstalled = window.matchMedia('(display-mode: standalone)').matches ||
-                       window.navigator.standalone === true ||
+                       (window.navigator as any).standalone === true ||
                        document.referrer.includes('android-app://');
     setIsPWAInstalled(isInstalled);
   };
@@ -105,7 +101,6 @@ export function Settings() {
       pushNotifications: true,
       soundNotifications: true,
       vibrationNotifications: true,
-      reminderAdvance: 15,
       timeFormat: '12h',
       dateFormat: 'MM/DD/YYYY',
       defaultView: 'dashboard',
@@ -128,7 +123,6 @@ export function Settings() {
         pushNotifications: userProfile.preferences?.notifications?.push ?? true,
         soundNotifications: userProfile.preferences?.notifications?.sound ?? true,
         vibrationNotifications: userProfile.preferences?.notifications?.vibration ?? true,
-        reminderAdvance: userProfile.preferences?.notifications?.reminderAdvance ?? 15,
         timeFormat: userProfile.preferences?.display?.timeFormat || '12h',
         dateFormat: userProfile.preferences?.display?.dateFormat || 'MM/DD/YYYY',
         defaultView: userProfile.preferences?.display?.defaultView || 'dashboard',
@@ -154,7 +148,6 @@ export function Settings() {
           push: data.pushNotifications,
           sound: data.soundNotifications,
           vibration: data.vibrationNotifications,
-          reminderAdvance: data.reminderAdvance,
         },
         privacy: {
           shareData: false,
@@ -286,7 +279,10 @@ export function Settings() {
   const handleInstallPWA = () => {
     // This would be handled by the PWA install prompt
     // The actual install prompt is triggered by the browser
-    toast.info('Look for the "Add to Home Screen" or "Install App" option in your browser menu');
+    toast('Look for the "Add to Home Screen" or "Install App" option in your browser menu', {
+      icon: 'ℹ️',
+      duration: 4000,
+    });
   };
 
 
@@ -751,22 +747,6 @@ export function Settings() {
                       </label>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Reminder advance time (minutes)
-                      </label>
-                        <select
-                          {...register('reminderAdvance')}
-                          className="mobile-input w-full border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                        <option value={0}>On time (no advance)</option>
-                        <option value={5}>5 minutes before</option>
-                        <option value={10}>10 minutes before</option>
-                        <option value={15}>15 minutes before</option>
-                        <option value={30}>30 minutes before</option>
-                        <option value={60}>1 hour before</option>
-                      </select>
-                    </div>
                   </div>
                 </div>
               </div>

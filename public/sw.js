@@ -304,6 +304,18 @@ self.addEventListener('message', (event) => {
     case 'SKIP_WAITING':
       self.skipWaiting();
       break;
+    case 'APP_VISIBILITY_CHANGED':
+      console.log('Service Worker: App visibility changed:', data);
+      // Handle app visibility changes - could trigger notification checks when app becomes hidden
+      if (data && !data.visible) {
+        console.log('Service Worker: App became hidden - scheduling aggressive notification checks');
+        // Trigger more frequent notification checks when app is hidden
+        setTimeout(() => {
+          console.log('Service Worker: 🔄 Aggressive notification check triggered');
+          checkScheduledNotifications();
+        }, 10000); // Check after 10 seconds
+      }
+      break;
     default:
       console.log('Service Worker: Unknown message type:', type);
   }

@@ -17,50 +17,7 @@ export function useNotificationHandler() {
     medications
   } = useMedicationStore();
 
-  useEffect(() => {
-    // Listen for service worker messages
-    const handleMessage = (event: MessageEvent) => {
-      const { type, data } = event.data;
-
-      switch (type) {
-        case 'MEDICATION_TAKEN':
-          handleMedicationTaken(data);
-          break;
-        case 'MEDICATION_SNOOZED':
-          handleMedicationSnoozed(data);
-          break;
-        case 'MEDICATION_SKIPPED':
-          handleMedicationSkipped(data);
-          break;
-        case 'SYNC_MEDICATION_ACTION':
-          handleSyncMedicationAction(data);
-          break;
-        case 'SYNC_REMINDERS_REQUEST':
-          handleSyncRemindersRequest();
-          break;
-        case 'CHECK_MISSED_NOTIFICATIONS':
-          handleCheckMissedNotifications();
-          break;
-        case 'NOTIFICATION_SENT':
-          handleNotificationSent(data);
-          break;
-        default:
-          break;
-      }
-    };
-
-    // Listen for messages from service worker
-    navigator.serviceWorker?.addEventListener('message', handleMessage);
-
-    // Listen for window messages (fallback)
-    window.addEventListener('message', handleMessage);
-
-    return () => {
-      navigator.serviceWorker?.removeEventListener('message', handleMessage);
-      window.removeEventListener('message', handleMessage);
-    };
-  }, []);
-
+  // Define ALL handlers before they're used in useEffect
   const handleMedicationTaken = async (data: any) => {
     try {
       const { medicationId, reminderId, timestamp } = data;
@@ -101,7 +58,10 @@ export function useNotificationHandler() {
       
       if (medication) {
         markMedicationMissed(medicationId);
-        toast.info(`⏸️ ${medication.name} marked as skipped`);
+        toast(`⏸️ ${medication.name} marked as skipped`, {
+          icon: 'ℹ️',
+          duration: 3000,
+        });
       }
     } catch (error) {
       console.error('Failed to handle medication skipped:', error);
@@ -149,6 +109,69 @@ export function useNotificationHandler() {
     }
   };
 
+  const handleCheckMissedNotifications = () => {
+    try {
+      // Trigger the notification service to check for missed notifications
+      // This is called by the service worker
+      notificationService.checkMissedNotifications();
+    } catch (error) {
+      console.error('Failed to check missed notifications:', error);
+    }
+  };
+
+  const handleNotificationSent = (data: any) => {
+    try {
+      console.log('Service worker sent notification:', data);
+      // Could show a toast or update UI state here if needed
+    } catch (error) {
+      console.error('Failed to handle notification sent event:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Listen for service worker messages
+    const handleMessage = (event: MessageEvent) => {
+      const { type, data } = event.data;
+
+      switch (type) {
+        case 'MEDICATION_TAKEN':
+          handleMedicationTaken(data);
+          break;
+        case 'MEDICATION_SNOOZED':
+          handleMedicationSnoozed(data);
+          break;
+        case 'MEDICATION_SKIPPED':
+          handleMedicationSkipped(data);
+          break;
+        case 'SYNC_MEDICATION_ACTION':
+          handleSyncMedicationAction(data);
+          break;
+        case 'SYNC_REMINDERS_REQUEST':
+          handleSyncRemindersRequest();
+          break;
+        case 'CHECK_MISSED_NOTIFICATIONS':
+          handleCheckMissedNotifications();
+          break;
+        case 'NOTIFICATION_SENT':
+          handleNotificationSent(data);
+          break;
+        default:
+          break;
+      }
+    };
+
+    // Listen for messages from service worker
+    navigator.serviceWorker?.addEventListener('message', handleMessage);
+
+    // Listen for window messages (fallback)
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleMessage);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, []);
+
   return {
     // Expose utility functions if needed
     scheduleAllReminders: async () => {
@@ -187,25 +210,6 @@ export function useNotificationHandler() {
     setBadgeCount: (count: number) => notificationService.setBadgeCount(count),
     clearBadge: () => notificationService.clearBadge(),
     getBadgeCount: () => notificationService.getBadgeCount()
-  };
-
-  const handleCheckMissedNotifications = () => {
-    try {
-      // Trigger the notification service to check for missed notifications
-      // This is called by the service worker
-      notificationService.checkMissedNotifications();
-    } catch (error) {
-      console.error('Failed to check missed notifications:', error);
-    }
-  };
-
-  const handleNotificationSent = (data: any) => {
-    try {
-      console.log('Service worker sent notification:', data);
-      // Could show a toast or update UI state here if needed
-    } catch (error) {
-      console.error('Failed to handle notification sent event:', error);
-    }
   };
 }
 
