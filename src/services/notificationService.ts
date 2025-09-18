@@ -49,6 +49,7 @@ class NotificationService {
   private readonly NOTIFICATION_QUEUE_KEY = 'meditrax_notification_queue';
   private readonly BADGE_COUNT_KEY = 'meditrax_badge_count';
   private readonly FCM_TOKEN_KEY = 'meditrax_fcm_token';
+  private readonly MIGRATION_FLAG_KEY = 'meditrax_ios_migration_completed';
   
   private pushNotificationsAvailable = false;
   private visibilityChangeHandler: (() => void) | null = null;
@@ -348,7 +349,6 @@ class NotificationService {
   async scheduleReminder(reminder: Reminder, medication: Medication): Promise<void> {
     try {
       const now = new Date();
-      const notificationId = `${reminder.id}_${Date.now()}`;
       
       // Check if browser supports notifications at all
       const permissionState = await this.getPermissionState();
@@ -357,56 +357,32 @@ class NotificationService {
         return;
       }
       
-      // Use enhanced service worker notifications for all platforms
-      console.info(`📅 Scheduling enhanced notification for reminder ${reminder.id} using service worker delivery.`);
+      console.log(`📅 iOS PWA FIX: Pre-scheduling multiple future notifications for reminder ${reminder.id}`);
       
-      const nextNotificationTime = this.calculateNextNotificationTime(reminder, now);
+      // **FIX FOR iOS PWA**: Schedule multiple future notifications (30 days worth)
+      // This ensures reminders continue working even when app is closed for extended periods
+      const futureNotifications = this.generateFutureNotifications(reminder, medication, now, 30);
       
-      if (!nextNotificationTime) {
-        console.warn(`Could not calculate next notification time for reminder ${reminder.id}`);
+      if (futureNotifications.length === 0) {
+        console.warn(`Could not generate any future notifications for reminder ${reminder.id}`);
         return;
       }
 
-      console.log(`Scheduling notification for ${nextNotificationTime.toLocaleString()} (in ${Math.round((nextNotificationTime.getTime() - now.getTime()) / 1000 / 60)} minutes)`);
+      console.log(`✅ Generated ${futureNotifications.length} future notifications for the next 30 days`);
 
-      // Get motivational message for this medication
-      const motivationalMessage = this.getMotivationalMessage(medication.name);
+      // Store all future notifications
+      for (const scheduledNotification of futureNotifications) {
+        this.scheduledNotifications.set(scheduledNotification.id, scheduledNotification);
+        await this.scheduleNotification(scheduledNotification);
+      }
       
-      const payload: NotificationPayload = {
-        title: `💊 Time for ${medication.name}`,
-        body: reminder.customMessage || `Take your ${medication.dosage}${medication.unit} dose of ${medication.name}\n\n${motivationalMessage}`,
-        icon: '/pill-icon.svg',
-        badge: '/pill-icon.svg',
-        actions: [
-          { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
-          { action: 'snooze', title: '⏰ Remind me in 5 min', icon: '/pill-icon.svg' },
-          { action: 'skip', title: '⏸️ Skip this dose', icon: '/pill-icon.svg' }
-        ],
-        data: {
-          medicationId: medication.id,
-          reminderId: reminder.id,
-          medicationName: medication.name,
-          dosage: medication.dosage,
-          unit: medication.unit,
-          timestamp: nextNotificationTime.getTime(),
-          motivationalMessage: motivationalMessage
-        },
-        tag: `medication_${medication.id}`,
-        requireInteraction: true
-      };
-
-      const scheduledNotification: ScheduledNotification = {
-        id: notificationId,
-        reminderId: reminder.id,
-        medicationId: medication.id,
-        scheduledTime: nextNotificationTime,
-        payload,
-        status: 'scheduled'
-      };
-
-      this.scheduledNotifications.set(notificationId, scheduledNotification);
+      // Save to localStorage for app-level persistence
       this.saveScheduledNotifications();
-      await this.scheduleNotification(scheduledNotification);
+      
+      // **CRITICAL FOR iOS PWA**: Send reminder pattern to service worker
+      await this.sendReminderPatternToServiceWorker(reminder, medication);
+
+      console.log(`✅ Pre-scheduled ${futureNotifications.length} future notifications + sent pattern to service worker for iOS PWA reliability`);
 
     } catch (error) {
       console.error('Failed to schedule reminder:', error);
@@ -1072,6 +1048,47 @@ class NotificationService {
     }
   }
 
+  // Migration method for existing reminders to new multi-instance system
+  async migrateExistingReminders(reminders: any[], medications: any[]): Promise<void> {
+    // Check if migration has already been completed
+    const migrationCompleted = localStorage.getItem(this.MIGRATION_FLAG_KEY);
+    if (migrationCompleted === 'true') {
+      console.log('✅ iOS PWA migration already completed, skipping...');
+      return;
+    }
+    
+    console.log('🔄 Migrating existing reminders to iOS PWA multi-instance system...');
+    
+    let migratedCount = 0;
+    
+    for (const reminder of reminders) {
+      if (!reminder.isActive) continue;
+      
+      const medication = medications.find(med => med.id === reminder.medicationId);
+      if (!medication) continue;
+      
+      try {
+        console.log(`Migrating reminder for ${medication.name} at ${reminder.time}`);
+        
+        // Cancel any existing single-instance notifications for this reminder
+        this.cancelReminder(reminder.id);
+        
+        // Re-schedule with new multi-instance system
+        await this.scheduleReminder(reminder, medication);
+        
+        migratedCount++;
+        console.log(`✅ Migrated reminder for ${medication.name}`);
+      } catch (error) {
+        console.error(`Failed to migrate reminder for ${medication.name}:`, error);
+      }
+    }
+    
+    // Mark migration as completed
+    localStorage.setItem(this.MIGRATION_FLAG_KEY, 'true');
+    
+    console.log(`✅ Completed iOS PWA reminder migration: ${migratedCount} reminders migrated to multi-instance system`);
+  }
+
   // Get notification system diagnostics
   async getNotificationDiagnostics(): Promise<{
     scheduledCount: number;
@@ -1527,6 +1544,112 @@ class NotificationService {
     if (event.data && event.data.type === 'REQUEST_FIREBASE_CONFIG') {
       console.log('Service worker requested Firebase config');
       this.sendFirebaseConfigToServiceWorker();
+    }
+  }
+
+  // iOS PWA Multi-Instance Scheduling Methods
+
+  private generateFutureNotifications(
+    reminder: Reminder, 
+    medication: Medication, 
+    fromDate: Date, 
+    daysToSchedule: number
+  ): ScheduledNotification[] {
+    const futureNotifications: ScheduledNotification[] = [];
+    const [hours, minutes] = reminder.time.split(':').map(Number);
+    
+    console.log(`Generating ${daysToSchedule} days of notifications for reminder ${reminder.id}`);
+    console.log(`Reminder pattern: ${reminder.time} on ${reminder.days.join(', ')}`);
+
+    for (let dayOffset = 0; dayOffset < daysToSchedule; dayOffset++) {
+      const checkDate = new Date(fromDate);
+      checkDate.setDate(fromDate.getDate() + dayOffset);
+      checkDate.setHours(hours, minutes, 0, 0);
+      
+      // Skip if time has already passed today  
+      if (dayOffset === 0 && checkDate <= fromDate) {
+        continue;
+      }
+      
+      const dayName = checkDate.toLocaleDateString('en', { weekday: 'long' }).toLowerCase() as any;
+      
+      // Check if this day matches the reminder schedule
+      if (reminder.days.includes(dayName)) {
+        const motivationalMessage = this.getMotivationalMessage(medication.name);
+        const notificationId = `${reminder.id}_${checkDate.getTime()}`;
+        
+        const payload: NotificationPayload = {
+          title: `💊 Time for ${medication.name}`,
+          body: reminder.customMessage || `Take your ${medication.dosage}${medication.unit} dose of ${medication.name}\n\n${motivationalMessage}`,
+          icon: '/pill-icon.svg',
+          badge: '/pill-icon.svg',
+          actions: [
+            { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
+            { action: 'snooze', title: '⏰ Remind me in 5 min', icon: '/pill-icon.svg' },
+            { action: 'skip', title: '⏸️ Skip this dose', icon: '/pill-icon.svg' }
+          ],
+          data: {
+            medicationId: medication.id,
+            reminderId: reminder.id,
+            medicationName: medication.name,
+            dosage: medication.dosage,
+            unit: medication.unit,
+            timestamp: checkDate.getTime(),
+            motivationalMessage: motivationalMessage,
+            isRecurring: true,
+            dayOffset: dayOffset
+          },
+          tag: `medication_${medication.id}_${dayOffset}`,
+          requireInteraction: true
+        };
+
+        const scheduledNotification: ScheduledNotification = {
+          id: notificationId,
+          reminderId: reminder.id,
+          medicationId: medication.id,
+          scheduledTime: checkDate,
+          payload,
+          status: 'scheduled'
+        };
+
+        futureNotifications.push(scheduledNotification);
+        
+        console.log(`  ✓ Added notification for ${dayName} ${checkDate.toLocaleDateString()} at ${reminder.time}`);
+      }
+    }
+
+    console.log(`Generated ${futureNotifications.length} future notifications`);
+    return futureNotifications;
+  }
+
+  private async sendReminderPatternToServiceWorker(reminder: Reminder, medication: Medication): Promise<void> {
+    try {
+      if (!this.serviceWorkerRegistration) {
+        console.warn('Service worker not available for reminder pattern');
+        return;
+      }
+
+      // Send the full reminder pattern to service worker so it can generate notifications independently
+      const reminderPattern = {
+        reminderId: reminder.id,
+        medicationId: medication.id,
+        medicationName: medication.name,
+        time: reminder.time,
+        days: reminder.days,
+        dosage: medication.dosage,
+        unit: medication.unit,
+        customMessage: reminder.customMessage,
+        isActive: reminder.isActive
+      };
+
+      this.serviceWorkerRegistration.active?.postMessage({
+        type: 'STORE_REMINDER_PATTERN',
+        data: reminderPattern
+      });
+
+      console.log('✅ Sent reminder pattern to service worker for independent scheduling');
+    } catch (error) {
+      console.error('Failed to send reminder pattern to service worker:', error);
     }
   }
 

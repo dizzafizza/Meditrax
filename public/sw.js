@@ -329,6 +329,10 @@ self.addEventListener('message', (event) => {
         }, 10000); // Check after 10 seconds
       }
       break;
+    case 'STORE_REMINDER_PATTERN':
+      // **iOS PWA FIX**: Store reminder patterns for independent scheduling
+      event.waitUntil(storeReminderPattern(data));
+      break;
     default:
       console.log('Service Worker: Unknown message type:', type);
   }
@@ -886,6 +890,191 @@ function triggerFailsafeCheck(delayMs = 45000) {
 // Start the failsafe chain
 triggerFailsafeCheck();
 
-console.log('Service Worker: ✅ Production ready with optimized iOS PWA notification support');
+// **iOS PWA REMINDER PATTERN MANAGEMENT** - Critical for closed-app recurring notifications
+
+/**
+ * Store reminder pattern for independent service worker scheduling
+ */
+async function storeReminderPattern(reminderPattern) {
+  try {
+    console.log('Service Worker: 📋 Storing reminder pattern for iOS PWA scheduling:', reminderPattern);
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    
+    // Store the reminder pattern with metadata
+    const patternData = {
+      ...reminderPattern,
+      storedAt: Date.now(),
+      lastScheduledUntil: null,
+      isActive: true
+    };
+    
+    await cache.put(
+      `reminder-pattern-${reminderPattern.reminderId}`,
+      new Response(JSON.stringify(patternData))
+    );
+    
+    console.log(`✅ Service Worker: Stored reminder pattern for ${reminderPattern.medicationName}`);
+    
+    // Immediately generate additional future notifications for this pattern
+    await extendNotificationsFromPattern(reminderPattern);
+    
+  } catch (error) {
+    console.error('Service Worker: Failed to store reminder pattern:', error);
+  }
+}
+
+/**
+ * Generate additional notifications from stored reminder patterns
+ * CRITICAL for iOS PWA - ensures continuous notifications when app is closed
+ */
+async function extendNotificationsFromPattern(reminderPattern, daysToExtend = 60) {
+  try {
+    console.log(`Service Worker: 🔄 Extending notifications for pattern ${reminderPattern.reminderId}`);
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const now = new Date();
+    const [hours, minutes] = reminderPattern.time.split(':').map(Number);
+    
+    let generatedCount = 0;
+    
+    // Generate notifications for the next 60 days
+    for (let dayOffset = 7; dayOffset < daysToExtend; dayOffset++) { // Start from day 7 to avoid conflicts
+      const checkDate = new Date(now);
+      checkDate.setDate(now.getDate() + dayOffset);
+      checkDate.setHours(hours, minutes, 0, 0);
+      
+      const dayName = checkDate.toLocaleDateString('en', { weekday: 'long' }).toLowerCase();
+      
+      if (reminderPattern.days.includes(dayName)) {
+        const notificationId = `sw_${reminderPattern.reminderId}_${checkDate.getTime()}`;
+        
+        // Check if this notification already exists
+        const existingResponse = await cache.match(`scheduled-${notificationId}`);
+        if (existingResponse) {
+          continue; // Skip if already scheduled
+        }
+        
+        const notificationData = {
+          id: notificationId,
+          reminderId: reminderPattern.reminderId,
+          medicationId: reminderPattern.medicationId,
+          scheduledTime: checkDate.getTime(),
+          title: `💊 Time for ${reminderPattern.medicationName}`,
+          body: reminderPattern.customMessage || `Take your ${reminderPattern.dosage}${reminderPattern.unit} dose of ${reminderPattern.medicationName}`,
+          icon: '/pill-icon.svg',
+          badge: '/pill-icon.svg',
+          data: {
+            medicationId: reminderPattern.medicationId,
+            reminderId: reminderPattern.reminderId,
+            medicationName: reminderPattern.medicationName,
+            dosage: reminderPattern.dosage,
+            unit: reminderPattern.unit,
+            timestamp: checkDate.getTime(),
+            generatedByServiceWorker: true
+          },
+          tag: `sw_medication_${reminderPattern.medicationId}_${dayOffset}`,
+          requireInteraction: true,
+          actions: [
+            { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
+            { action: 'snooze', title: '⏰ Snooze 15min', icon: '/pill-icon.svg' },
+            { action: 'skip', title: '⏸️ Skip', icon: '/pill-icon.svg' }
+          ],
+          status: 'scheduled',
+          createdByServiceWorker: true,
+          persistedAt: Date.now()
+        };
+        
+        // Store the notification
+        await cache.put(
+          `scheduled-${notificationId}`,
+          new Response(JSON.stringify(notificationData))
+        );
+        
+        generatedCount++;
+      }
+    }
+    
+    console.log(`✅ Service Worker: Generated ${generatedCount} additional notifications for ${reminderPattern.medicationName}`);
+    
+  } catch (error) {
+    console.error('Service Worker: Failed to extend notifications from pattern:', error);
+  }
+}
+
+/**
+ * Check and extend reminder patterns when notifications are running low
+ * Ensures continuous scheduling for iOS PWA
+ */
+async function maintainReminderPatterns() {
+  try {
+    console.log('Service Worker: 🔧 Maintaining reminder patterns...');
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const requests = await cache.keys();
+    const now = Date.now();
+    const oneWeekFromNow = now + (7 * 24 * 60 * 60 * 1000);
+    
+    // Find stored reminder patterns
+    const patternRequests = requests.filter(request => 
+      request.url.includes('reminder-pattern-')
+    );
+    
+    for (const request of patternRequests) {
+      try {
+        const response = await cache.match(request);
+        if (response) {
+          const patternData = await response.json();
+          
+          if (!patternData.isActive) continue;
+          
+          // Count future notifications for this reminder
+          const reminderNotifications = requests.filter(req => 
+            req.url.includes(`scheduled-`) && 
+            req.url.includes(patternData.reminderId)
+          );
+          
+          let futureCount = 0;
+          for (const notifRequest of reminderNotifications) {
+            try {
+              const notifResponse = await cache.match(notifRequest);
+              if (notifResponse) {
+                const notifData = await notifResponse.json();
+                if (notifData.scheduledTime > oneWeekFromNow && notifData.status === 'scheduled') {
+                  futureCount++;
+                }
+              }
+            } catch (error) {
+              // Skip invalid notifications
+            }
+          }
+          
+          // If less than 10 notifications in the next week, generate more
+          if (futureCount < 10) {
+            console.log(`Service Worker: ⚡ Low notification count (${futureCount}) for ${patternData.medicationName}, extending...`);
+            await extendNotificationsFromPattern(patternData, 90); // Extend by 90 days
+          }
+        }
+      } catch (error) {
+        console.error('Service Worker: Error processing reminder pattern:', error);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Service Worker: Failed to maintain reminder patterns:', error);
+  }
+}
+
+// Run pattern maintenance every 6 hours
+setInterval(() => {
+  maintainReminderPatterns();
+}, 6 * 60 * 60 * 1000);
+
+// Run initial pattern maintenance after 30 seconds
+setTimeout(() => {
+  maintainReminderPatterns();
+}, 30000);
+
+console.log('Service Worker: ✅ Production ready with iOS PWA reminder pattern management');
 
 

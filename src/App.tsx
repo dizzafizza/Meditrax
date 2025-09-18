@@ -36,13 +36,30 @@ function App() {
 
   // Check for missed notifications when the app loads
   React.useEffect(() => {
-    const checkOnLoad = () => {
-      console.log('App loaded, checking for missed notifications');
+    const initializeApp = async () => {
+      console.log('App loaded, initializing iOS PWA notification system...');
+      
+      // Get current reminders and medications from store
+      const { reminders, medications } = useMedicationStore.getState();
+      
+      // **iOS PWA FIX**: Migrate existing reminders to multi-instance system
+      if (reminders.length > 0 && medications.length > 0) {
+        try {
+          console.log('🔄 Starting iOS PWA reminder migration...');
+          await notificationService.migrateExistingReminders(reminders, medications);
+          console.log('✅ iOS PWA reminder migration completed');
+        } catch (error) {
+          console.error('❌ iOS PWA reminder migration failed:', error);
+        }
+      }
+      
+      // Check for missed notifications after migration
+      console.log('Checking for missed notifications');
       notificationService.checkMissedNotifications();
     };
     
-    // Check immediately after a short delay
-    const timer = setTimeout(checkOnLoad, 1000);
+    // Initialize after a short delay to ensure store is ready
+    const timer = setTimeout(initializeApp, 1500);
     
     // Also check when the window gains focus
     const handleFocus = () => {
