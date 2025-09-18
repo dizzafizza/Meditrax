@@ -276,6 +276,7 @@ export function Settings() {
     }
   };
 
+
   const handleInstallPWA = () => {
     // This would be handled by the PWA install prompt
     // The actual install prompt is triggered by the browser
@@ -336,6 +337,24 @@ export function Settings() {
                   {diagnostics.badgeSupported ? 'Yes' : 'No'}
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span>Using Firebase:</span>
+                <span className={`font-mono ${diagnostics.usingFirebase ? 'text-green-600' : 'text-blue-600'}`}>
+                  {diagnostics.usingFirebase ? 'FCM' : 'Service Worker'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Firebase Config:</span>
+                <span className={`font-mono ${diagnostics.firebaseConfigured ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {diagnostics.firebaseConfigured ? 'Configured' : 'Not Set'}
+                </span>
+              </div>
+              {diagnostics.fcmToken && (
+                <div className="flex justify-between">
+                  <span>FCM Token:</span>
+                  <span className="font-mono text-green-600 text-xs">{diagnostics.fcmToken}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Browser Support:</span>
                 <span className={`font-mono ${diagnostics.browserSupportsNotifications ? 'text-green-600' : 'text-red-600'}`}>

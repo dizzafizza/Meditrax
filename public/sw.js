@@ -1,7 +1,16 @@
 /**
- * Meditrax Service Worker
- * Handles push notifications, caching, and offline functionality
+ * MedTrack Service Worker
+ * Handles push notifications, caching, offline functionality, and Firebase Cloud Messaging
+ * Optimized for iOS PWA support
  */
+
+// Import Firebase messaging service worker for FCM support
+try {
+  importScripts('./firebase-messaging-sw.js');
+  console.log('🔥 Firebase messaging service worker imported');
+} catch (error) {
+  console.warn('Firebase messaging service worker not available:', error);
+}
 
 const CACHE_NAME = 'meditrax-v1';
 const NOTIFICATION_CACHE = 'meditrax-notifications-v1';
@@ -300,6 +309,10 @@ self.addEventListener('message', (event) => {
       break;
     case 'TEST_NOTIFICATION':
       event.waitUntil(showTestNotification());
+      break;
+    case 'SHOW_NOTIFICATION':
+      // Handle immediate notification display (from Firebase foreground messages)
+      event.waitUntil(showImmediateNotification(data.payload));
       break;
     case 'SKIP_WAITING':
       self.skipWaiting();
@@ -624,15 +637,54 @@ async function syncReminders() {
  */
 async function showTestNotification() {
   try {
-    await self.registration.showNotification('Meditrax Test', {
-      body: 'Service Worker notifications are working!',
+    await self.registration.showNotification('🧪 MedTrack Test', {
+      body: 'Service Worker notifications are working correctly!',
       icon: '/pill-icon.svg',
       badge: '/pill-icon.svg',
-      requireInteraction: false,
-      tag: 'test-notification'
+      requireInteraction: true,
+      tag: 'test-notification',
+      actions: [
+        { action: 'confirm', title: '✅ Got it!', icon: '/pill-icon.svg' },
+        { action: 'close', title: '❌ Close', icon: '/pill-icon.svg' }
+      ],
+      data: { type: 'test', timestamp: Date.now() }
     });
+    console.log('Service Worker: Test notification displayed');
   } catch (error) {
     console.error('Service Worker: Failed to show test notification:', error);
+  }
+}
+
+/**
+ * Show an immediate notification (for Firebase foreground messages)
+ */
+async function showImmediateNotification(payload) {
+  try {
+    console.log('Service Worker: Showing immediate notification:', payload);
+    
+    const title = payload.title || 'MedTrack Reminder';
+    const options = {
+      body: payload.body || 'Time for your medication',
+      icon: payload.icon || '/pill-icon.svg',
+      badge: payload.badge || '/pill-icon.svg',
+      data: payload.data || {},
+      tag: payload.tag || 'medtrack-immediate',
+      requireInteraction: payload.requireInteraction !== false,
+      actions: payload.actions || [
+        { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
+        { action: 'snooze', title: '⏰ Snooze', icon: '/pill-icon.svg' },
+        { action: 'skip', title: '⏸️ Skip', icon: '/pill-icon.svg' }
+      ],
+      vibrate: [200, 100, 200],
+      silent: false,
+      renotify: true,
+      timestamp: Date.now()
+    };
+
+    await self.registration.showNotification(title, options);
+    console.log('Service Worker: Immediate notification displayed');
+  } catch (error) {
+    console.error('Service Worker: Failed to show immediate notification:', error);
   }
 }
 

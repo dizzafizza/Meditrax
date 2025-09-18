@@ -2,11 +2,36 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import fs from 'fs'
+import { generateFirebaseServiceWorkerContent } from './src/utils/firebase-sw-config'
 
 // https://vitejs.dev/config/
+// Custom plugin to generate Firebase messaging service worker
+const firebaseServiceWorkerPlugin = () => {
+  return {
+    name: 'firebase-service-worker',
+    buildStart() {
+      // Generate Firebase service worker content
+      const content = generateFirebaseServiceWorkerContent();
+      
+      // Write to public directory
+      const publicDir = path.resolve(__dirname, 'public');
+      const swPath = path.join(publicDir, 'firebase-messaging-sw.js');
+      
+      try {
+        fs.writeFileSync(swPath, content);
+        console.log('🔥 Generated firebase-messaging-sw.js');
+      } catch (error) {
+        console.warn('Failed to generate Firebase service worker:', error);
+      }
+    }
+  };
+};
+
 export default defineConfig({
   plugins: [
     react(),
+    firebaseServiceWorkerPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {

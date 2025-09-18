@@ -4,6 +4,8 @@
 
 import { Reminder, Medication } from '@/types';
 import { MEDICATION_DATABASE } from './medicationDatabase';
+import { firebaseMessaging, type FCMSubscription, type FCMStatus } from './firebaseMessaging';
+import { isFirebaseConfigured, VAPID_KEY } from '@/config/firebase';
 
 export interface NotificationPermissionState {
   status: 'default' | 'granted' | 'denied';
@@ -36,15 +38,24 @@ class NotificationService {
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
   private pushSubscription: PushSubscription | null = null;
   
-  private readonly VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || null;
+  // VAPID key for push notifications (uses Firebase VAPID key)
+  private readonly VAPID_PUBLIC_KEY = VAPID_KEY || null;
+  
+  // Firebase Cloud Messaging support
+  private fcmSubscription: FCMSubscription | null = null;
+  private useFirebase = false;
+  
   private readonly NOTIFICATION_STORAGE_KEY = 'meditrax_scheduled_notifications';
   private readonly NOTIFICATION_QUEUE_KEY = 'meditrax_notification_queue';
   private readonly BADGE_COUNT_KEY = 'meditrax_badge_count';
+  private readonly FCM_TOKEN_KEY = 'meditrax_fcm_token';
+  
   private pushNotificationsAvailable = false;
   private visibilityChangeHandler: (() => void) | null = null;
   private isAppVisible = !document.hidden;
   private lastVisibilityCheck = Date.now();
   private currentBadgeCount = 0;
+  private lastPermissionCheck: { status: NotificationPermission; timestamp: number } | null = null;
 
   constructor() {
     this.initializeService();
@@ -102,24 +113,98 @@ class NotificationService {
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
       this.loadScheduledNotifications();
       this.loadBadgeCount();
+      this.loadFCMToken();
       this.checkMissedNotifications();
 
-      if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)) {
-        this.subscribeToPushNotifications().catch(error => {
-          console.info('Push notifications not initialized during startup:', error.message);
-        });
-      } else {
-        console.info('Using enhanced service worker notifications for reliable delivery.');
-        
-        // For iOS PWA, show optimistic message
-        if (this.isIOSPWA()) {
-          console.info('📱 iOS PWA detected - using optimized notification delivery system.');
-        }
-      }
+      // Try Firebase first, then fallback to legacy VAPID
+      await this.initializePushNotifications();
 
     } catch (error) {
       console.error('Failed to initialize notification service:', error);
     }
+  }
+
+  private async initializePushNotifications(): Promise<void> {
+    try {
+      // Check if Firebase is configured and available
+      if (isFirebaseConfigured()) {
+        console.log('🔥 Attempting Firebase Cloud Messaging setup...');
+        const success = await this.initializeFirebaseMessaging();
+        
+        if (success) {
+          this.useFirebase = true;
+          this.pushNotificationsAvailable = true;
+          console.log('✅ Firebase Cloud Messaging initialized successfully');
+          
+          if (this.isIOSPWA()) {
+            console.log('📱 iOS PWA detected - Firebase FCM provides optimal push notification support');
+          }
+          return;
+        }
+      }
+
+      // Fallback to legacy VAPID if Firebase not available
+      if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)) {
+        console.log('🔄 Firebase unavailable - using legacy VAPID push notifications...');
+        this.subscribeToPushNotifications().catch(error => {
+          console.info('Legacy push notifications not initialized:', error.message);
+          this.fallbackToServiceWorkerNotifications();
+        });
+      } else {
+        this.fallbackToServiceWorkerNotifications();
+      }
+
+    } catch (error) {
+      console.error('Failed to initialize push notifications:', error);
+      this.fallbackToServiceWorkerNotifications();
+    }
+  }
+
+  private async initializeFirebaseMessaging(): Promise<boolean> {
+    try {
+      // Test Firebase messaging availability
+      const fcmStatus = await firebaseMessaging.getStatus();
+      
+      if (!fcmStatus.supported || !fcmStatus.configured) {
+        console.warn('Firebase messaging not supported or configured');
+        return false;
+      }
+
+      // Subscribe to FCM
+      this.fcmSubscription = await firebaseMessaging.subscribe();
+      
+      if (!this.fcmSubscription) {
+        console.warn('Failed to subscribe to Firebase Cloud Messaging');
+        return false;
+      }
+
+      // Save FCM token for persistence
+      this.saveFCMToken(this.fcmSubscription.token);
+      
+      // Set up message handler for foreground notifications
+      firebaseMessaging.setMessageHandler((payload) => {
+        console.log('📱 Foreground FCM message received:', payload);
+        // Handle foreground messages if needed
+      });
+
+      return true;
+      
+    } catch (error) {
+      console.error('Firebase messaging initialization failed:', error);
+      return false;
+    }
+  }
+
+  private fallbackToServiceWorkerNotifications(): void {
+    console.info('🔧 Using enhanced service worker notifications for reliable delivery.');
+    
+    // For iOS PWA, show helpful message
+    if (this.isIOSPWA()) {
+      console.info('📱 iOS PWA detected - using optimized service worker notification delivery.');
+    }
+    
+    this.useFirebase = false;
+    this.pushNotificationsAvailable = false;
   }
 
   private handleServiceWorkerMessage(event: MessageEvent): void {
@@ -135,6 +220,12 @@ class NotificationService {
       case 'MEDICATION_SNOOZED':
         this.handleMedicationSnoozed(data);
         break;
+      case 'CHECK_MISSED_NOTIFICATIONS':
+      case 'SYNC_REMINDERS_REQUEST':
+      case 'SYNC_MEDICATION_ACTION':
+      case 'NOTIFICATION_SENT':
+        // These messages are handled by useNotificationHandler hook
+        break;
       default:
         console.log('Unknown service worker message:', type, data);
     }
@@ -142,12 +233,21 @@ class NotificationService {
 
   async getPermissionState(): Promise<NotificationPermissionState> {
     if (!('Notification' in window)) {
-      console.log('Notification API not supported in this browser');
       return { status: 'denied', supported: false };
     }
 
     const status = Notification.permission as 'default' | 'granted' | 'denied';
-    console.log('Notification permission status:', status, 'Supported:', true);
+    const now = Date.now();
+    
+    // Only log permission status if it changed or it's been more than 30 seconds
+    if (!this.lastPermissionCheck || 
+        this.lastPermissionCheck.status !== status || 
+        now - this.lastPermissionCheck.timestamp > 30000) {
+      
+      console.log('Notification permission status:', status, 'Supported:', true);
+      this.lastPermissionCheck = { status, timestamp: now };
+    }
+    
     return { status, supported: true };
   }
 
@@ -600,6 +700,9 @@ class NotificationService {
   }
 
   isPushNotificationAvailable(): boolean {
+    if (this.useFirebase) {
+      return this.pushNotificationsAvailable && !!this.fcmSubscription;
+    }
     return this.pushNotificationsAvailable && !!this.pushSubscription;
   }
 
@@ -608,15 +711,25 @@ class NotificationService {
     configured: boolean;
     subscribed: boolean;
     permission: NotificationPermission;
+    usingFirebase?: boolean;
+    fcmStatus?: FCMStatus;
   }> {
     const permissionState = await this.getPermissionState();
     
-    return {
+    const status = {
       supported: 'serviceWorker' in navigator && 'PushManager' in window,
-      configured: !!this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY),
+      configured: this.useFirebase ? isFirebaseConfigured() : (!!this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)),
       subscribed: this.isPushNotificationAvailable(),
-      permission: permissionState.status
+      permission: permissionState.status,
+      usingFirebase: this.useFirebase
     };
+
+    // Add Firebase-specific status if using Firebase
+    if (this.useFirebase) {
+      status.fcmStatus = await firebaseMessaging.getStatus();
+    }
+
+    return status;
   }
 
   getScheduledNotifications(): ScheduledNotification[] {
@@ -940,10 +1053,15 @@ class NotificationService {
     isIOSPWA: boolean;
     isIOSDevice: boolean;
     iosWebPushSupported: boolean;
+    // Firebase-specific diagnostics
+    usingFirebase: boolean;
+    firebaseConfigured: boolean;
+    fcmSubscription: boolean;
+    fcmToken?: string;
   }> {
     const permissionState = await this.getPermissionState();
     
-    return {
+    const diagnostics = {
       scheduledCount: this.scheduledNotifications.size,
       queuedCount: this.getNotificationQueue().length,
       pushAvailable: this.isPushNotificationAvailable(),
@@ -960,8 +1078,15 @@ class NotificationService {
       badgeSupported: 'setAppBadge' in navigator,
       isIOSPWA: this.isIOSPWA(),
       isIOSDevice: this.isIOSDevice(),
-      iosWebPushSupported: this.isIOSWebPushSupported()
+      iosWebPushSupported: this.isIOSWebPushSupported(),
+      // Firebase-specific diagnostics
+      usingFirebase: this.useFirebase,
+      firebaseConfigured: isFirebaseConfigured(),
+      fcmSubscription: !!this.fcmSubscription,
+      fcmToken: this.fcmSubscription ? this.fcmSubscription.token.substring(0, 20) + '...' : undefined
     };
+
+    return diagnostics;
   }
 
   // Manual trigger to check and process missed notifications
@@ -1000,7 +1125,7 @@ class NotificationService {
     console.log('Current diagnostics:', diagnostics);
     
     const payload: NotificationPayload = {
-      title: 'DEBUG: Meditrax Test',
+      title: 'DEBUG: MedTrack Test',
       body: 'If you see this, notifications are working!',
       icon: '/pill-icon.svg',
       requireInteraction: true
@@ -1013,6 +1138,24 @@ class NotificationService {
       console.error('Debug notification failed:', error);
       throw error;
     }
+  }
+
+
+  // Get FCM token for server-side push notifications
+  getFCMToken(): string | null {
+    if (this.useFirebase && this.fcmSubscription) {
+      return this.fcmSubscription.token;
+    }
+    return null;
+  }
+
+  // Get Firebase messaging diagnostics
+  async getFirebaseDiagnostics() {
+    if (!this.useFirebase) {
+      return { error: 'Firebase not in use' };
+    }
+    
+    return firebaseMessaging.getDiagnostics();
   }
 
   // Debug method to check reminder scheduling status
@@ -1107,6 +1250,40 @@ class NotificationService {
     } catch (error) {
       console.error('Failed to load badge count:', error);
       this.currentBadgeCount = 0;
+    }
+  }
+
+  // FCM Token Management
+  private saveFCMToken(token: string): void {
+    try {
+      localStorage.setItem(this.FCM_TOKEN_KEY, token);
+      console.log('🔑 FCM token saved to localStorage');
+    } catch (error) {
+      console.error('Failed to save FCM token:', error);
+    }
+  }
+
+  private loadFCMToken(): void {
+    try {
+      const stored = localStorage.getItem(this.FCM_TOKEN_KEY);
+      if (stored && this.fcmSubscription) {
+        // Validate stored token matches current subscription
+        if (this.fcmSubscription.token !== stored) {
+          console.log('🔄 FCM token mismatch - clearing stored token');
+          localStorage.removeItem(this.FCM_TOKEN_KEY);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load FCM token:', error);
+    }
+  }
+
+  private clearFCMToken(): void {
+    try {
+      localStorage.removeItem(this.FCM_TOKEN_KEY);
+      console.log('🗑️ FCM token cleared from localStorage');
+    } catch (error) {
+      console.error('Failed to clear FCM token:', error);
     }
   }
 
