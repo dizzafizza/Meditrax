@@ -388,6 +388,89 @@ export function Settings() {
     );
   };
 
+  const PushNotificationSetup = () => {
+    const [setupInfo, setSetupInfo] = React.useState<any>(null);
+    const [showSetupInfo, setShowSetupInfo] = React.useState(false);
+
+    React.useEffect(() => {
+      const info = notificationService.getPushNotificationSetupInstructions();
+      setSetupInfo(info);
+    }, []);
+
+    if (!setupInfo) return null;
+
+    return (
+      <div className={`mt-4 p-3 rounded-lg border ${
+        setupInfo.isConfigured 
+          ? 'bg-green-50 border-green-200' 
+          : 'bg-yellow-50 border-yellow-200'
+      }`}>
+        <button
+          type="button"
+          onClick={() => setShowSetupInfo(!showSetupInfo)}
+          className={`flex items-center justify-between w-full text-sm font-medium ${
+            setupInfo.isConfigured ? 'text-green-800 hover:text-green-900' : 'text-yellow-800 hover:text-yellow-900'
+          }`}
+        >
+          <span className="flex items-center">
+            <Bell className="w-4 h-4 mr-2" />
+            {setupInfo.isConfigured ? 'Real Push Notifications: Configured ✅' : 'Real Push Notifications: Setup Required ⚠️'}
+          </span>
+          <Settings2 className={`w-4 h-4 transform transition-transform ${showSetupInfo ? 'rotate-90' : ''}`} />
+        </button>
+        
+        {showSetupInfo && (
+          <div className="mt-3 space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-600">Current Status:</div>
+                <div className={`text-xs ${setupInfo.hasVapidKey ? 'text-green-600' : 'text-red-600'}`}>
+                  VAPID Key: {setupInfo.hasVapidKey ? '✅ Configured' : '❌ Missing'}
+                </div>
+                <div className={`text-xs ${setupInfo.hasPushSubscription ? 'text-green-600' : 'text-yellow-600'}`}>
+                  Push Subscription: {setupInfo.hasPushSubscription ? '✅ Active' : '⏳ Pending'}
+                </div>
+                <div className={`text-xs ${setupInfo.isPWAInstalled ? 'text-green-600' : 'text-blue-600'}`}>
+                  PWA Installed: {setupInfo.isPWAInstalled ? '✅ Yes' : '📱 Browser Only'}
+                </div>
+              </div>
+            </div>
+            
+            {!setupInfo.isConfigured && setupInfo.instructions.length > 0 && (
+              <div className="p-2 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-blue-800 font-medium text-xs mb-2">📋 Setup Instructions:</p>
+                <ol className="text-blue-700 text-xs space-y-1">
+                  {setupInfo.instructions.map((instruction: string, index: number) => (
+                    <li key={index} className="flex items-start">
+                      <span className="inline-block w-4 h-4 text-center bg-blue-200 rounded-full text-blue-800 text-xs font-bold mr-2 mt-0.5 flex-shrink-0">
+                        {index + 1}
+                      </span>
+                      {instruction}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            
+            {setupInfo.isIOSDevice && setupInfo.limitations.length > 0 && (
+              <div className="p-2 bg-orange-50 border border-orange-200 rounded">
+                <p className="text-orange-800 font-medium text-xs mb-1">⚠️ iOS Limitations:</p>
+                <ul className="text-orange-700 text-xs space-y-0.5">
+                  {setupInfo.limitations.map((limitation: string, index: number) => (
+                    <li key={index} className="flex items-start">
+                      <span className="mr-1">•</span>
+                      {limitation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const IOSPWAGuidance = () => {
     const [iosInstructions, setIOSInstructions] = React.useState<any>(null);
     const [showIOSInstructions, setShowIOSInstructions] = React.useState(false);
@@ -691,6 +774,7 @@ export function Settings() {
                 <p className="text-xs text-gray-600 mt-2">
                     💡 "Test in 1 min" - Close the app after clicking to test closed-app delivery
                 </p>
+                        <PushNotificationSetup />
                         <NotificationDiagnostics />
                         <IOSPWAGuidance />
                       </div>

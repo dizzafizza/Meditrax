@@ -110,6 +110,12 @@ class NotificationService {
         });
       } else {
         console.info('Push notifications disabled: VAPID key not configured. Set VITE_VAPID_PUBLIC_KEY environment variable to enable.');
+        
+        // For iOS PWA, show specific guidance
+        if (this.isIOSPWA()) {
+          console.warn('⚠️ iOS PWA detected without VAPID configuration. Closed-app notifications may not work reliably.');
+          console.info('📱 For reliable iOS PWA notifications, configure VAPID keys and server-side push.');
+        }
       }
 
     } catch (error) {
@@ -214,8 +220,16 @@ class NotificationService {
         return;
       }
       
-      if (!this.isPushNotificationAvailable()) {
-        console.info(`Push notifications not available for reminder ${reminder.id}. Using fallback browser notifications.`);
+      // iOS PWA specific handling
+      const isIOSPWA = this.isIOSPWA();
+      const hasRealPush = this.isPushNotificationAvailable();
+      
+      if (!hasRealPush) {
+        if (isIOSPWA) {
+          console.warn(`⚠️ iOS PWA without real push notifications detected for reminder ${reminder.id}. Closed-app delivery not guaranteed.`);
+        } else {
+          console.info(`Push notifications not available for reminder ${reminder.id}. Using fallback browser notifications.`);
+        }
       }
       
       const nextNotificationTime = this.calculateNextNotificationTime(reminder, now);
@@ -1173,6 +1187,58 @@ class NotificationService {
       console.error('Failed to send notification with badge:', error);
       throw error;
     }
+  }
+
+  // Get setup instructions for real push notifications
+  getPushNotificationSetupInstructions(): {
+    isConfigured: boolean;
+    hasVapidKey: boolean;
+    hasPushSubscription: boolean;
+    isIOSDevice: boolean;
+    isPWAInstalled: boolean;
+    instructions: string[];
+    limitations: string[];
+  } {
+    const isConfigured = this.isPushNotificationAvailable();
+    const hasVapidKey = !!this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY);
+    const hasPushSubscription = !!this.pushSubscription;
+    const isIOSDevice = this.isIOSDevice();
+    const isPWAInstalled = this.isIOSPWA();
+    
+    const instructions = [];
+    const limitations = [];
+    
+    if (!hasVapidKey) {
+      instructions.push('Generate VAPID keys using web-push library or online generator');
+      instructions.push('Set VITE_VAPID_PUBLIC_KEY environment variable');
+      instructions.push('Configure server-side push endpoint with VAPID private key');
+    }
+    
+    if (!hasPushSubscription) {
+      instructions.push('Request notification permission in your PWA');
+      instructions.push('Subscribe to push notifications via Push Manager API');
+    }
+    
+    if (isIOSDevice) {
+      instructions.push('Install app to home screen (required for iOS push notifications)');
+      instructions.push('Launch app from home screen icon, not Safari');
+      instructions.push('Grant notification permission when prompted');
+      
+      limitations.push('iOS requires PWA to be installed to home screen');
+      limitations.push('Notifications only work when launched from home screen');
+      limitations.push('Requires iOS 16.4+ for web push support');
+      limitations.push('May not work reliably without server-side push setup');
+    }
+    
+    return {
+      isConfigured,
+      hasVapidKey,
+      hasPushSubscription,
+      isIOSDevice,
+      isPWAInstalled,
+      instructions,
+      limitations
+    };
   }
 
   // Clean up method
