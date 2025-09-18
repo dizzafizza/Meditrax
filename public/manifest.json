@@ -1,7 +1,7 @@
 {
   "name": "Meditrax - Medication Tracker",
   "short_name": "Meditrax",
-  "description": "Comprehensive medication tracking and management application",
+  "description": "Comprehensive medication tracking and management application with push notifications",
   "lang": "en",
   "start_url": "/",
   "display": "standalone",
@@ -10,6 +10,7 @@
   "orientation": "portrait-primary",
   "scope": "/",
   "categories": ["health", "medical", "lifestyle"],
+  "id": "/",
   "screenshots": [
     {
       "src": "/screenshots/desktop.png",
@@ -143,7 +144,13 @@
   "handle_links": "preferred",
   "launch_handler": {
     "client_mode": "navigate-existing"
-  }
+  },
+  "permissions": [
+    "notifications"
+  ],
+  "apple-mobile-web-app-capable": "yes",
+  "apple-mobile-web-app-status-bar-style": "default",
+  "apple-mobile-web-app-title": "Meditrax"
 }
 
 

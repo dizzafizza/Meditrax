@@ -38,10 +38,12 @@ class NotificationService {
   private readonly VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || null;
   private readonly NOTIFICATION_STORAGE_KEY = 'meditrax_scheduled_notifications';
   private readonly NOTIFICATION_QUEUE_KEY = 'meditrax_notification_queue';
+  private readonly BADGE_COUNT_KEY = 'meditrax_badge_count';
   private pushNotificationsAvailable = false;
   private visibilityChangeHandler: (() => void) | null = null;
   private isAppVisible = !document.hidden;
   private lastVisibilityCheck = Date.now();
+  private currentBadgeCount = 0;
 
   constructor() {
     this.initializeService();
@@ -64,6 +66,7 @@ class NotificationService {
 
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
       this.loadScheduledNotifications();
+      this.loadBadgeCount();
       this.checkMissedNotifications();
 
       if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)) {
@@ -99,10 +102,12 @@ class NotificationService {
 
   async getPermissionState(): Promise<NotificationPermissionState> {
     if (!('Notification' in window)) {
+      console.log('Notification API not supported in this browser');
       return { status: 'denied', supported: false };
     }
 
     const status = Notification.permission as 'default' | 'granted' | 'denied';
+    console.log('Notification permission status:', status, 'Supported:', true);
     return { status, supported: true };
   }
 
@@ -246,27 +251,33 @@ class NotificationService {
 
       console.log('Sending immediate notification:', payload.title);
 
+      // Enhanced notification options for iOS PWA compatibility
+      const notificationOptions = {
+        body: payload.body,
+        icon: payload.icon || '/pill-icon.svg',
+        badge: payload.badge || '/pill-icon.svg',
+        data: payload.data,
+        tag: payload.tag,
+        requireInteraction: payload.requireInteraction !== false,
+        actions: payload.actions,
+        vibrate: [200, 100, 200],
+        silent: false,
+        // iOS PWA enhancements
+        renotify: true, // Allow replacing previous notifications
+        timestamp: Date.now(),
+      };
+
       if (this.serviceWorkerRegistration) {
         console.log('Using service worker to show notification');
-        await this.serviceWorkerRegistration.showNotification(payload.title, {
-          body: payload.body,
-          icon: payload.icon || '/pill-icon.svg',
-          badge: payload.badge || '/pill-icon.svg',
-          data: payload.data,
-          tag: payload.tag,
-          requireInteraction: payload.requireInteraction !== false,
-          actions: payload.actions,
-          vibrate: [200, 100, 200],
-          silent: false
-        });
+        await this.serviceWorkerRegistration.showNotification(payload.title, notificationOptions);
       } else {
         console.log('Using basic notification API');
         const notification = new Notification(payload.title, {
-          body: payload.body,
-          icon: payload.icon || '/pill-icon.svg',
-          tag: payload.tag,
-          data: payload.data,
-          requireInteraction: payload.requireInteraction !== false
+          body: notificationOptions.body,
+          icon: notificationOptions.icon,
+          tag: notificationOptions.tag,
+          data: notificationOptions.data,
+          requireInteraction: notificationOptions.requireInteraction
         });
         
         // Auto-close after 10 seconds if not interactive
@@ -330,7 +341,7 @@ class NotificationService {
 
     if (delay <= 0) {
       console.log('Sending immediate notification (time already passed)');
-      await this.sendImmediateNotification(scheduledNotification.payload);
+      await this.sendImmediateNotificationWithBadge(scheduledNotification.payload, true);
       scheduledNotification.status = 'sent';
       return;
     }
@@ -345,7 +356,7 @@ class NotificationService {
       setTimeout(async () => {
         try {
           console.log('setTimeout triggered, sending notification');
-          await this.sendImmediateNotification(scheduledNotification.payload);
+          await this.sendImmediateNotificationWithBadge(scheduledNotification.payload, true);
           scheduledNotification.status = 'sent';
           this.scheduledNotifications.delete(scheduledNotification.id);
           this.saveScheduledNotifications();
@@ -619,7 +630,7 @@ class NotificationService {
       // Send missed notifications
       for (const notification of missedNotifications) {
         try {
-          await this.sendImmediateNotification(notification.payload);
+          await this.sendImmediateNotificationWithBadge(notification.payload, true);
           notification.status = 'sent';
           
           // Remove from scheduled notifications
@@ -689,6 +700,11 @@ class NotificationService {
     vapidKeyConfigured: boolean;
     browserSupportsNotifications: boolean;
     pushSubscription: boolean;
+    badgeCount: number;
+    badgeSupported: boolean;
+    isIOSPWA: boolean;
+    isIOSDevice: boolean;
+    iosWebPushSupported: boolean;
   }> {
     const permissionState = await this.getPermissionState();
     
@@ -704,7 +720,12 @@ class NotificationService {
       notificationPermission: permissionState.status,
       vapidKeyConfigured: !!this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY),
       browserSupportsNotifications: permissionState.supported,
-      pushSubscription: !!this.pushSubscription
+      pushSubscription: !!this.pushSubscription,
+      badgeCount: this.currentBadgeCount,
+      badgeSupported: 'setAppBadge' in navigator,
+      isIOSPWA: this.isIOSPWA(),
+      isIOSDevice: this.isIOSDevice(),
+      iosWebPushSupported: this.isIOSWebPushSupported()
     };
   }
 
@@ -796,6 +817,144 @@ class NotificationService {
     this.getNotificationQueue().forEach((notification, index) => {
       console.log(`- ${index}: ${notification.payload?.title} at ${new Date(notification.scheduledTime).toLocaleString()}`);
     });
+  }
+
+  // Badge Management (iOS 16.4+ PWA Support)
+  
+  async setBadgeCount(count: number): Promise<void> {
+    try {
+      this.currentBadgeCount = count;
+      localStorage.setItem(this.BADGE_COUNT_KEY, count.toString());
+      
+      // Use Badging API if available (iOS 16.4+, Chrome, etc.)
+      if ('setAppBadge' in navigator) {
+        if (count > 0) {
+          await (navigator as any).setAppBadge(count);
+          console.log(`Badge set to ${count}`);
+        } else {
+          await (navigator as any).clearAppBadge();
+          console.log('Badge cleared');
+        }
+      } else {
+        console.log(`Badge API not available. Count would be: ${count}`);
+      }
+    } catch (error) {
+      console.error('Failed to set badge count:', error);
+    }
+  }
+
+  async clearBadge(): Promise<void> {
+    await this.setBadgeCount(0);
+  }
+
+  incrementBadgeCount(): Promise<void> {
+    return this.setBadgeCount(this.currentBadgeCount + 1);
+  }
+
+  decrementBadgeCount(): Promise<void> {
+    const newCount = Math.max(0, this.currentBadgeCount - 1);
+    return this.setBadgeCount(newCount);
+  }
+
+  getBadgeCount(): number {
+    return this.currentBadgeCount;
+  }
+
+  private loadBadgeCount(): void {
+    try {
+      const stored = localStorage.getItem(this.BADGE_COUNT_KEY);
+      this.currentBadgeCount = stored ? parseInt(stored, 10) : 0;
+      
+      // Restore badge on app load
+      if (this.currentBadgeCount > 0) {
+        this.setBadgeCount(this.currentBadgeCount);
+      }
+    } catch (error) {
+      console.error('Failed to load badge count:', error);
+      this.currentBadgeCount = 0;
+    }
+  }
+
+  // iOS PWA Detection and User Guidance
+  
+  isIOSPWA(): boolean {
+    // Check if running as PWA on iOS
+    return (
+      window.navigator.standalone === true || // iOS Safari PWA
+      window.matchMedia('(display-mode: standalone)').matches
+    );
+  }
+
+  isIOSDevice(): boolean {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent);
+  }
+
+  isIOSWebPushSupported(): boolean {
+    // iOS 16.4+ supports web push in PWAs
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (!ios) return true; // Assume supported on other platforms
+    
+    // Try to detect iOS version (basic detection)
+    const match = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+    if (match) {
+      const majorVersion = parseInt(match[1], 10);
+      const minorVersion = parseInt(match[2], 10);
+      return majorVersion > 16 || (majorVersion === 16 && minorVersion >= 4);
+    }
+    
+    return false; // Conservative fallback
+  }
+
+  getIOSPWAInstructions(): {
+    isSupported: boolean;
+    isPWA: boolean;
+    instructions: string[];
+    limitations: string[];
+  } {
+    const isSupported = this.isIOSWebPushSupported();
+    const isPWA = this.isIOSPWA();
+    const isIOS = this.isIOSDevice();
+    
+    return {
+      isSupported: isSupported && isIOS,
+      isPWA,
+      instructions: isIOS ? [
+        'Open Meditrax in Safari',
+        'Tap the Share button (square with arrow)',
+        'Select "Add to Home Screen"',
+        'Tap "Add" to install the app',
+        'Launch Meditrax from your home screen',
+        'Enable notifications when prompted'
+      ] : [
+        'Install Meditrax using your browser\'s install prompt',
+        'Enable notifications when prompted'
+      ],
+      limitations: isIOS ? [
+        'Notifications only work when app is added to home screen',
+        'Must be launched from home screen icon (not Safari)',
+        'Requires iOS 16.4 or later',
+        'Permission must be granted within the installed PWA'
+      ] : []
+    };
+  }
+
+  // Enhanced notification with badge management
+  
+  async sendImmediateNotificationWithBadge(payload: NotificationPayload, incrementBadge = true): Promise<void> {
+    try {
+      // Send the notification
+      await this.sendImmediateNotification(payload);
+      
+      // Increment badge count
+      if (incrementBadge) {
+        await this.incrementBadgeCount();
+      }
+      
+      console.log(`Notification sent. Badge count: ${this.currentBadgeCount}`);
+    } catch (error) {
+      console.error('Failed to send notification with badge:', error);
+      throw error;
+    }
   }
 
   // Clean up method

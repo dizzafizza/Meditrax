@@ -87,6 +87,7 @@ export function Settings() {
 
   const checkNotificationPermission = async () => {
     const permission = await notificationService.getPermissionState();
+    console.log('Settings - Permission state received:', permission);
     setNotificationPermission(permission);
   };
 
@@ -276,33 +277,6 @@ export function Settings() {
     toast.info('Look for the "Add to Home Screen" or "Install App" option in your browser menu');
   };
 
-  const handleCheckMissedNotifications = async () => {
-    try {
-      const result = await notificationService.triggerNotificationCheck();
-      toast.success(`Checked ${result.checked} notifications, sent ${result.sent} missed ones`);
-      // Refresh diagnostics
-      setNotificationDiagnostics(await notificationService.getNotificationDiagnostics());
-    } catch (error) {
-      toast.error('Failed to check missed notifications');
-      console.error('Failed to check missed notifications:', error);
-    }
-  };
-
-  const handleDebugTestNotification = async () => {
-    try {
-      await notificationService.debugTestNotification();
-      toast.success('Debug test notification sent!');
-    } catch (error) {
-      toast.error('Debug notification failed - check console');
-      console.error('Debug notification failed:', error);
-    }
-  };
-
-  const handleDebugReminderSystem = () => {
-    const { reminders, medications } = useMedicationStore.getState();
-    notificationService.debugReminderSystem(reminders, medications);
-    toast.success('Reminder system debug info logged to console');
-  };
 
   const NotificationDiagnostics = () => {
     const [diagnostics, setDiagnostics] = React.useState<any>(null);
@@ -345,6 +319,16 @@ export function Settings() {
                 <span className="font-mono">{diagnostics.queuedCount}</span>
               </div>
               <div className="flex justify-between">
+                <span>Badge Count:</span>
+                <span className="font-mono text-blue-600">{diagnostics.badgeCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Badge Support:</span>
+                <span className={`font-mono ${diagnostics.badgeSupported ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {diagnostics.badgeSupported ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span>Browser Support:</span>
                 <span className={`font-mono ${diagnostics.browserSupportsNotifications ? 'text-green-600' : 'text-red-600'}`}>
                   {diagnostics.browserSupportsNotifications ? 'Yes' : 'No'}
@@ -360,33 +344,27 @@ export function Settings() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>VAPID Key:</span>
-                <span className={`font-mono ${diagnostics.vapidKeyConfigured ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {diagnostics.vapidKeyConfigured ? 'Yes' : 'No'}
+                <span>iOS Device:</span>
+                <span className={`font-mono ${diagnostics.isIOSDevice ? 'text-blue-600' : 'text-gray-500'}`}>
+                  {diagnostics.isIOSDevice ? 'Yes' : 'No'}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Push Available:</span>
-                <span className={`font-mono ${diagnostics.pushAvailable ? 'text-green-600' : 'text-red-600'}`}>
-                  {diagnostics.pushAvailable ? 'Yes' : 'No'}
+                <span>iOS PWA:</span>
+                <span className={`font-mono ${diagnostics.isIOSPWA ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {diagnostics.isIOSPWA ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>iOS Push Support:</span>
+                <span className={`font-mono ${diagnostics.iosWebPushSupported ? 'text-green-600' : 'text-red-600'}`}>
+                  {diagnostics.iosWebPushSupported ? 'Yes' : 'No'}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Service Worker:</span>
                 <span className={`font-mono ${diagnostics.serviceWorkerActive ? 'text-green-600' : 'text-red-600'}`}>
                   {diagnostics.serviceWorkerActive ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Visibility API:</span>
-                <span className={`font-mono ${diagnostics.visibilitySupported ? 'text-green-600' : 'text-red-600'}`}>
-                  {diagnostics.visibilitySupported ? 'Yes' : 'No'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Background Sync:</span>
-                <span className={`font-mono ${diagnostics.backgroundSyncSupported ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {diagnostics.backgroundSyncSupported ? 'Yes' : 'No'}
                 </span>
               </div>
             </div>
@@ -396,6 +374,73 @@ export function Settings() {
                 <span className="font-mono">{diagnostics.lastVisibilityCheck}</span>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const IOSPWAGuidance = () => {
+    const [iosInstructions, setIOSInstructions] = React.useState<any>(null);
+    const [showIOSInstructions, setShowIOSInstructions] = React.useState(false);
+
+    React.useEffect(() => {
+      const instructions = notificationService.getIOSPWAInstructions();
+      setIOSInstructions(instructions);
+    }, []);
+
+    if (!iosInstructions || (!iosInstructions.isSupported && !iosInstructions.isPWA)) return null;
+
+    return (
+      <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <button
+          type="button"
+          onClick={() => setShowIOSInstructions(!showIOSInstructions)}
+          className="flex items-center justify-between w-full text-sm text-blue-800 hover:text-blue-900 font-medium"
+        >
+          <span className="flex items-center">
+            <Smartphone className="w-4 h-4 mr-2" />
+            {iosInstructions.isPWA ? 'iOS PWA Status' : 'iOS PWA Setup Instructions'}
+          </span>
+          <Settings2 className={`w-4 h-4 transform transition-transform ${showIOSInstructions ? 'rotate-90' : ''}`} />
+        </button>
+        
+        {showIOSInstructions && (
+          <div className="mt-3 space-y-3 text-sm">
+            {iosInstructions.isPWA ? (
+              <div className="p-2 bg-green-50 border border-green-200 rounded">
+                <p className="text-green-800 font-medium">✅ PWA Installed Successfully!</p>
+                <p className="text-green-700 text-xs mt-1">You're using the installed version of Meditrax. Notifications should work properly.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-blue-800 font-medium">📱 For best iOS notification experience:</p>
+                <ol className="text-blue-700 text-xs space-y-1 ml-4">
+                  {iosInstructions.instructions.map((instruction: string, index: number) => (
+                    <li key={index} className="flex items-start">
+                      <span className="inline-block w-4 h-4 text-center bg-blue-200 rounded-full text-blue-800 text-xs font-bold mr-2 mt-0.5 flex-shrink-0">
+                        {index + 1}
+                      </span>
+                      {instruction}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            
+            {iosInstructions.limitations.length > 0 && (
+              <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
+                <p className="text-yellow-800 font-medium text-xs">⚠️ iOS Limitations:</p>
+                <ul className="text-yellow-700 text-xs mt-1 space-y-0.5">
+                  {iosInstructions.limitations.map((limitation: string, index: number) => (
+                    <li key={index} className="flex items-start">
+                      <span className="mr-1">•</span>
+                      {limitation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -564,15 +609,20 @@ export function Settings() {
                         <Bell className="w-5 h-5 text-gray-600" />
                         <span className="font-medium text-gray-900">Notification Permission</span>
                       </div>
-                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        notificationPermission.status === 'granted' 
-                          ? 'bg-green-100 text-green-800' 
-                          : notificationPermission.status === 'denied'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {notificationPermission.status === 'granted' ? 'Enabled' : 
-                         notificationPermission.status === 'denied' ? 'Blocked' : 'Not Set'}
+                      <div>
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          notificationPermission.status === 'granted' 
+                            ? 'bg-green-100 text-green-800' 
+                            : notificationPermission.status === 'denied'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {notificationPermission.status === 'granted' ? 'Enabled' : 
+                           notificationPermission.status === 'denied' ? 'Blocked' : 'Not Set'}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1 text-center">
+                          Raw: {notificationPermission.status}
+                        </div>
                       </div>
                     </div>
                     
@@ -607,37 +657,36 @@ export function Settings() {
                         <p className="text-sm text-green-600">
                           Notifications are enabled! You'll receive medication reminders.
                         </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="flex space-x-2">
                           <button
                             type="button"
                             onClick={handleTestNotification}
-                            className="mobile-button px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                            className="mobile-button px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                           >
-                            Test Notification
+                            Send Test Notification
                           </button>
                           <button
                             type="button"
-                            onClick={handleCheckMissedNotifications}
-                            className="mobile-button px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            onClick={checkNotificationPermission}
+                            className="mobile-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                           >
-                            Check Missed
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleDebugTestNotification}
-                            className="mobile-button px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                          >
-                            Debug Test
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleDebugReminderSystem}
-                            className="mobile-button px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
-                          >
-                            Debug Reminders
+                            Refresh Status
                           </button>
                         </div>
                         <NotificationDiagnostics />
+                        <IOSPWAGuidance />
+                      </div>
+                    )}
+                    
+                    {notificationPermission.status !== 'granted' && (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={checkNotificationPermission}
+                          className="mobile-button px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600 transition-colors"
+                        >
+                          Refresh Status
+                        </button>
                       </div>
                     )}
                   </div>

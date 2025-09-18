@@ -61,13 +61,15 @@ export function useNotificationHandler() {
     };
   }, []);
 
-  const handleMedicationTaken = (data: any) => {
+  const handleMedicationTaken = async (data: any) => {
     try {
       const { medicationId, reminderId, timestamp } = data;
       const medication = medications.find(m => m.id === medicationId);
       
       if (medication) {
         markMedicationTaken(medicationId, medication.dosage);
+        // Decrement badge count when medication is taken
+        await notificationService.decrementBadgeCount();
         toast.success(`✓ ${medication.name} marked as taken`);
       }
     } catch (error) {
@@ -179,7 +181,12 @@ export function useNotificationHandler() {
     
     checkMissedNotifications: () => {
       handleCheckMissedNotifications();
-    }
+    },
+
+    // Badge management functions
+    setBadgeCount: (count: number) => notificationService.setBadgeCount(count),
+    clearBadge: () => notificationService.clearBadge(),
+    getBadgeCount: () => notificationService.getBadgeCount()
   };
 
   const handleCheckMissedNotifications = () => {
