@@ -3,6 +3,7 @@ import { Check, X, Pill } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { Medication, PillLogEntry } from '@/types';
 import { getPillComponents } from '@/utils/helpers';
+import { notificationService } from '@/services/notificationService';
 import toast from 'react-hot-toast';
 
 interface MultiplePillQuickLogProps {
@@ -75,12 +76,18 @@ export function MultiplePillQuickLog({ medication, onAction }: MultiplePillQuick
       const totalTaken = Object.values(pillsTaken).reduce((sum, count) => sum + count, 0);
 
       if (totalTaken === totalExpected) {
+        // Reset badge count when medication is fully taken
+        await notificationService.decrementBadgeCount();
         toast.success(`✅ All pills logged for ${medication.name}!`, { icon: '💊' });
         onAction?.('taken');
       } else if (totalTaken > totalExpected) {
+        // Reset badge count when medication is taken (even if extra dose)
+        await notificationService.decrementBadgeCount();
         toast.success(`📊 Extra dose logged for ${medication.name} (${totalTaken} of ${totalExpected} expected)`, { icon: '⬆️' });
         onAction?.('taken'); // Still consider it as taken, just higher dose
       } else if (totalTaken > 0) {
+        // Partial dose - still decrement badge but don't fully reset
+        await notificationService.decrementBadgeCount();
         toast.success(`📝 Partial dose logged for ${medication.name} (${totalTaken} of ${totalExpected} expected)`, { icon: '⚠️' });
         onAction?.('partial');
       } else {

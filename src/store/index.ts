@@ -364,6 +364,11 @@ export const useMedicationStore = create<MedicationStore>()(
           logs: [...state.logs, log],
         }));
 
+        // Reset badge count when medication is logged as taken
+        notificationService.decrementBadgeCount().catch(error => {
+          console.warn('Failed to decrement badge count:', error);
+        });
+
         // Generate psychological messages based on dose taken and current schedule
         const currentDoseInfo = get().getCurrentDose(medicationId);
         

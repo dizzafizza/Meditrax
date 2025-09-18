@@ -3,6 +3,7 @@
  */
 
 import { Reminder, Medication } from '@/types';
+import { MEDICATION_DATABASE } from './medicationDatabase';
 
 export interface NotificationPermissionState {
   status: 'default' | 'granted' | 'denied';
@@ -49,6 +50,40 @@ class NotificationService {
     this.initializeService();
     this.setupVisibilityHandling();
     this.setupBeforeUnloadHandler();
+  }
+
+  // Get random motivational message for a medication
+  private getMotivationalMessage(medicationName: string): string {
+    const defaultMessages = [
+      "You're taking great care of your health! 🌟",
+      "Every dose is a step toward better wellness! 💪",
+      "Staying consistent with your medication matters! 🎯",
+      "Great job prioritizing your health today! ✨",
+      "You're doing amazing managing your medications! 🏆",
+      "Small steps, big impact on your wellbeing! 🌱",
+      "Your health journey is worth celebrating! 🎉",
+      "Consistency is the key to success! 🔑"
+    ];
+
+    try {
+      // Find medication in database
+      const medicationData = MEDICATION_DATABASE.find(med => 
+        med.name.toLowerCase().includes(medicationName.toLowerCase()) ||
+        med.genericName?.toLowerCase().includes(medicationName.toLowerCase()) ||
+        med.brandNames?.some(brand => brand.toLowerCase().includes(medicationName.toLowerCase()))
+      );
+
+      if (medicationData?.psychologicalSupport?.motivationalMessages?.length) {
+        const messages = medicationData.psychologicalSupport.motivationalMessages;
+        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+        return randomMessage;
+      }
+    } catch (error) {
+      console.warn('Error getting medication-specific motivational message:', error);
+    }
+
+    // Fall back to default messages
+    return defaultMessages[Math.floor(Math.random() * defaultMessages.length)];
   }
 
   private async initializeService(): Promise<void> {
@@ -192,18 +227,27 @@ class NotificationService {
 
       console.log(`Scheduling notification for ${nextNotificationTime.toLocaleString()} (in ${Math.round((nextNotificationTime.getTime() - now.getTime()) / 1000 / 60)} minutes)`);
 
+      // Get motivational message for this medication
+      const motivationalMessage = this.getMotivationalMessage(medication.name);
+      
       const payload: NotificationPayload = {
-        title: `Time for ${medication.name}`,
-        body: reminder.customMessage || `Take your ${medication.dosage}${medication.unit} dose of ${medication.name}`,
+        title: `💊 Time for ${medication.name}`,
+        body: reminder.customMessage || `Take your ${medication.dosage}${medication.unit} dose of ${medication.name}\n\n${motivationalMessage}`,
         icon: '/pill-icon.svg',
         badge: '/pill-icon.svg',
+        actions: [
+          { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
+          { action: 'snooze', title: '⏰ Remind me in 5 min', icon: '/pill-icon.svg' },
+          { action: 'skip', title: '⏸️ Skip this dose', icon: '/pill-icon.svg' }
+        ],
         data: {
           medicationId: medication.id,
           reminderId: reminder.id,
           medicationName: medication.name,
           dosage: medication.dosage,
           unit: medication.unit,
-          timestamp: nextNotificationTime.getTime()
+          timestamp: nextNotificationTime.getTime(),
+          motivationalMessage: motivationalMessage
         },
         tag: `medication_${medication.id}`,
         requireInteraction: true
@@ -346,13 +390,39 @@ class NotificationService {
       return;
     }
 
+    // **CRITICAL FOR CLOSED-APP**: Send notification data to service worker for persistent scheduling
+    if (this.serviceWorkerRegistration) {
+      try {
+        // Send scheduling message to service worker - this enables notifications when app is closed
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'SCHEDULE_NOTIFICATION',
+          data: {
+            id: scheduledNotification.id,
+            scheduledTime: scheduledTime,
+            title: scheduledNotification.payload.title,
+            body: scheduledNotification.payload.body,
+            icon: scheduledNotification.payload.icon || '/pill-icon.svg',
+            badge: scheduledNotification.payload.badge || '/pill-icon.svg',
+            data: scheduledNotification.payload.data,
+            tag: scheduledNotification.payload.tag,
+            requireInteraction: scheduledNotification.payload.requireInteraction !== false,
+            actions: scheduledNotification.payload.actions,
+            status: 'scheduled'
+          }
+        });
+        console.log('✅ Sent notification schedule to service worker for closed-app delivery');
+      } catch (error) {
+        console.warn('Failed to send schedule to service worker:', error);
+      }
+    }
+
     // ALWAYS store in queue for persistence (regardless of delay)
     this.addToNotificationQueue(scheduledNotification);
     console.log(`Added notification to queue. Queue size: ${this.getNotificationQueue().length}`);
 
-    // For immediate notifications (within 30 minutes), also use setTimeout as primary method
+    // For immediate notifications (within 30 minutes), also use setTimeout as primary method (only works when app is open)
     if (delay <= 30 * 60 * 1000) {
-      console.log(`Setting setTimeout for ${Math.round(delay / 1000 / 60)} minutes`);
+      console.log(`Setting setTimeout for ${Math.round(delay / 1000 / 60)} minutes (app open only)`);
       setTimeout(async () => {
         try {
           console.log('setTimeout triggered, sending notification');
@@ -360,8 +430,15 @@ class NotificationService {
           scheduledNotification.status = 'sent';
           this.scheduledNotifications.delete(scheduledNotification.id);
           this.saveScheduledNotifications();
-          // Also remove from queue
+          // Also remove from queue and cancel in service worker
           this.removeFromNotificationQueue(scheduledNotification.id);
+          
+          if (this.serviceWorkerRegistration) {
+            this.serviceWorkerRegistration.active?.postMessage({
+              type: 'CANCEL_NOTIFICATION',
+              data: { notificationId: scheduledNotification.id }
+            });
+          }
         } catch (error) {
           console.error('Failed to send scheduled notification via setTimeout:', error);
           scheduledNotification.status = 'failed';
@@ -370,14 +447,32 @@ class NotificationService {
       }, delay);
     }
 
-    // Try to register background sync for backup
-    if (this.serviceWorkerRegistration && 'sync' in window.ServiceWorkerRegistration.prototype) {
+    // **ENHANCED BACKGROUND SYNC** for reliable closed-app notifications
+    if (this.serviceWorkerRegistration) {
       try {
-        await this.serviceWorkerRegistration.sync.register('check-notifications');
-        console.log('Background sync registered successfully');
+        // Background sync (triggered when connectivity restored)
+        if ('sync' in window.ServiceWorkerRegistration.prototype) {
+          await this.serviceWorkerRegistration.sync.register('check-notifications');
+          console.log('✅ Background sync registered successfully');
+        }
+        
+        // **Periodic background sync** for regular checks (key for iOS PWA closed-app notifications)
+        if ('periodicSync' in window.ServiceWorkerRegistration.prototype) {
+          try {
+            await (this.serviceWorkerRegistration as any).periodicSync.register('check-medication-reminders', {
+              minInterval: 15 * 60 * 1000, // Check every 15 minutes minimum
+            });
+            console.log('✅ Periodic background sync registered for closed-app notifications');
+          } catch (error) {
+            console.log('⚠️ Periodic sync not available or permission denied:', error.message);
+          }
+        }
+        
       } catch (error) {
-        console.log('Background sync not available:', error);
+        console.log('⚠️ Background sync not available:', error);
       }
+    } else {
+      console.warn('⚠️ Service Worker not available - notifications will only work when app is open');
     }
   }
 
@@ -543,6 +638,18 @@ class NotificationService {
         this.checkMissedNotifications();
       }
       
+      // **CRITICAL FOR CLOSED-APP NOTIFICATIONS**: Notify service worker of visibility changes
+      if (this.serviceWorkerRegistration && this.isAppVisible !== isVisible) {
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'APP_VISIBILITY_CHANGED',
+          data: { 
+            visible: isVisible,
+            timestamp: Date.now()
+          }
+        });
+        console.log(`Notified service worker: app ${isVisible ? 'visible' : 'hidden'}`);
+      }
+      
       this.isAppVisible = isVisible;
       this.lastVisibilityCheck = Date.now();
     };
@@ -554,12 +661,37 @@ class NotificationService {
       if (!this.isAppVisible) {
         this.checkMissedNotifications();
         this.isAppVisible = true;
+        
+        // Notify service worker
+        if (this.serviceWorkerRegistration) {
+          this.serviceWorkerRegistration.active?.postMessage({
+            type: 'APP_VISIBILITY_CHANGED',
+            data: { 
+              visible: true,
+              timestamp: Date.now(),
+              trigger: 'focus'
+            }
+          });
+        }
       }
     });
     
     window.addEventListener('blur', () => {
       this.isAppVisible = false;
       this.lastVisibilityCheck = Date.now();
+      
+      // Notify service worker that app is hidden
+      if (this.serviceWorkerRegistration) {
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'APP_VISIBILITY_CHANGED',
+          data: { 
+            visible: false,
+            timestamp: Date.now(),
+            trigger: 'blur'
+          }
+        });
+        console.log('Notified service worker: app hidden (blur)');
+      }
     });
   }
 
@@ -609,13 +741,13 @@ class NotificationService {
     try {
       const now = Date.now();
       const queue = this.getNotificationQueue();
-      const missedNotifications: any[] = [];
+      const allMissedNotifications: any[] = [];
       
       // Check queued notifications
       for (const notification of queue) {
         const scheduledTime = new Date(notification.scheduledTime).getTime();
         if (scheduledTime <= now && scheduledTime > (this.lastVisibilityCheck - 60000)) {
-          missedNotifications.push(notification);
+          allMissedNotifications.push(notification);
         }
       }
 
@@ -623,39 +755,94 @@ class NotificationService {
       for (const [id, notification] of this.scheduledNotifications.entries()) {
         const scheduledTime = notification.scheduledTime.getTime();
         if (scheduledTime <= now && notification.status === 'scheduled') {
-          missedNotifications.push(notification);
+          allMissedNotifications.push(notification);
         }
       }
 
-      // Send missed notifications
-      for (const notification of missedNotifications) {
-        try {
-          await this.sendImmediateNotificationWithBadge(notification.payload, true);
-          notification.status = 'sent';
-          
-          // Remove from scheduled notifications
-          if (this.scheduledNotifications.has(notification.id)) {
-            this.scheduledNotifications.delete(notification.id);
+      if (allMissedNotifications.length === 0) {
+        return;
+      }
+
+      // **FIX iOS PWA BATCHING ISSUE** 
+      // Deduplicate notifications per medication (keep only the most recent per medication)
+      const medicationNotifications = new Map<string, any>();
+      for (const notification of allMissedNotifications) {
+        const medicationId = notification.medicationId || notification.payload?.data?.medicationId;
+        if (medicationId) {
+          const existing = medicationNotifications.get(medicationId);
+          if (!existing || new Date(notification.scheduledTime).getTime() > new Date(existing.scheduledTime).getTime()) {
+            medicationNotifications.set(medicationId, notification);
           }
-        } catch (error) {
-          console.error('Failed to send missed notification:', error);
-          notification.status = 'failed';
-          notification.retryCount = (notification.retryCount || 0) + 1;
         }
       }
 
-      // Clean up processed notifications from queue
-      if (missedNotifications.length > 0) {
-        const remainingQueue = queue.filter(n => 
-          !missedNotifications.some(missed => missed.id === n.id)
-        );
-        localStorage.setItem(this.NOTIFICATION_QUEUE_KEY, JSON.stringify(remainingQueue));
-        this.saveScheduledNotifications();
+      const deduplicatedNotifications = Array.from(medicationNotifications.values());
+      console.log(`Deduplicated ${allMissedNotifications.length} notifications to ${deduplicatedNotifications.length} (one per medication)`);
+
+      // **SMART BATCHING**: If more than 2 missed medications, send a summary notification
+      if (deduplicatedNotifications.length > 2) {
+        const medicationNames = deduplicatedNotifications
+          .map(n => n.payload?.data?.medicationName || 'Unknown medication')
+          .slice(0, 3); // Show max 3 medication names
+        
+        const summaryTitle = `💊 ${deduplicatedNotifications.length} Missed Medications`;
+        const summaryBody = deduplicatedNotifications.length > 3 
+          ? `${medicationNames.join(', ')} and ${deduplicatedNotifications.length - 3} more\n\nTap to review your missed doses 📝`
+          : `${medicationNames.join(', ')}\n\nTap to review your missed doses 📝`;
+
+        // Send single summary notification
+        await this.sendImmediateNotificationWithBadge({
+          title: summaryTitle,
+          body: summaryBody,
+          icon: '/pill-icon.svg',
+          badge: '/pill-icon.svg',
+          tag: 'missed-medications-summary',
+          requireInteraction: true,
+          data: {
+            type: 'missed-summary',
+            count: deduplicatedNotifications.length,
+            medications: medicationNames
+          }
+        }, false); // Don't increment badge for summary
+
+        // Update badge count to reflect total missed
+        await this.setBadgeCount(deduplicatedNotifications.length);
+
+      } else {
+        // **THROTTLED INDIVIDUAL NOTIFICATIONS**: Send up to 2 individual notifications with delay
+        for (let i = 0; i < Math.min(2, deduplicatedNotifications.length); i++) {
+          const notification = deduplicatedNotifications[i];
+          try {
+            // Add small delay between notifications to prevent overwhelming
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+            }
+
+            await this.sendImmediateNotificationWithBadge(notification.payload, true);
+            notification.status = 'sent';
+            
+          } catch (error) {
+            console.error('Failed to send missed notification:', error);
+            notification.status = 'failed';
+            notification.retryCount = (notification.retryCount || 0) + 1;
+          }
+        }
       }
 
-      if (missedNotifications.length > 0) {
-        console.log(`Processed ${missedNotifications.length} missed notifications`);
+      // Clean up ALL processed notifications from queue and scheduled
+      for (const notification of allMissedNotifications) {
+        if (this.scheduledNotifications.has(notification.id)) {
+          this.scheduledNotifications.delete(notification.id);
+        }
       }
+
+      const remainingQueue = queue.filter(n => 
+        !allMissedNotifications.some(missed => missed.id === n.id)
+      );
+      localStorage.setItem(this.NOTIFICATION_QUEUE_KEY, JSON.stringify(remainingQueue));
+      this.saveScheduledNotifications();
+
+      console.log(`Processed ${allMissedNotifications.length} missed notifications (sent ${Math.min(deduplicatedNotifications.length > 2 ? 1 : deduplicatedNotifications.length, 2)} notifications)`);
 
     } catch (error) {
       console.error('Failed to check missed notifications:', error);

@@ -15,9 +15,9 @@ const STATIC_ASSETS = [
   // Add other critical assets as needed
 ];
 
-// Install event - cache critical assets
+// Install event - cache critical assets and setup closed-app notifications
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing...');
+  console.log('Service Worker: Installing with enhanced closed-app notification support...');
   
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -27,8 +27,10 @@ self.addEventListener('install', (event) => {
       })
       .then(() => {
         console.log('Service Worker: Installation complete');
-        return self.skipWaiting();
+        // Try to enable periodic background sync immediately
+        return setupPeriodicNotificationCheck();
       })
+      .then(() => self.skipWaiting())
       .catch((error) => {
         console.error('Service Worker: Installation failed:', error);
       })
@@ -410,29 +412,55 @@ async function showSnoozeNotification(data) {
 }
 
 /**
- * Schedule a local notification (without push server)
+ * Schedule a local notification (without push server) - ENHANCED for closed-app support
  */
 async function scheduleLocalNotification(notificationData) {
   try {
     const { scheduledTime, ...notificationOptions } = notificationData;
     const delay = scheduledTime - Date.now();
     
+    console.log(`Service Worker: Scheduling notification for ${new Date(scheduledTime).toLocaleString()}, delay: ${Math.round(delay / 1000 / 60)} minutes`);
+    
     if (delay <= 0) {
       // Show immediately if time has passed
-      await self.registration.showNotification(notificationOptions.title, notificationOptions);
-    } else if (delay <= 5 * 60 * 1000) { // Up to 5 minutes
-      // Use setTimeout for short delays
-      setTimeout(() => {
-        self.registration.showNotification(notificationOptions.title, notificationOptions);
+      console.log('Service Worker: Showing immediate notification (time passed)');
+      await self.registration.showNotification(notificationOptions.title, {
+        ...notificationOptions,
+        timestamp: Date.now(),
+        renotify: true
+      });
+    } else if (delay <= 10 * 60 * 1000) { // Up to 10 minutes for setTimeout
+      // Use setTimeout for short delays (works when service worker is active)
+      console.log(`Service Worker: Using setTimeout for ${Math.round(delay / 1000)} second delay`);
+      setTimeout(async () => {
+        try {
+          await self.registration.showNotification(notificationOptions.title, {
+            ...notificationOptions,
+            timestamp: Date.now(),
+            renotify: true
+          });
+          console.log('Service Worker: setTimeout notification sent');
+        } catch (error) {
+          console.error('Service Worker: setTimeout notification failed:', error);
+        }
       }, delay);
-    } else {
-      // Store for later processing (would need periodic sync or other mechanism)
-      const cache = await caches.open(NOTIFICATION_CACHE);
-      await cache.put(
-        `scheduled-${Date.now()}`,
-        new Response(JSON.stringify(notificationData))
-      );
     }
+    
+    // **ALWAYS store for persistent scheduling** (critical for closed-app notifications)
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const persistentNotification = {
+      ...notificationData,
+      id: notificationData.id || `scheduled-${Date.now()}`,
+      persistedAt: Date.now(),
+      status: delay <= 0 ? 'sent' : 'scheduled'
+    };
+    
+    await cache.put(
+      `scheduled-${persistentNotification.id}`,
+      new Response(JSON.stringify(persistentNotification))
+    );
+    console.log(`Service Worker: Persisted notification ${persistentNotification.id} for closed-app delivery`);
+    
   } catch (error) {
     console.error('Service Worker: Failed to schedule notification:', error);
   }
@@ -566,20 +594,24 @@ async function showTestNotification() {
 }
 
 /**
- * Check for scheduled notifications that should be shown
+ * Check for scheduled notifications that should be shown - ENHANCED for reliable closed-app delivery
  */
 async function checkScheduledNotifications() {
   try {
-    console.log('Service Worker: Checking scheduled notifications...');
+    console.log('Service Worker: 🔍 Checking scheduled notifications for closed-app delivery...');
     
     const cache = await caches.open(NOTIFICATION_CACHE);
     const requests = await cache.keys();
     const now = Date.now();
+    let processedCount = 0;
+    let sentCount = 0;
     
     // Look for scheduled notifications
     const scheduledRequests = requests.filter(request => 
       request.url.includes('scheduled-') || request.url.includes('notification-queue-')
     );
+    
+    console.log(`Service Worker: Found ${scheduledRequests.length} scheduled notification(s) to check`);
     
     for (const request of scheduledRequests) {
       try {
@@ -587,47 +619,61 @@ async function checkScheduledNotifications() {
         if (response) {
           const notificationData = await response.json();
           const scheduledTime = new Date(notificationData.scheduledTime).getTime();
+          processedCount++;
           
-          // If notification time has passed, show it
+          console.log(`Service Worker: Checking notification ${notificationData.id}, scheduled for ${new Date(scheduledTime).toLocaleString()}, status: ${notificationData.status}`);
+          
+          // **CRITICAL**: If notification time has passed and hasn't been sent, show it
           if (scheduledTime <= now && notificationData.status !== 'sent') {
+            console.log(`Service Worker: 📳 Sending missed/scheduled notification: ${notificationData.title}`);
+            
             await self.registration.showNotification(
-              notificationData.title || 'Meditrax Reminder',
+              notificationData.title || '💊 Meditrax Reminder',
               {
                 body: notificationData.body || 'Time to take your medication!',
                 icon: notificationData.icon || '/pill-icon.svg',
                 badge: notificationData.badge || '/pill-icon.svg',
                 data: notificationData.data || {},
-                requireInteraction: true,
-                tag: notificationData.tag || 'medication-reminder',
+                requireInteraction: notificationData.requireInteraction !== false,
+                tag: notificationData.tag || `medication-reminder-${Date.now()}`,
                 renotify: true,
-                actions: [
+                timestamp: now,
+                silent: false,
+                vibrate: [200, 100, 200],
+                actions: notificationData.actions || [
                   {
                     action: 'take',
-                    title: 'Mark as Taken',
-                    icon: '/icons/check.png'
+                    title: '✅ Taken',
+                    icon: '/pill-icon.svg'
                   },
                   {
                     action: 'snooze',
-                    title: 'Snooze 15min',
-                    icon: '/icons/snooze.png'
+                    title: '⏰ Snooze 15min',
+                    icon: '/pill-icon.svg'
                   }
                 ]
               }
             );
             
-            // Mark as sent
+            // Mark as sent and update cache
             notificationData.status = 'sent';
             notificationData.sentAt = new Date().toISOString();
+            notificationData.sentByServiceWorker = true;
             await cache.put(request, new Response(JSON.stringify(notificationData)));
             
-            // Notify main app
+            sentCount++;
+            
+            // Notify main app if it's open
             await sendMessageToClients({
               type: 'NOTIFICATION_SENT',
               notificationId: notificationData.id,
+              sentByServiceWorker: true,
               timestamp: new Date().toISOString()
             });
             
-            console.log(`Service Worker: Sent scheduled notification ${notificationData.id}`);
+            console.log(`Service Worker: ✅ Successfully sent notification ${notificationData.id}`);
+          } else if (scheduledTime > now) {
+            console.log(`Service Worker: ⏳ Notification ${notificationData.id} still scheduled for future: ${new Date(scheduledTime).toLocaleString()}`);
           }
         }
       } catch (error) {
@@ -635,17 +681,79 @@ async function checkScheduledNotifications() {
       }
     }
     
-    // Also check localStorage-based notification queue by sending message to clients
+    // **IMPORTANT**: Also trigger app to check localStorage-based notification queue
     await sendMessageToClients({
-      type: 'CHECK_MISSED_NOTIFICATIONS'
+      type: 'CHECK_MISSED_NOTIFICATIONS',
+      serviceWorkerTriggered: true
     });
     
-    console.log('Service Worker: Notification check complete');
+    console.log(`Service Worker: 📊 Notification check complete - Processed: ${processedCount}, Sent: ${sentCount}`);
   } catch (error) {
-    console.error('Service Worker: Failed to check scheduled notifications:', error);
+    console.error('Service Worker: ❌ Failed to check scheduled notifications:', error);
   }
 }
 
-console.log('Service Worker: Loaded and ready');
+// **ENHANCED CLOSED-APP NOTIFICATION SUPPORT**
+
+// Set up periodic notification checking
+async function setupPeriodicNotificationCheck() {
+  try {
+    // Register periodic sync for regular notification checks when app is closed
+    if ('periodicSync' in self.registration) {
+      await self.registration.periodicSync.register('check-medication-reminders', {
+        minInterval: 15 * 60 * 1000 // Check every 15 minutes minimum
+      });
+      console.log('Service Worker: ✅ Periodic sync registered for closed-app notifications');
+    }
+    
+    // Also trigger an immediate check on service worker startup
+    setTimeout(() => {
+      checkScheduledNotifications();
+    }, 5000); // Wait 5 seconds after startup
+    
+  } catch (error) {
+    console.log('Service Worker: ⚠️ Periodic sync not available:', error.message);
+  }
+}
+
+// Enhanced visibility change handling for better app state detection
+let isAppVisible = false;
+let lastNotificationCheck = Date.now();
+
+// Listen for visibility changes to detect app open/close
+self.addEventListener('message', (event) => {
+  const { type, data } = event.data;
+  
+  if (type === 'APP_VISIBILITY_CHANGED') {
+    const wasVisible = isAppVisible;
+    isAppVisible = data.visible;
+    
+    if (!wasVisible && isAppVisible) {
+      // App just became visible - check for missed notifications
+      console.log('Service Worker: App became visible, checking for missed notifications');
+      checkScheduledNotifications();
+    }
+    
+    if (!isAppVisible && wasVisible) {
+      // App just became hidden - ensure notifications will be sent
+      console.log('Service Worker: App hidden, ensuring background notification delivery');
+      lastNotificationCheck = Date.now();
+    }
+  }
+});
+
+// **CRITICAL**: Enhanced periodic check trigger
+setInterval(() => {
+  const timeSinceLastCheck = Date.now() - lastNotificationCheck;
+  
+  // If more than 10 minutes since last check and app might be closed, check notifications
+  if (timeSinceLastCheck > 10 * 60 * 1000) {
+    console.log('Service Worker: Periodic notification check triggered (app potentially closed)');
+    checkScheduledNotifications();
+    lastNotificationCheck = Date.now();
+  }
+}, 5 * 60 * 1000); // Check every 5 minutes
+
+console.log('Service Worker: ✅ Loaded and ready with enhanced closed-app notification support');
 
 

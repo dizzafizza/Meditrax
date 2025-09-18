@@ -4,6 +4,7 @@ import { useMedicationStore } from '@/store';
 import { Medication } from '@/types';
 import { formatDosage, formatTime, formatPillDisplay, formatPillDisplayShort, getPillComponents } from '@/utils/helpers';
 import { MultiplePillQuickLog } from './MultiplePillQuickLog';
+import { notificationService } from '@/services/notificationService';
 import toast from 'react-hot-toast';
 
 interface QuickMedicationLogProps {
@@ -127,6 +128,9 @@ export function QuickMedicationLog({ medication, reminder, onAction }: QuickMedi
       const actualDosage = dosage || displayDose;
       
       markMedicationTaken(medication.id, actualDosage);
+      
+      // Reset badge count when medication is taken
+      await notificationService.decrementBadgeCount();
       
       // Generate positive reinforcement message
       generateContextualMessage(medication.id, 'celebration');
