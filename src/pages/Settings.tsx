@@ -29,6 +29,7 @@ import { notificationService, NotificationPermissionState } from '@/services/not
 // import { anonymousReportingService } from '@/services/anonymousReportingService'; // DISABLED
 // import { generateCSV, downloadFile } from '@/utils/helpers';
 import { NotificationDiagnosticModal } from '@/components/modals/NotificationDiagnosticModal';
+import { consoleCapture } from '@/utils/consoleCapture';
 import toast from 'react-hot-toast';
 
 export function Settings() {
@@ -51,7 +52,7 @@ export function Settings() {
   const [showNotificationDiagnostic, setShowNotificationDiagnostic] = React.useState(false);
   const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermissionState>({ status: 'default', supported: false });
   const [consoleLogs, setConsoleLogs] = React.useState<Array<{ timestamp: string; type: string; message: string }>>([]);
-  const [consoleCapture, setConsoleCapture] = React.useState(false);
+  const [consoleCaptureEnabled, setConsoleCaptureEnabled] = React.useState(false);
   const [isPWAInstalled, setIsPWAInstalled] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   // const [showPrivacyDashboard, setShowPrivacyDashboard] = React.useState(false); // DISABLED
@@ -134,44 +135,41 @@ export function Settings() {
     }
   }, [userProfile, reset]);
 
-  // Console capture for PWA debugging
+  // Console capture for PWA debugging - using global service that persists across pages
   React.useEffect(() => {
-    if (!consoleCapture) return;
+    // Load initial state from global service
+    setConsoleLogs(consoleCapture.getLogs());
+    setConsoleCaptureEnabled(consoleCapture.isActive());
 
-    const originalConsole = {
-      log: console.log,
-      error: console.error,
-      warn: console.warn,
-      info: console.info
+    // Listen for new log entries
+    const handleLogCaptured = () => {
+      setConsoleLogs(consoleCapture.getLogs());
     };
 
-    const captureLog = (type: string) => (...args: any[]) => {
-      const timestamp = new Date().toISOString();
-      const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      
-      setConsoleLogs(prev => [
-        ...prev.slice(-99), // Keep only last 100 logs
-        { timestamp, type, message }
-      ]);
-
-      // Call original console method
-      (originalConsole as any)[type](...args);
+    // Listen for logs cleared
+    const handleLogsCleared = () => {
+      setConsoleLogs([]);
     };
 
-    console.log = captureLog('log');
-    console.error = captureLog('error');
-    console.warn = captureLog('warn');
-    console.info = captureLog('info');
-
+    window.addEventListener('console-log-captured', handleLogCaptured);
+    window.addEventListener('console-logs-cleared', handleLogsCleared);
+    
     return () => {
-      console.log = originalConsole.log;
-      console.error = originalConsole.error;
-      console.warn = originalConsole.warn;
-      console.info = originalConsole.info;
+      window.removeEventListener('console-log-captured', handleLogCaptured);
+      window.removeEventListener('console-logs-cleared', handleLogsCleared);
     };
-  }, [consoleCapture]);
+  }, []);
+
+  // Handle console capture toggle
+  const handleConsoleCaptureToggle = (enabled: boolean) => {
+    setConsoleCaptureEnabled(enabled);
+    
+    if (enabled) {
+      consoleCapture.startCapture();
+    } else {
+      consoleCapture.stopCapture();
+    }
+  };
 
   const onSubmit = (data: any) => {
     const profileData: Partial<UserProfile> = {
@@ -1024,19 +1022,19 @@ export function Settings() {
                           <h4 className="font-medium">Console Capture</h4>
                         </div>
                         <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={consoleCapture}
-                            onChange={(e) => setConsoleCapture(e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
+                        <input
+                          type="checkbox"
+                          checked={consoleCaptureEnabled}
+                          onChange={(e) => handleConsoleCaptureToggle(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
                           <span className="ml-2 text-sm">Enable</span>
                         </label>
                       </div>
                       <p className="text-sm text-gray-600 mb-4">
                         Capture console logs for debugging. Enable this before testing notifications.
                       </p>
-                      {consoleCapture && (
+                      {consoleCaptureEnabled && (
                         <div className="bg-white rounded border max-h-64 overflow-y-auto p-3">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-medium text-gray-500">
@@ -1044,7 +1042,7 @@ export function Settings() {
                             </span>
                             <button
                               type="button"
-                              onClick={() => setConsoleLogs([])}
+                              onClick={() => consoleCapture.clearLogs()}
                               className="text-xs text-red-600 hover:text-red-700"
                             >
                               Clear

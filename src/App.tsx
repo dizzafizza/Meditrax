@@ -18,6 +18,7 @@ import { useNotificationHandler } from '@/hooks/useNotificationHandler';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
 import { notificationService } from '@/services/notificationService';
+import { consoleCapture } from '@/utils/consoleCapture';
 
 function App() {
   const { userProfile } = useMedicationStore();
@@ -38,6 +39,10 @@ function App() {
   React.useEffect(() => {
     const initializeApp = async () => {
       console.log('App loaded, initializing iOS PWA notification system...');
+      
+      // **CONSOLE CAPTURE**: Initialize global console capture for PWA debugging
+      // This persists across page navigation
+      consoleCapture; // Initialize the singleton
       
       // Get current reminders and medications from store
       const { reminders, medications } = useMedicationStore.getState();

@@ -1305,6 +1305,141 @@ class NotificationService {
     return null;
   }
 
+  // **iOS PWA DIAGNOSTIC**: Comprehensive notification issue analysis
+  async diagnoseIOSPWANotificationIssues(): Promise<{
+    coreIssue: string;
+    platform: string;
+    isPWA: boolean;
+    backgroundExecution: string;
+    notificationStatus: string;
+    recommendations: string[];
+    technicalDetails: any;
+  }> {
+    const diagnostics = await this.getNotificationDiagnostics();
+    const isIOSPWA = diagnostics.isIOSPWA;
+    const isIOSDevice = diagnostics.isIOSDevice;
+
+    // Test service worker responsiveness
+    let backgroundExecution = 'unknown';
+    try {
+      const responsive = await this.testServiceWorkerResponsiveness();
+      backgroundExecution = responsive ? 'responsive' : 'unresponsive';
+    } catch (error) {
+      backgroundExecution = 'error';
+    }
+
+    const coreIssue = isIOSPWA 
+      ? 'iOS Safari severely limits service worker execution when PWA is closed. This is by design for battery/privacy.'
+      : isIOSDevice 
+        ? 'iOS web browser limitations may affect background notifications.'
+        : 'No iOS-specific limitations detected.';
+
+    const recommendations = [];
+    if (isIOSPWA) {
+      recommendations.push('Keep app open when expecting critical notifications');
+      recommendations.push('Check app regularly - we show missed dose alerts on app open');
+      recommendations.push('Use iOS Calendar/Reminders as backup system');
+      recommendations.push('Badge count shows number of missed medications');
+      recommendations.push('Consider enabling "Add to Home Screen" for better PWA experience');
+    } else {
+      recommendations.push('Background notifications should work normally on this platform');
+      if (diagnostics.notificationPermission !== 'granted') {
+        recommendations.push('Enable notification permissions for full functionality');
+      }
+    }
+
+    return {
+      coreIssue,
+      platform: navigator.platform,
+      isPWA: isIOSPWA,
+      backgroundExecution,
+      notificationStatus: diagnostics.notificationPermission,
+      recommendations,
+      technicalDetails: {
+        ...diagnostics,
+        serviceWorkerResponsive: backgroundExecution === 'responsive'
+      }
+    };
+  }
+
+  // **SERVICE WORKER DIAGNOSTIC**: Test responsiveness
+  private async testServiceWorkerResponsiveness(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!this.serviceWorkerRegistration?.active) {
+        resolve(false);
+        return;
+      }
+
+      const timeout = setTimeout(() => resolve(false), 3000);
+      
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'DIAGNOSTIC_PONG') {
+          clearTimeout(timeout);
+          navigator.serviceWorker.removeEventListener('message', handleMessage);
+          resolve(true);
+        }
+      };
+
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+      
+      this.serviceWorkerRegistration.active.postMessage({
+        type: 'DIAGNOSTIC_PING',
+        timestamp: Date.now()
+      });
+    });
+  }
+
+  // **ALTERNATIVE SOLUTION**: Missed Dose Recovery System
+  async implementMissedDoseRecovery(): Promise<void> {
+    const diagnostics = await this.getNotificationDiagnostics();
+    
+    if (!diagnostics.isIOSPWA) {
+      console.log('Missed dose recovery not needed on non-iOS platforms');
+      return;
+    }
+
+    const now = new Date();
+    const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
+    
+    // Find notifications that should have fired in the last 12 hours
+    const missedNotifications = Array.from(this.scheduledNotifications.values()).filter(notification => {
+      const scheduledTime = new Date(notification.scheduledTime);
+      return scheduledTime >= twelveHoursAgo && scheduledTime <= now;
+    });
+
+    if (missedNotifications.length > 0) {
+      console.log(`🚨 iOS PWA Recovery: Found ${missedNotifications.length} potentially missed notifications`);
+      
+      // Send a summary notification
+      const summaryPayload = {
+        title: `MedTrack: ${missedNotifications.length} Missed Doses Detected`,
+        body: `You may have missed ${missedNotifications.length} medication reminder(s). Tap to review your schedule.`,
+        icon: '/pill-icon.svg',
+        badge: '/pill-icon.svg',
+        tag: 'missed-dose-recovery',
+        requireInteraction: true,
+        actions: [
+          { action: 'review', title: '📋 Review Schedule' },
+          { action: 'dismiss', title: '✖️ Dismiss' }
+        ],
+        data: {
+          type: 'missed-dose-recovery',
+          count: missedNotifications.length,
+          medications: missedNotifications.map(n => n.payload.title || 'Unknown').join(', ')
+        }
+      };
+
+      await this.sendImmediateNotification(summaryPayload);
+      
+      // Update badge count
+      await this.setBadgeCount(missedNotifications.length);
+      
+      console.log('✅ iOS PWA Recovery: Summary notification sent');
+    } else {
+      console.log('✅ iOS PWA Recovery: No missed notifications detected');
+    }
+  }
+
   // Get Firebase messaging diagnostics
   async getFirebaseDiagnostics() {
     if (!this.useFirebase) {
