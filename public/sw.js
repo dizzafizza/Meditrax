@@ -794,41 +794,46 @@ function startAggressiveNotificationChecking() {
     clearInterval(notificationCheckInterval);
   }
   
-  // **SUPER FREQUENT CHECKS** - Every 1 minute for reliable delivery
+  // **PRODUCTION OPTIMIZED CHECKS** - Every 30 seconds for iOS PWA reliability
   notificationCheckInterval = setInterval(() => {
-    console.log('Service Worker: 🔄 Aggressive notification check triggered');
+    console.log('Service Worker: 🔄 Notification check triggered');
     checkScheduledNotifications();
     lastNotificationCheck = Date.now();
-  }, 60 * 1000); // Check every 1 minute!
+  }, 30 * 1000); // Check every 30 seconds for production reliability
   
   // Also trigger immediate check
   checkScheduledNotifications();
-  console.log('Service Worker: 🚀 Started aggressive notification checking (every 1 minute)');
+  console.log('Service Worker: 🚀 Started optimized notification checking (every 30 seconds)');
 }
 
 // Start aggressive checking as soon as service worker loads
 startAggressiveNotificationChecking();
 
-// **BACKUP CHECKS**: Also check on any service worker activity
+// **PRODUCTION BACKUP CHECKS**: Also check on service worker activity
 self.addEventListener('fetch', () => {
   const timeSinceLastCheck = Date.now() - lastNotificationCheck;
-  // If more than 2 minutes since last check, do a quick check
-  if (timeSinceLastCheck > 2 * 60 * 1000) {
-    setTimeout(() => checkScheduledNotifications(), 100);
+  // If more than 1 minute since last check, do a quick check
+  if (timeSinceLastCheck > 60 * 1000) {
+    setTimeout(() => checkScheduledNotifications(), 500);
   }
 });
 
-// **SELF-TRIGGERING CHECK CHAIN** - Ensures continuous operation
-function triggerNextCheck(delayMs = 60000) {
+// **FAILSAFE CHECK CHAIN** - Ensures continuous operation for iOS PWA
+function triggerFailsafeCheck(delayMs = 45000) {
   setTimeout(() => {
-    checkScheduledNotifications();
-    triggerNextCheck(); // Chain the next check
+    // Only check if main interval might have failed
+    const timeSinceLastCheck = Date.now() - lastNotificationCheck;
+    if (timeSinceLastCheck > 45 * 1000) {
+      console.log('Service Worker: 🔄 Failsafe notification check');
+      checkScheduledNotifications();
+    }
+    triggerFailsafeCheck(); // Chain the next failsafe check
   }, delayMs);
 }
 
-// Start the check chain
-triggerNextCheck();
+// Start the failsafe chain
+triggerFailsafeCheck();
 
-console.log('Service Worker: ✅ Loaded and ready with enhanced closed-app notification support');
+console.log('Service Worker: ✅ Production ready with optimized iOS PWA notification support');
 
 

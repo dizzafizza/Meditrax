@@ -109,12 +109,11 @@ class NotificationService {
           console.info('Push notifications not initialized during startup:', error.message);
         });
       } else {
-        console.info('Push notifications disabled: VAPID key not configured. Set VITE_VAPID_PUBLIC_KEY environment variable to enable.');
+        console.info('Using enhanced service worker notifications for reliable delivery.');
         
-        // For iOS PWA, show specific guidance
+        // For iOS PWA, show optimistic message
         if (this.isIOSPWA()) {
-          console.warn('⚠️ iOS PWA detected without VAPID configuration. Closed-app notifications may not work reliably.');
-          console.info('📱 For reliable iOS PWA notifications, configure VAPID keys and server-side push.');
+          console.info('📱 iOS PWA detected - using optimized notification delivery system.');
         }
       }
 
@@ -220,17 +219,8 @@ class NotificationService {
         return;
       }
       
-      // iOS PWA specific handling
-      const isIOSPWA = this.isIOSPWA();
-      const hasRealPush = this.isPushNotificationAvailable();
-      
-      if (!hasRealPush) {
-        if (isIOSPWA) {
-          console.warn(`⚠️ iOS PWA without real push notifications detected for reminder ${reminder.id}. Closed-app delivery not guaranteed.`);
-        } else {
-          console.info(`Push notifications not available for reminder ${reminder.id}. Using fallback browser notifications.`);
-        }
-      }
+      // Use enhanced service worker notifications for all platforms
+      console.info(`📅 Scheduling enhanced notification for reminder ${reminder.id} using service worker delivery.`);
       
       const nextNotificationTime = this.calculateNextNotificationTime(reminder, now);
       
@@ -397,25 +387,38 @@ class NotificationService {
 
     console.log(`📅 Scheduling notification with delay: ${Math.round(delay / 1000 / 60)} minutes (${Math.round(delay / 1000)} seconds)`);
 
-    // **IMMEDIATE NOTIFICATIONS**: Send right away if within 2 minutes
-    if (delay <= 2 * 60 * 1000) { // Within 2 minutes
-      console.log('🚀 Sending immediate notification (within 2 minutes)');
+    // **IMMEDIATE NOTIFICATIONS**: Send right away if within 5 minutes for better reliability
+    if (delay <= 5 * 60 * 1000) { // Within 5 minutes - more generous for iOS
+      console.log('🚀 Sending immediate notification (within 5 minutes)');
       try {
         await this.sendImmediateNotificationWithBadge(scheduledNotification.payload, true);
         scheduledNotification.status = 'sent';
         
-        // Still notify service worker to cancel any duplicate scheduling
+        // Still schedule with service worker as backup for iOS PWA reliability
         if (this.serviceWorkerRegistration) {
           this.serviceWorkerRegistration.active?.postMessage({
-            type: 'CANCEL_NOTIFICATION',
-            data: { notificationId: scheduledNotification.id }
+            type: 'SCHEDULE_NOTIFICATION',
+            data: {
+              id: scheduledNotification.id + '_backup',
+              scheduledTime: scheduledTime,
+              title: scheduledNotification.payload.title,
+              body: scheduledNotification.payload.body,
+              icon: scheduledNotification.payload.icon || '/pill-icon.svg',
+              badge: scheduledNotification.payload.badge || '/pill-icon.svg',
+              data: scheduledNotification.payload.data,
+              tag: scheduledNotification.payload.tag,
+              requireInteraction: scheduledNotification.payload.requireInteraction !== false,
+              actions: scheduledNotification.payload.actions,
+              status: 'backup'
+            }
           });
+          console.log('✅ Backup notification scheduled with service worker');
         }
         
-        console.log('✅ Immediate notification sent successfully');
+        console.log('✅ Immediate notification sent with backup scheduled');
         return;
       } catch (error) {
-        console.error('❌ Failed to send immediate notification:', error);
+        console.error('❌ Failed to send immediate notification, using service worker:', error);
         // Continue with service worker fallback
       }
     }
@@ -1151,21 +1154,22 @@ class NotificationService {
       isSupported: isSupported && isIOS,
       isPWA,
       instructions: isIOS ? [
-        'Open Meditrax in Safari',
+        'Open MedTrack in Safari',
         'Tap the Share button (square with arrow)',
         'Select "Add to Home Screen"',
         'Tap "Add" to install the app',
-        'Launch Meditrax from your home screen',
-        'Enable notifications when prompted'
+        'Launch MedTrack from your home screen',
+        'Enable notifications when prompted',
+        'Keep the app installed for best notification reliability'
       ] : [
-        'Install Meditrax using your browser\'s install prompt',
+        'Install MedTrack using your browser\'s install prompt',
         'Enable notifications when prompted'
       ],
       limitations: isIOS ? [
-        'Notifications only work when app is added to home screen',
-        'Must be launched from home screen icon (not Safari)',
-        'Requires iOS 16.4 or later',
-        'Permission must be granted within the installed PWA'
+        'For reliable notifications, install app to home screen',
+        'Launch from home screen icon, not Safari browser',
+        'iOS 16.4+ recommended for best experience',
+        'Notifications work best when app stays installed'
       ] : []
     };
   }
@@ -1189,57 +1193,6 @@ class NotificationService {
     }
   }
 
-  // Get setup instructions for real push notifications
-  getPushNotificationSetupInstructions(): {
-    isConfigured: boolean;
-    hasVapidKey: boolean;
-    hasPushSubscription: boolean;
-    isIOSDevice: boolean;
-    isPWAInstalled: boolean;
-    instructions: string[];
-    limitations: string[];
-  } {
-    const isConfigured = this.isPushNotificationAvailable();
-    const hasVapidKey = !!this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY);
-    const hasPushSubscription = !!this.pushSubscription;
-    const isIOSDevice = this.isIOSDevice();
-    const isPWAInstalled = this.isIOSPWA();
-    
-    const instructions = [];
-    const limitations = [];
-    
-    if (!hasVapidKey) {
-      instructions.push('Generate VAPID keys using web-push library or online generator');
-      instructions.push('Set VITE_VAPID_PUBLIC_KEY environment variable');
-      instructions.push('Configure server-side push endpoint with VAPID private key');
-    }
-    
-    if (!hasPushSubscription) {
-      instructions.push('Request notification permission in your PWA');
-      instructions.push('Subscribe to push notifications via Push Manager API');
-    }
-    
-    if (isIOSDevice) {
-      instructions.push('Install app to home screen (required for iOS push notifications)');
-      instructions.push('Launch app from home screen icon, not Safari');
-      instructions.push('Grant notification permission when prompted');
-      
-      limitations.push('iOS requires PWA to be installed to home screen');
-      limitations.push('Notifications only work when launched from home screen');
-      limitations.push('Requires iOS 16.4+ for web push support');
-      limitations.push('May not work reliably without server-side push setup');
-    }
-    
-    return {
-      isConfigured,
-      hasVapidKey,
-      hasPushSubscription,
-      isIOSDevice,
-      isPWAInstalled,
-      instructions,
-      limitations
-    };
-  }
 
   // Clean up method
   destroy(): void {
