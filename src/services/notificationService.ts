@@ -49,6 +49,7 @@ class NotificationService {
   private readonly NOTIFICATION_QUEUE_KEY = 'meditrax_notification_queue';
   private readonly BADGE_COUNT_KEY = 'meditrax_badge_count';
   private readonly FCM_TOKEN_KEY = 'meditrax_fcm_token';
+  private readonly FCM_TOKEN_REFRESH_KEY = 'meditrax_fcm_token_refresh';
   private readonly MIGRATION_FLAG_KEY = 'meditrax_ios_migration_completed';
   
   private pushNotificationsAvailable = false;
@@ -130,6 +131,9 @@ class NotificationService {
 
       // Try Firebase first, then fallback to legacy VAPID
       await this.initializePushNotifications();
+
+      // **CRITICAL FOR iOS**: Set up FCM token refresh (guide recommendation: weekly)
+      this.setupFCMTokenRefresh();
 
     } catch (error) {
       console.error('Failed to initialize notification service:', error);
@@ -389,14 +393,56 @@ class NotificationService {
     }
   }
 
-  cancelReminder(reminderId: string): void {
+  async cancelReminder(reminderId: string): Promise<void> {
+    console.log(`🗑️ Cancelling all notifications for reminder ${reminderId}`);
+    
+    // Cancel from in-memory scheduled notifications
+    let cancelledCount = 0;
     for (const [id, notification] of this.scheduledNotifications.entries()) {
       if (notification.reminderId === reminderId) {
         notification.status = 'cancelled';
         this.scheduledNotifications.delete(id);
+        cancelledCount++;
       }
     }
+    
+    // **FIX**: Remove from notification queue (localStorage)
+    try {
+      const queue = this.getNotificationQueue();
+      const filteredQueue = queue.filter(n => n.reminderId !== reminderId);
+      const removedFromQueue = queue.length - filteredQueue.length;
+      
+      if (removedFromQueue > 0) {
+        localStorage.setItem(this.NOTIFICATION_QUEUE_KEY, JSON.stringify(filteredQueue));
+        cancelledCount += removedFromQueue;
+        console.log(`Removed ${removedFromQueue} notifications from queue`);
+      }
+    } catch (error) {
+      console.error('Failed to clean notification queue:', error);
+    }
+    
+    // **FIX**: Cancel from service worker cache (critical for iOS PWA)
+    if (this.serviceWorkerRegistration) {
+      try {
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'CANCEL_REMINDER_NOTIFICATIONS',
+          data: { reminderId }
+        });
+        
+        // Also deactivate reminder pattern in service worker
+        this.serviceWorkerRegistration.active?.postMessage({
+          type: 'DEACTIVATE_REMINDER_PATTERN',
+          data: { reminderId }
+        });
+        
+        console.log('✅ Sent cancellation message to service worker');
+      } catch (error) {
+        console.error('Failed to notify service worker about cancellation:', error);
+      }
+    }
+    
     this.saveScheduledNotifications();
+    console.log(`✅ Cancelled ${cancelledCount} notifications for reminder ${reminderId}`);
   }
 
   async sendImmediateNotification(payload: NotificationPayload): Promise<void> {
@@ -1087,6 +1133,61 @@ class NotificationService {
     localStorage.setItem(this.MIGRATION_FLAG_KEY, 'true');
     
     console.log(`✅ Completed iOS PWA reminder migration: ${migratedCount} reminders migrated to multi-instance system`);
+  }
+
+  // **CRITICAL FOR iOS PWA**: FCM Token Refresh System
+  // Based on guide: "getToken call at least once a month to prevent token from becoming stale"
+  // Recommended: weekly refresh
+  
+  private setupFCMTokenRefresh(): void {
+    try {
+      // Check if token needs refresh (older than 6 days = refresh weekly)
+      const lastRefresh = localStorage.getItem(this.FCM_TOKEN_REFRESH_KEY);
+      const now = Date.now();
+      const sixDays = 6 * 24 * 60 * 60 * 1000;
+      
+      if (!lastRefresh || now - parseInt(lastRefresh) > sixDays) {
+        console.log('🔄 FCM token needs refresh (weekly maintenance)');
+        this.refreshFCMToken();
+      }
+      
+      // Set up automatic weekly refresh
+      setInterval(() => {
+        console.log('🔄 Weekly FCM token refresh triggered');
+        this.refreshFCMToken();
+      }, 7 * 24 * 60 * 60 * 1000); // Every 7 days
+      
+    } catch (error) {
+      console.error('Failed to setup FCM token refresh:', error);
+    }
+  }
+
+  private async refreshFCMToken(): Promise<void> {
+    try {
+      if (!this.useFirebase) {
+        return;
+      }
+
+      console.log('🔑 Refreshing FCM token for iOS PWA reliability...');
+      
+      // Force getToken call to refresh
+      const newToken = await firebaseMessaging.getToken();
+      
+      if (newToken && this.fcmSubscription && newToken !== this.fcmSubscription.token) {
+        console.log('🆕 FCM token updated');
+        this.fcmSubscription.token = newToken;
+        this.saveFCMToken(newToken);
+      }
+      
+      // Record refresh time
+      localStorage.setItem(this.FCM_TOKEN_REFRESH_KEY, Date.now().toString());
+      
+      console.log('✅ FCM token refresh completed');
+      
+    } catch (error) {
+      console.error('❌ FCM token refresh failed:', error);
+      // Don't throw - this is maintenance, not critical path
+    }
   }
 
   // Get notification system diagnostics

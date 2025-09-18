@@ -123,10 +123,12 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - handle incoming push notifications
+// Push event - handle incoming push notifications  
+// **CRITICAL FOR iOS**: Based on guide - MUST show notification for every push or permissions revoked
 self.addEventListener('push', (event) => {
-  console.log('Service Worker: Push notification received');
+  console.log('Service Worker: 📨 Push notification received');
   
+  // **iOS PWA CRITICAL**: Always show notification - never skip or iOS kills permissions
   let notificationData = {
     title: 'Meditrax Reminder',
     body: 'Time to take your medication!',
@@ -137,15 +139,20 @@ self.addEventListener('push', (event) => {
     actions: [
       {
         action: 'take',
-        title: 'Mark as Taken',
-        icon: '/icons/check.png'
+        title: '✅ Mark as Taken',
+        icon: '/pill-icon.svg'
       },
       {
         action: 'snooze',
-        title: 'Snooze 15min',
-        icon: '/icons/snooze.png'
+        title: '⏰ Snooze 15min',
+        icon: '/pill-icon.svg'
       }
-    ]
+    ],
+    tag: 'medication-reminder',
+    renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200],
+    timestamp: Date.now()
   };
 
   // Parse push data if available
@@ -153,44 +160,73 @@ self.addEventListener('push', (event) => {
     try {
       const pushData = event.data.json();
       notificationData = { ...notificationData, ...pushData };
+      console.log('Service Worker: Parsed push data:', pushData);
     } catch (error) {
       console.error('Service Worker: Failed to parse push data:', error);
+      // **DEFENSIVE**: Even if parsing fails, still show notification
       notificationData.body = event.data.text() || notificationData.body;
     }
   }
 
+  // **CRITICAL**: Use waitUntil to prevent service worker termination during notification display
   event.waitUntil(
-    self.registration.showNotification(notificationData.title, {
-      body: notificationData.body,
-      icon: notificationData.icon,
-      badge: notificationData.badge,
-      data: notificationData.data,
-      requireInteraction: notificationData.requireInteraction,
-      actions: notificationData.actions,
-      tag: notificationData.tag || 'medication-reminder',
-      renotify: true,
-      silent: false,
-      vibrate: [200, 100, 200]
-    })
-    .then(() => {
-      // Cache the notification for tracking
-      return caches.open(NOTIFICATION_CACHE).then((cache) => {
-        const notification = {
-          id: Date.now().toString(),
-          ...notificationData,
-          timestamp: new Date().toISOString(),
-          status: 'shown'
-        };
+    (async () => {
+      try {
+        // **MANDATORY**: Always show notification - iOS requirement
+        await self.registration.showNotification(notificationData.title, {
+          body: notificationData.body,
+          icon: notificationData.icon,
+          badge: notificationData.badge,
+          data: notificationData.data,
+          requireInteraction: notificationData.requireInteraction,
+          actions: notificationData.actions,
+          tag: notificationData.tag,
+          renotify: notificationData.renotify,
+          silent: notificationData.silent,
+          vibrate: notificationData.vibrate,
+          timestamp: notificationData.timestamp
+        });
         
-        return cache.put(
-          `notification-${notification.id}`,
-          new Response(JSON.stringify(notification))
-        );
-      });
-    })
-    .catch((error) => {
-      console.error('Service Worker: Failed to show notification:', error);
-    })
+        console.log('Service Worker: ✅ Notification displayed successfully');
+
+        // Cache the notification for tracking (but don't let this fail the main operation)
+        try {
+          const cache = await caches.open(NOTIFICATION_CACHE);
+          const notification = {
+            id: Date.now().toString(),
+            ...notificationData,
+            timestamp: new Date().toISOString(),
+            status: 'shown',
+            receivedAt: Date.now()
+          };
+          
+          await cache.put(
+            `notification-${notification.id}`,
+            new Response(JSON.stringify(notification))
+          );
+        } catch (cacheError) {
+          console.warn('Service Worker: Failed to cache notification (non-critical):', cacheError);
+        }
+        
+      } catch (error) {
+        console.error('Service Worker: ❌ CRITICAL - Failed to show notification:', error);
+        
+        // **LAST RESORT**: Show generic notification to avoid iOS permission revocation
+        try {
+          await self.registration.showNotification('MedTrack Notification Error', {
+            body: 'A medication notification could not be displayed properly. Please open the app.',
+            icon: '/pill-icon.svg',
+            badge: '/pill-icon.svg',
+            requireInteraction: true,
+            tag: 'error-notification',
+            timestamp: Date.now()
+          });
+          console.log('Service Worker: 🆘 Showed fallback error notification');
+        } catch (fallbackError) {
+          console.error('Service Worker: ❌ FATAL - Even fallback notification failed:', fallbackError);
+        }
+      }
+    })()
   );
 });
 
@@ -332,6 +368,14 @@ self.addEventListener('message', (event) => {
     case 'STORE_REMINDER_PATTERN':
       // **iOS PWA FIX**: Store reminder patterns for independent scheduling
       event.waitUntil(storeReminderPattern(data));
+      break;
+    case 'CANCEL_REMINDER_NOTIFICATIONS':
+      // **FIX**: Cancel all notifications for a reminder
+      event.waitUntil(cancelReminderNotifications(data.reminderId));
+      break;
+    case 'DEACTIVATE_REMINDER_PATTERN':
+      // **FIX**: Deactivate reminder pattern to stop future generation
+      event.waitUntil(deactivateReminderPattern(data.reminderId));
       break;
     default:
       console.log('Service Worker: Unknown message type:', type);
@@ -1075,6 +1119,81 @@ setTimeout(() => {
   maintainReminderPatterns();
 }, 30000);
 
-console.log('Service Worker: ✅ Production ready with iOS PWA reminder pattern management');
+// **iOS PWA CLEANUP FUNCTIONS** - Critical for proper reminder management
+
+/**
+ * Cancel all notifications for a specific reminder ID
+ */
+async function cancelReminderNotifications(reminderId) {
+  try {
+    console.log(`Service Worker: 🗑️ Cancelling all notifications for reminder ${reminderId}`);
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const requests = await cache.keys();
+    let cancelledCount = 0;
+    
+    // Find and remove all notifications for this reminder
+    for (const request of requests) {
+      if (request.url.includes('scheduled-') || request.url.includes('notification-queue-')) {
+        try {
+          const response = await cache.match(request);
+          if (response) {
+            const notificationData = await response.json();
+            
+            if (notificationData.reminderId === reminderId || 
+                (notificationData.data && notificationData.data.reminderId === reminderId)) {
+              
+              // Mark as cancelled and remove
+              await cache.delete(request);
+              cancelledCount++;
+              console.log(`Cancelled notification: ${notificationData.title || notificationData.id}`);
+            }
+          }
+        } catch (error) {
+          // Skip invalid entries
+        }
+      }
+    }
+    
+    console.log(`✅ Service Worker: Cancelled ${cancelledCount} notifications for reminder ${reminderId}`);
+    
+  } catch (error) {
+    console.error('Service Worker: Failed to cancel reminder notifications:', error);
+  }
+}
+
+/**
+ * Deactivate reminder pattern to prevent future notifications
+ */
+async function deactivateReminderPattern(reminderId) {
+  try {
+    console.log(`Service Worker: 🔕 Deactivating reminder pattern ${reminderId}`);
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const patternKey = `reminder-pattern-${reminderId}`;
+    
+    const response = await cache.match(patternKey);
+    if (response) {
+      const patternData = await response.json();
+      patternData.isActive = false;
+      patternData.deactivatedAt = Date.now();
+      
+      // Update the pattern as inactive
+      await cache.put(
+        patternKey,
+        new Response(JSON.stringify(patternData))
+      );
+      
+      console.log(`✅ Service Worker: Deactivated reminder pattern for ${patternData.medicationName}`);
+    } else {
+      console.log(`Service Worker: No pattern found for reminder ${reminderId}`);
+    }
+    
+  } catch (error) {
+    console.error('Service Worker: Failed to deactivate reminder pattern:', error);
+  }
+}
+
+console.log('Service Worker: ✅ Production ready with iOS PWA reminder pattern management and cleanup');
 
 

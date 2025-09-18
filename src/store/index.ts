@@ -100,7 +100,7 @@ interface MedicationStore {
   // Reminder actions
   addReminder: (reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateReminder: (id: string, updates: Partial<Reminder>) => void;
-  deleteReminder: (id: string) => void;
+  deleteReminder: (id: string) => Promise<void>;
   toggleReminderActive: (id: string) => void;
   snoozeReminder: (id: string, minutes: number) => void;
 
@@ -635,10 +635,11 @@ export const useMedicationStore = create<MedicationStore>()(
         }
       },
 
-      deleteReminder: (id) => {
-        // Cancel push notification
+      deleteReminder: async (id) => {
+        // **FIX**: Cancel push notification with proper cleanup (now async)
         try {
-          notificationService.cancelReminder(id);
+          await notificationService.cancelReminder(id);
+          console.log('✅ Reminder deleted and all notifications cancelled');
         } catch (error) {
           console.error('Failed to cancel push notification:', error);
         }
