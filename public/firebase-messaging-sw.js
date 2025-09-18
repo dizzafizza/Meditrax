@@ -4,25 +4,17 @@
  * Generated automatically during build process
  */
 
-// Import Firebase scripts for service worker
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
-};
+// Firebase configuration not available - FCM disabled in development
+console.warn('🚧 Firebase configuration not available - FCM disabled');
+const firebaseConfig = null;
 
 // Initialize Firebase in service worker
 let messaging = null;
 
 try {
-  if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+  if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
+    // Only initialize Firebase if we have valid configuration
     firebase.initializeApp(firebaseConfig);
     messaging = firebase.messaging();
     
@@ -74,13 +66,15 @@ try {
 
     console.log('✅ Firebase messaging service worker ready');
   } else {
-    console.warn('⚠️ Firebase configuration incomplete - FCM disabled');
+    console.warn('⚠️ Firebase configuration incomplete - FCM disabled in development');
   }
 
 } catch (error) {
   console.error('❌ Failed to initialize Firebase in service worker:', error);
-  
-  // Create fallback messaging object to prevent errors
+}
+
+// Always create a fallback messaging object to prevent errors
+if (!messaging) {
   messaging = {
     onBackgroundMessage: () => {
       console.warn('Firebase messaging not available - background push notifications disabled');

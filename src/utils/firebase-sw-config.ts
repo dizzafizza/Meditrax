@@ -20,12 +20,16 @@ export function getFirebaseServiceWorkerConfig() {
 export function generateFirebaseServiceWorkerContent() {
   const config = getFirebaseServiceWorkerConfig();
   
+  // Check if we have valid Firebase configuration
+  const hasValidConfig = config.apiKey && config.projectId && config.messagingSenderId;
+  
   return `/**
  * Firebase Cloud Messaging Service Worker for MedTrack
  * Handles FCM push notifications when app is closed or in background
  * Generated automatically during build process
  */
 
+${hasValidConfig ? `
 // Import Firebase scripts for service worker
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
@@ -38,13 +42,17 @@ const firebaseConfig = {
   storageBucket: "${config.storageBucket}",
   messagingSenderId: "${config.messagingSenderId}",
   appId: "${config.appId}"
-};
+};` : `
+// Firebase configuration not available - FCM disabled in development
+console.warn('🚧 Firebase configuration not available - FCM disabled');
+const firebaseConfig = null;`}
 
 // Initialize Firebase in service worker
 let messaging = null;
 
 try {
-  if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+  if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
+    // Only initialize Firebase if we have valid configuration
     firebase.initializeApp(firebaseConfig);
     messaging = firebase.messaging();
     
@@ -96,13 +104,15 @@ try {
 
     console.log('✅ Firebase messaging service worker ready');
   } else {
-    console.warn('⚠️ Firebase configuration incomplete - FCM disabled');
+    console.warn('⚠️ Firebase configuration incomplete - FCM disabled in development');
   }
 
 } catch (error) {
   console.error('❌ Failed to initialize Firebase in service worker:', error);
-  
-  // Create fallback messaging object to prevent errors
+}
+
+// Always create a fallback messaging object to prevent errors
+if (!messaging) {
   messaging = {
     onBackgroundMessage: () => {
       console.warn('Firebase messaging not available - background push notifications disabled');
