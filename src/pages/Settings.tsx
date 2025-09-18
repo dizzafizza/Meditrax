@@ -28,6 +28,7 @@ import { notificationService, NotificationPermissionState } from '@/services/not
 // import { ConsentManagementModal } from '@/components/modals/ConsentManagementModal'; // DISABLED  
 // import { anonymousReportingService } from '@/services/anonymousReportingService'; // DISABLED
 // import { generateCSV, downloadFile } from '@/utils/helpers';
+import { NotificationDiagnosticModal } from '@/components/modals/NotificationDiagnosticModal';
 import toast from 'react-hot-toast';
 
 export function Settings() {
@@ -43,11 +44,14 @@ export function Settings() {
     // backupData
   } = useMedicationStore();
 
-  const [activeTab, setActiveTab] = React.useState<'profile' | 'notifications' | 'pwa' | 'data'>('profile');
+  const [activeTab, setActiveTab] = React.useState<'profile' | 'notifications' | 'pwa' | 'data' | 'diagnostics'>('profile');
   const [showClearDataDialog, setShowClearDataDialog] = React.useState(false);
   const [showExportModal, setShowExportModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
+  const [showNotificationDiagnostic, setShowNotificationDiagnostic] = React.useState(false);
   const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermissionState>({ status: 'default', supported: false });
+  const [consoleLogs, setConsoleLogs] = React.useState<Array<{ timestamp: string; type: string; message: string }>>([]);
+  const [consoleCapture, setConsoleCapture] = React.useState(false);
   const [isPWAInstalled, setIsPWAInstalled] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   // const [showPrivacyDashboard, setShowPrivacyDashboard] = React.useState(false); // DISABLED
@@ -129,6 +133,45 @@ export function Settings() {
       });
     }
   }, [userProfile, reset]);
+
+  // Console capture for PWA debugging
+  React.useEffect(() => {
+    if (!consoleCapture) return;
+
+    const originalConsole = {
+      log: console.log,
+      error: console.error,
+      warn: console.warn,
+      info: console.info
+    };
+
+    const captureLog = (type: string) => (...args: any[]) => {
+      const timestamp = new Date().toISOString();
+      const message = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      
+      setConsoleLogs(prev => [
+        ...prev.slice(-99), // Keep only last 100 logs
+        { timestamp, type, message }
+      ]);
+
+      // Call original console method
+      (originalConsole as any)[type](...args);
+    };
+
+    console.log = captureLog('log');
+    console.error = captureLog('error');
+    console.warn = captureLog('warn');
+    console.info = captureLog('info');
+
+    return () => {
+      console.log = originalConsole.log;
+      console.error = originalConsole.error;
+      console.warn = originalConsole.warn;
+      console.info = originalConsole.info;
+    };
+  }, [consoleCapture]);
 
   const onSubmit = (data: any) => {
     const profileData: Partial<UserProfile> = {
@@ -480,6 +523,7 @@ export function Settings() {
     { id: 'pwa', label: 'App Settings', icon: Smartphone },
     // { id: 'privacy', label: 'Privacy', icon: Shield }, // DISABLED
     { id: 'data', label: 'Data', icon: Download },
+    { id: 'diagnostics', label: 'Diagnostics', icon: Settings2 },
   ];
 
   return (
@@ -964,6 +1008,184 @@ export function Settings() {
               </div>
             )}
 
+            {/* Diagnostics Tab */}
+            {activeTab === 'diagnostics' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">System Diagnostics</h3>
+                  <p className="text-gray-600 mb-6">Debug tools and system information for troubleshooting PWA issues.</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Console Log Capture */}
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Settings2 className="h-5 w-5 text-gray-600" />
+                          <h4 className="font-medium">Console Capture</h4>
+                        </div>
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={consoleCapture}
+                            onChange={(e) => setConsoleCapture(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="ml-2 text-sm">Enable</span>
+                        </label>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Capture console logs for debugging. Enable this before testing notifications.
+                      </p>
+                      {consoleCapture && (
+                        <div className="bg-white rounded border max-h-64 overflow-y-auto p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-gray-500">
+                              {consoleLogs.length} logs captured
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setConsoleLogs([])}
+                              className="text-xs text-red-600 hover:text-red-700"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                          {consoleLogs.length === 0 ? (
+                            <div className="text-xs text-gray-400 text-center py-4">
+                              No logs captured yet. Logs will appear here when console capture is enabled.
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {consoleLogs.slice(-20).map((log, index) => (
+                                <div key={index} className="text-xs border-b border-gray-100 pb-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                      log.type === 'error' ? 'bg-red-100 text-red-700' :
+                                      log.type === 'warn' ? 'bg-yellow-100 text-yellow-700' :
+                                      log.type === 'info' ? 'bg-blue-100 text-blue-700' :
+                                      'bg-gray-100 text-gray-700'
+                                    }`}>
+                                      {log.type}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      {new Date(log.timestamp).toLocaleTimeString()}
+                                    </span>
+                                  </div>
+                                  <div className="font-mono text-gray-800 whitespace-pre-wrap break-all">
+                                    {log.message}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* System Information */}
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Smartphone className="h-5 w-5 text-gray-600" />
+                        <h4 className="font-medium">System Info</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Platform:</span>
+                          <span className="font-mono">{navigator.platform}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>User Agent:</span>
+                          <span className="font-mono text-xs truncate max-w-[200px]" title={navigator.userAgent}>
+                            {navigator.userAgent.slice(0, 30)}...
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Online:</span>
+                          <span className={`font-medium ${isOnline ? 'text-green-600' : 'text-red-600'}`}>
+                            {isOnline ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>PWA Installed:</span>
+                          <span className={`font-medium ${isPWAInstalled ? 'text-green-600' : 'text-gray-600'}`}>
+                            {isPWAInstalled ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Service Worker:</span>
+                          <span className={`font-medium ${
+                            'serviceWorker' in navigator ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {'serviceWorker' in navigator ? 'Supported' : 'Not Supported'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Diagnostic Actions */}
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-medium mb-4 flex items-center gap-2">
+                      <Bell className="h-5 w-5 text-blue-600" />
+                      Notification Diagnostics
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowNotificationDiagnostic(true)}
+                        className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Settings2 className="h-4 w-4" />
+                        Run Full Diagnostic
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          notificationService.debugTestNotification();
+                          toast.success('Test notification sent');
+                        }}
+                        className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <Bell className="h-4 w-4" />
+                        Test Notification
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await notificationService.implementMissedDoseRecovery();
+                            toast.success('Missed dose recovery completed');
+                          } catch (error) {
+                            toast.error('Recovery failed');
+                          }
+                        }}
+                        className="flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Recovery Check
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* iOS PWA Information */}
+                  <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <h4 className="font-semibold text-gray-900 mb-2">🍎 iOS PWA Limitations</h4>
+                    <div className="text-sm text-gray-700 space-y-2">
+                      <p><strong>Background Notifications:</strong> iOS Safari severely limits service worker execution when PWA is closed.</p>
+                      <p><strong>What This Means:</strong> Push notifications may not work reliably when the app is closed.</p>
+                      <p><strong>Workarounds:</strong></p>
+                      <ul className="ml-4 mt-2 space-y-1 list-disc">
+                        <li>Keep the app open when expecting notifications</li>
+                        <li>Check the app regularly - we show missed dose alerts when you open it</li>
+                        <li>Use iOS Calendar/Reminders as backup</li>
+                        <li>Badge count shows missed medications</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Save Button */}
             <div className="flex justify-end pt-6 border-t border-gray-200">
               <button
@@ -996,6 +1218,11 @@ export function Settings() {
       <ImportModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
+      />
+
+      <NotificationDiagnosticModal
+        isOpen={showNotificationDiagnostic}
+        onClose={() => setShowNotificationDiagnostic(false)}
       />
 
       {/* Privacy Dashboard Modal - DISABLED */}

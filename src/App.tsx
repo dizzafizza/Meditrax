@@ -53,9 +53,28 @@ function App() {
         }
       }
       
-      // Check for missed notifications after migration
-      console.log('Checking for missed notifications');
-      notificationService.checkMissedNotifications();
+      // **iOS PWA DIAGNOSTIC & RECOVERY**: Check for missed notifications and implement recovery
+      console.log('Running iOS PWA notification diagnostic and recovery...');
+      
+      try {
+        // Run comprehensive diagnostic
+        const diagnostic = await notificationService.diagnoseIOSPWANotificationIssues();
+        console.log('📊 iOS PWA Notification Diagnostic Results:', diagnostic);
+        
+        // If on iOS PWA, implement missed dose recovery system
+        if (diagnostic.coreIssue.includes('iOS Safari')) {
+          console.log('🍎 iOS PWA detected - implementing missed dose recovery system');
+          await notificationService.implementMissedDoseRecovery();
+        }
+        
+        // Still run standard missed notification check
+        notificationService.checkMissedNotifications();
+        
+      } catch (error) {
+        console.error('❌ Failed to run iOS PWA diagnostic:', error);
+        // Fallback to standard check
+        notificationService.checkMissedNotifications();
+      }
     };
     
     // Initialize after a short delay to ensure store is ready

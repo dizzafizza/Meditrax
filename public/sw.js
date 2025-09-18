@@ -377,6 +377,11 @@ self.addEventListener('message', (event) => {
       // **FIX**: Deactivate reminder pattern to stop future generation
       event.waitUntil(deactivateReminderPattern(data.reminderId));
       break;
+    case 'DIAGNOSTIC_PING':
+      // **iOS PWA DIAGNOSTIC**: Respond to diagnostic ping to test background execution
+      console.log('Service Worker: 🏓 Diagnostic ping received, responding...');
+      event.waitUntil(handleDiagnosticPing(data));
+      break;
     default:
       console.log('Service Worker: Unknown message type:', type);
   }
@@ -1194,6 +1199,42 @@ async function deactivateReminderPattern(reminderId) {
   }
 }
 
-console.log('Service Worker: ✅ Production ready with iOS PWA reminder pattern management and cleanup');
+/**
+ * Handle diagnostic ping to test service worker background execution
+ */
+async function handleDiagnosticPing(data) {
+  try {
+    console.log('Service Worker: 🔍 Processing diagnostic ping...');
+    
+    const cache = await caches.open(NOTIFICATION_CACHE);
+    const diagnosticData = {
+      timestamp: Date.now(),
+      receivedPingAt: data.timestamp,
+      responseDelay: Date.now() - data.timestamp,
+      serviceWorkerActive: true,
+      canExecuteInBackground: true,
+      lastExecutionTime: new Date().toISOString()
+    };
+    
+    // Store diagnostic result
+    await cache.put(
+      'diagnostic-ping-result',
+      new Response(JSON.stringify(diagnosticData))
+    );
+    
+    // Send response back to main app
+    await sendMessageToClients({
+      type: 'DIAGNOSTIC_PONG',
+      data: diagnosticData
+    });
+    
+    console.log('Service Worker: ✅ Diagnostic ping processed successfully');
+    
+  } catch (error) {
+    console.error('Service Worker: ❌ Failed to handle diagnostic ping:', error);
+  }
+}
+
+console.log('Service Worker: ✅ Production ready with iOS PWA reminder pattern management, cleanup, and diagnostics');
 
 
