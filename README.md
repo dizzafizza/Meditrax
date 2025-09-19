@@ -107,6 +107,12 @@ Meditrax can be installed as a Progressive Web App for the best mobile experienc
 - Faster loading and app-like experience
 - Integrates with your device's notification system
 
+#### iOS Offline Usage Notes
+- Open the app once while online after installing to allow the service worker to fully install and cache the app shell.
+- After that, you can launch the app from the Home Screen with no connectivity.
+- If you see a blank page when completely offline, force close and relaunch; iOS can be aggressive about suspending service workers.
+- The app now avoids loading optional scripts during service worker startup to ensure offline launch reliability on iOS.
+
 ### Quick Start
 For first-time users:
 1. **Enable Notifications**: Go to Settings → Notifications and enable push notifications

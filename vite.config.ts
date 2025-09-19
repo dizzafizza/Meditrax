@@ -33,9 +33,11 @@ export default defineConfig({
     react(),
     firebaseServiceWorkerPlugin(),
     VitePWA({
+      injectRegister: null, // avoid double registration; we register in src/main.tsx
       registerType: 'autoUpdate',
       strategies: 'generateSW',
       workbox: {
+        navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,vue,txt,woff2}'],
         additionalManifestEntries: [
           { url: '/firebase-messaging-sw.js', revision: null },
@@ -103,7 +105,6 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        importScripts: ['/notification-sw.js']
       },
       includeAssets: ['pill-icon.svg'],
       manifest: {
