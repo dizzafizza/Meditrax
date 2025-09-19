@@ -146,8 +146,8 @@ export function ImportModal({ isOpen, onClose }: ImportModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 mobile-safe-area">
-      <div className="bg-white rounded-lg max-w-2xl w-full mobile-modal overflow-y-auto mobile-scroll">
+    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-[60] mobile-safe-area">
+      <div className="glass-panel rounded-lg max-w-2xl w-full mobile-modal overflow-y-auto mobile-scroll">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">

@@ -20,6 +20,60 @@ interface ChangelogEntry {
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "1.2.0",
+    date: "2025-9-19",
+    changes: [
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "Subtle Glass UI Theme",
+        description: "Introduced reusable glass-panel and glass-overlay utilities and applied them across dialogs, panels, and sticky headers while preserving the existing color palette."
+      },
+      {
+        type: 'improved',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "Consistent, iOS-safe Modals",
+        description: "Standardized modal structure with mobile-safe-area, mobile-scroll, body scroll-lock, and increased z-layer. Inventory Configuration and Medication dialogs now render via portal at z-[80] to always appear on top."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Multiple Pills Setup Scaling",
+        description: "Unified inputs to app styling, fixed scaling on mobile, added safe-area scrolling, and aligned with the rest of the UI."
+      },
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "Search UX Overhaul (Safari friendly)",
+        description: "Enter now selects the best match even before results debounce. Page navigation preserves ?q and hydrates search on arrival. Added fallback to open Add Medication prefilled, and returning to the previous page after closing the dialog. Global key handling works even when the dropdown is hidden."
+      },
+      {
+        type: 'fixed',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "Medication Dialog Visibility & Autofill",
+        description: "Fixed cases where the Add Medication dialog opened behind the header or without prefill. Dialog now portals to body and auto-fills from ?add= reliably."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Advanced Schedules – Create Pattern",
+        description: "Added template categories, advanced phase options (repeat/ramp), refined card text alignment and wrapping, and a brief guide for new users."
+      },
+      {
+        type: 'improved',
+        icon: <Shield className="h-4 w-4" />,
+        title: "Header & Navigation Polish",
+        description: "Centered Meditrax logo between search and menu, centered menu icon, and added subtle background blur when searching."
+      },
+      {
+        type: 'fixed',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "iOS Input Zoom",
+        description: "Ensured 16px base font size on inputs/selects to prevent Safari auto-zoom while typing."
+      }
+    ]
+  },
+  {
     version: "1.1.1",
     date: "2025-9-18",
     changes: [
@@ -248,8 +302,8 @@ export function ChangelogModal({ isOpen, onClose, version }: ChangelogModalProps
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-3 sm:p-4 z-50 mobile-safe-area">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] sm:max-h-[90vh] overflow-hidden mobile-modal flex flex-col">
+    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-3 sm:p-4 z-[60] mobile-safe-area">
+      <div className="glass-panel rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] sm:max-h-[90vh] overflow-hidden mobile-modal flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 py-3 sm:py-4 text-white">
           <div className="flex items-center justify-between">

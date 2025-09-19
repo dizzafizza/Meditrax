@@ -174,9 +174,9 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
+    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-[60] mobile-safe-area">
+      <div className="glass-panel rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mobile-scroll">
+        <div className="sticky top-0 bg-white/70 backdrop-blur-md border-b border-gray-200/70 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Pill className="h-6 w-6 text-blue-600" />
@@ -253,14 +253,14 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
                           onChange={(e) =>
                             updatePillConfig(index, { strength: parseFloat(e.target.value) })
                           }
-                          className="input-field flex-1"
+                        className="input flex-1"
                         />
                         <select
                           value={config.unit}
                           onChange={(e) =>
                             updatePillConfig(index, { unit: e.target.value as any })
                           }
-                          className="input-field w-24"
+                          className="input w-24"
                         >
                           <optgroup label="Weight">
                             <option value="mg">mg</option>
@@ -297,7 +297,7 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
                       <select
                         value={config.color}
                         onChange={(e) => updatePillConfig(index, { color: e.target.value })}
-                        className="input-field"
+                        className="input"
                       >
                         <option value="white">White</option>
                         <option value="blue">Blue</option>
@@ -354,7 +354,7 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
                         onChange={(e) =>
                           updateDoseComponent(index, { quantity: parseFloat(e.target.value) })
                         }
-                        className="input-field"
+                        className="input"
                       />
                     </div>
                     

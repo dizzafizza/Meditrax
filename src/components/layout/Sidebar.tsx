@@ -68,7 +68,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-gray-600 bg-opacity-75 lg:hidden"
+          className="fixed inset-0 z-40 glass-overlay lg:hidden"
           onClick={onClose}
         />
       )}
@@ -76,7 +76,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform lg:translate-x-0 lg:static lg:inset-0 h-screen',
+          'fixed inset-y-0 left-0 z-50 w-64 bg-white/70 backdrop-blur-md border-r border-gray-200/70 transform transition-transform lg:translate-x-0 lg:static lg:inset-0 h-screen',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
         style={{ 
@@ -86,7 +86,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         }}
       >
         {/* Header */}
-        <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-white z-10">
+        <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 border-b border-gray-200/70 bg-white/70 backdrop-blur-md z-10">
           <div className="flex items-center space-x-3" data-testid="header-logo">
             <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
               <Pill className="h-5 w-5 text-white" />
@@ -132,7 +132,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         {/* Footer */}
-        <div className="absolute bottom-0 left-0 right-0 h-20 border-t border-gray-200 p-4 bg-white">
+        <div className="absolute bottom-0 left-0 right-0 h-20 border-t border-gray-200/70 p-4 bg-white/70 backdrop-blur-md">
           <div className="flex items-center space-x-3" data-testid="footer-help">
             <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
               <Heart className="h-4 w-4 text-green-600" />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Plus, 
   Search, 
@@ -35,6 +35,7 @@ import toast from 'react-hot-toast';
 
 export function Medications() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     medications,
     deleteMedication,
@@ -45,14 +46,27 @@ export function Medications() {
     endTaperingBreak
   } = useMedicationStore();
 
-  // Handle search navigation parameters
-  const searchParams = new URLSearchParams(window.location.search);
+  // Handle search navigation parameters (reactive to router changes)
+  const searchParams = new URLSearchParams(location.search);
   const addMedicationName = searchParams.get('add');
   const highlightMedicationId = searchParams.get('highlight');
+  const queryFromSearch = searchParams.get('q');
 
   const [isModalOpen, setIsModalOpen] = React.useState(false);
+  // Capture ?add= intent and pass it to the modal, avoiding race with URL cleanup
+  const [requestedAddName, setRequestedAddName] = React.useState<string | null>(null);
   const [editingMedication, setEditingMedication] = React.useState<Medication | null>(null);
   const [searchTerm, setSearchTerm] = React.useState('');
+  // Initialize search from global query param (?q=)
+  React.useEffect(() => {
+    if (queryFromSearch) {
+      setSearchTerm(queryFromSearch);
+      // remove q from URL to avoid stale re-filters when navigating back
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('q');
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.hash);
+    }
+  }, [queryFromSearch]);
   const [selectedCategory, setSelectedCategory] = React.useState<MedicationCategory | 'all'>('all');
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
   const [taperingModalOpen, setTaperingModalOpen] = React.useState(false);
@@ -92,13 +106,21 @@ export function Medications() {
   React.useEffect(() => {
     if (addMedicationName && !isModalOpen) {
       setEditingMedication(null);
+      setRequestedAddName(addMedicationName);
       setIsModalOpen(true);
-      // Clear the URL parameter after handling it
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('add');
-      window.history.replaceState({}, '', newUrl.pathname + newUrl.hash);
     }
   }, [addMedicationName, isModalOpen]);
+
+  // Once we've captured the add name, clean the URL param to avoid re-trigger on back/forward
+  React.useEffect(() => {
+    if (requestedAddName) {
+      const newUrl = new URL(window.location.href);
+      if (newUrl.searchParams.has('add')) {
+        newUrl.searchParams.delete('add');
+        window.history.replaceState({}, '', newUrl.pathname + newUrl.search + newUrl.hash);
+      }
+    }
+  }, [requestedAddName]);
 
   // Handle medication highlighting from search navigation
   React.useEffect(() => {
@@ -236,7 +258,7 @@ export function Medications() {
 
     return (
       <div 
-        className="card hover:shadow-md transition-all duration-300" 
+        className={cn("card hover:shadow-md transition-all duration-300", showActions && "relative z-20")}
         data-medication-id={medication.id}
       >
         <div className="card-content p-4">
@@ -353,7 +375,7 @@ export function Medications() {
               </button>
               
               {showActions && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                <div className="absolute right-0 mt-2 w-56 bg-white/95 backdrop-blur-md rounded-md shadow-lg z-30 border border-gray-200">
                   <div className="py-1">
                     <button
                       onClick={() => {
@@ -700,9 +722,16 @@ export function Medications() {
       {/* Medication Modal */}
       <MedicationModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setRequestedAddName(null);
+          const from = (location.state as any)?.from;
+          if (from) {
+            navigate(from, { replace: true });
+          }
+        }}
         medication={editingMedication}
-        preSelectedMedicationName={addMedicationName}
+        preSelectedMedicationName={requestedAddName}
       />
 
       {/* Delete Confirmation */}

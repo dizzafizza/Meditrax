@@ -583,7 +583,7 @@ export function Analytics() {
                   <LineChart data={adherenceData.filter(d => Number.isFinite(d.adherence) && Number.isFinite(d.taken) && Number.isFinite(d.missed))}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
-                    <YAxis domain={[0, 100]} />
+                  <YAxis domain={[0, 100]} allowDecimals={false} ticks={[0, 20, 40, 60, 80, 100]} />
                     <Tooltip 
                       formatter={(value, name) => [
                         `${value}${name === 'adherence' ? '%' : ''}`, 
@@ -659,6 +659,8 @@ export function Analytics() {
                   <XAxis 
                     type="number" 
                     domain={[0, 100]}
+                    allowDecimals={false}
+                    ticks={[0, 20, 40, 60, 80, 100]}
                     tickFormatter={(value) => Number.isFinite(value) && !isNaN(value) ? `${Math.round(value)}%` : '0%'}
                   />
                   <YAxis 

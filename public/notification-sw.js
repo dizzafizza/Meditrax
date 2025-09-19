@@ -209,6 +209,22 @@ self.addEventListener('message', (event) => {
       
     case 'DIAGNOSTIC_PING':
       console.log('Service Worker: 🏓 Diagnostic ping received, responding...');
+      // Immediate direct reply to the source client to avoid timeouts before claim()
+      try {
+        const immediate = {
+          timestamp: Date.now(),
+          receivedPingAt: data?.timestamp,
+          responseDelay: Date.now() - (data?.timestamp || Date.now()),
+          serviceWorkerActive: true
+        };
+        // Prefer replying to the specific source client if available
+        if (event.source && typeof event.source.postMessage === 'function') {
+          event.source.postMessage({ type: 'DIAGNOSTIC_PONG', data: immediate });
+        }
+      } catch (e) {
+        // Non-fatal
+      }
+      // Continue with full diagnostic + broadcast to all clients
       event.waitUntil(handleDiagnosticPing(data));
       break;
       
@@ -684,4 +700,9 @@ self.addEventListener('periodicsync', (event) => {
 });
 
 console.log('Service Worker: ✅ Custom notification service worker loaded successfully');
+
+// Take control of uncontrolled clients immediately after activation to ensure messaging works
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 

@@ -51,7 +51,17 @@
   }
   
   .card {
-    @apply rounded-lg border border-gray-200 bg-white text-gray-950 shadow-sm;
+    @apply rounded-lg border border-gray-200/70 bg-white/90 backdrop-blur-sm text-gray-950 shadow-sm;
+  }
+
+  /* Glass utilities for dialogs and panels */
+  .glass-panel {
+    @apply bg-white/90 backdrop-blur-md border border-gray-200/70;
+  }
+  .glass-overlay {
+    background-color: rgba(17, 24, 39, 0.3); /* gray-900/30 */
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   
   .card-header {
@@ -84,6 +94,36 @@
 }
 
 @layer utilities {
+  /* Global glass theme (scoped to body.glass-theme) */
+  body.glass-theme .bg-white {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  body.glass-theme .bg-white\/95 {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  body.glass-theme .bg-white\/90 {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  body.glass-theme .bg-gray-50 {
+    background-color: rgba(249, 250, 251, 0.88);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  body.glass-theme .border-gray-200 {
+    border-color: rgba(229, 231, 235, 0.7) !important;
+  }
+  body.glass-theme .border-gray-100 {
+    border-color: rgba(243, 244, 246, 0.7) !important;
+  }
+  body.glass-theme .shadow,
+  body.glass-theme .shadow-sm,
+  body.glass-theme .shadow-lg {
+    box-shadow: 0 1px 2px 0 rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

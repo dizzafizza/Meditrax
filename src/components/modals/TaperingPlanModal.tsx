@@ -305,12 +305,12 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] overflow-y-auto mobile-safe-area">
       <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 glass-overlay transition-opacity" onClick={onClose} />
         
-        <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl">
-          <div className="bg-white px-4 pb-4 pt-5 sm:p-6">
+        <div className="relative transform overflow-hidden rounded-lg glass-panel text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl">
+          <div className="bg-white/0 px-4 pb-4 pt-5 sm:p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <TrendingDown className="h-6 w-6 text-orange-600" />
@@ -679,7 +679,7 @@ export function TaperingPlanModal({ isOpen, onClose, medication }: TaperingPlanM
                     <span>Tapering Schedule</span>
                   </h4>
                   
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-lg">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">

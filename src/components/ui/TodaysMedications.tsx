@@ -1,21 +1,31 @@
 import React from 'react';
 import { Calendar, Clock, AlertTriangle, CheckCircle2, Plus } from 'lucide-react';
 import { useMedicationStore } from '@/store';
+import { shallow } from 'zustand/shallow';
 import { QuickMedicationLog } from './QuickMedicationLog';
 import { formatTime, formatPillDisplay, formatPillDisplayShort, calculateRemainingDosesForDay, getProgressDisplayText } from '@/utils/helpers';
 
-export function TodaysMedications() {
+function TodaysMedicationsInner() {
+  const medications = useMedicationStore(s => s.medications);
   const { 
     getTodaysReminders, 
     getTodaysLogs, 
-    medications,
     smartMessages,
     getCurrentDose,
     markMessageAsRead,
     getOverallStreak,
     getCurrentStreak,
     areAllScheduledMedicationsComplete
-  } = useMedicationStore();
+  } = useMedicationStore((s) => ({
+    getTodaysReminders: s.getTodaysReminders,
+    getTodaysLogs: s.getTodaysLogs,
+    smartMessages: s.smartMessages,
+    getCurrentDose: s.getCurrentDose,
+    markMessageAsRead: s.markMessageAsRead,
+    getOverallStreak: s.getOverallStreak,
+    getCurrentStreak: s.getCurrentStreak,
+    areAllScheduledMedicationsComplete: s.areAllScheduledMedicationsComplete,
+  }), shallow);
 
   const todaysReminders = getTodaysReminders();
   const todaysLogs = getTodaysLogs();
@@ -346,3 +356,5 @@ export function TodaysMedications() {
     </div>
   );
 }
+
+export const TodaysMedications = React.memo(TodaysMedicationsInner);

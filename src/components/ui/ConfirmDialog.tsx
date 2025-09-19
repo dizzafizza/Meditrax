@@ -41,11 +41,11 @@ export function ConfirmDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto mobile-safe-area">
+    <div className="fixed inset-0 z-[60] overflow-y-auto mobile-safe-area">
       <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 glass-overlay transition-opacity" onClick={onClose} />
         
-        <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 w-full max-w-lg mx-4 sm:mx-0 mobile-modal">
+        <div className="relative transform overflow-hidden rounded-lg glass-panel text-left shadow-xl transition-all sm:my-8 w-full max-w-lg mx-4 sm:mx-0 mobile-modal">
           <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
             <div className="sm:flex sm:items-start">
               <div className={cn(

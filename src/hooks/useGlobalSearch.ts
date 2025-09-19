@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useMedicationStore } from '@/store';
 import { searchMedicationDatabase, getMedicationSuggestions } from '@/services/medicationDatabase';
 import { filterMedicationsBySearch } from '@/utils/helpers';
@@ -55,6 +55,7 @@ const SEARCHABLE_PAGES = [
 
 export function useGlobalSearch(): UseGlobalSearchReturn {
   const navigate = useNavigate();
+  const location = useLocation();
   const { medications, logs, reminders } = useMedicationStore();
   
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -73,12 +74,14 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
   }, [searchTerm]);
 
   const searchResults = React.useMemo(() => {
-    if (!debouncedSearchTerm.trim()) {
+    // Prefer debounced term for workload, but fall back to live term so Enter works immediately
+    const effectiveRaw = (debouncedSearchTerm || searchTerm).trim();
+    if (!effectiveRaw) {
       return [];
     }
 
     setIsSearching(true);
-    const term = debouncedSearchTerm.toLowerCase();
+    const term = effectiveRaw.toLowerCase();
     const categories: SearchResultCategory[] = [];
 
     try {
@@ -119,7 +122,9 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
             description: med.description || 'Click to add this medication',
             riskLevel: med.riskLevel,
             action: () => {
-              navigate(`/medications?add=${encodeURIComponent(med.name)}`);
+              navigate(`/medications?add=${encodeURIComponent(med.name)}` , {
+                state: { from: location.pathname + location.search + location.hash }
+              });
             }
           }))
         });
@@ -201,9 +206,9 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
             title: page.name,
             subtitle: page.description,
             icon: page.icon,
-            href: page.href,
+            href: `${page.href}?q=${encodeURIComponent(effectiveRaw)}`,
             action: () => {
-              navigate(page.href);
+              navigate(`${page.href}?q=${encodeURIComponent(effectiveRaw)}`);
             }
           }))
         });
@@ -216,7 +221,7 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
     }
 
     return categories;
-  }, [debouncedSearchTerm, medications, logs, reminders, navigate]);
+  }, [debouncedSearchTerm, searchTerm, medications, logs, reminders, navigate]);
 
   const hasResults = searchResults.length > 0;
 
@@ -239,26 +244,53 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
     return searchResults.flatMap(category => category.results);
   }, [searchResults]);
 
-  const handleKeyNavigation = React.useCallback((event: React.KeyboardEvent) => {
-    if (!hasResults) return;
+  const navigateFallbackForTerm = React.useCallback((termText: string) => {
+    const t = termText.trim();
+    if (!t) return;
+    const lower = t.toLowerCase();
+    const page = SEARCHABLE_PAGES.find(p => p.name.toLowerCase().includes(lower));
+    if (page) {
+      navigate(`${page.href}?q=${encodeURIComponent(t)}`);
+      clearSearch();
+      return;
+    }
+    // Default: open Add Medication dialog prefilled with term
+    navigate(`/medications?add=${encodeURIComponent(t)}`, {
+      state: { from: location.pathname + location.search + location.hash }
+    });
+    clearSearch();
+  }, [navigate, clearSearch, location.pathname, location.search, location.hash]);
 
+  const handleKeyNavigation = React.useCallback((event: React.KeyboardEvent) => {
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
-        setSelectedIndex(prev => 
-          prev < flatResults.length - 1 ? prev + 1 : 0
-        );
+        if (flatResults.length > 0) {
+          setSelectedIndex(prev => prev < flatResults.length - 1 ? prev + 1 : 0);
+        }
         break;
       case 'ArrowUp':
         event.preventDefault();
-        setSelectedIndex(prev => 
-          prev > 0 ? prev - 1 : flatResults.length - 1
-        );
+        if (flatResults.length > 0) {
+          setSelectedIndex(prev => prev > 0 ? prev - 1 : flatResults.length - 1);
+        }
         break;
       case 'Enter':
         event.preventDefault();
         if (selectedIndex >= 0 && flatResults[selectedIndex]) {
           selectResult(flatResults[selectedIndex]);
+        } else if (flatResults.length > 0) {
+          // Prefer adding a new medication if a database result exists
+          const addResult = flatResults.find(r => r.type === 'database_medication');
+          if (addResult) {
+            selectResult(addResult);
+          } else {
+            // Otherwise default to first result
+            selectResult(flatResults[0]);
+          }
+        } else {
+          // No results yet (user hit Enter before debounce) → fallback
+          navigateFallbackForTerm(searchTerm);
         }
         break;
       case 'Escape':
@@ -266,7 +298,7 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
         clearSearch();
         break;
     }
-  }, [hasResults, flatResults, selectedIndex, selectResult, clearSearch]);
+  }, [flatResults, selectedIndex, selectResult, clearSearch, navigateFallbackForTerm, searchTerm]);
 
   // Reset selected index when search term changes
   React.useEffect(() => {

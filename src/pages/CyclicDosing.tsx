@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Activity, TrendingDown, CheckCircle, Edit } from 'lucide-react';
+import { Calendar, Activity, TrendingDown, CheckCircle, Edit, Info } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { CyclicDosingPattern, TaperingSchedule } from '@/types';
 import { generateId } from '@/utils/helpers';
@@ -18,10 +18,15 @@ export function CyclicDosing() {
   const [activeTab, setActiveTab] = React.useState<'patterns' | 'tapering' | 'active'>('active');
   const [customPatternName, setCustomPatternName] = React.useState<string>('');
   const [customStartDate, setCustomStartDate] = React.useState<string>(new Date().toISOString().split('T')[0]);
-  const [customPhases, setCustomPhases] = React.useState<Array<{phase: string; duration: number; multiplier: number; message: string}>>([
-    { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
-    { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
+  type CustomPhase = { phase: string; duration: number; multiplier: number; message: string; repeat?: number; rampTo?: number | null; rampDays?: number | null };
+  const [customPhases, setCustomPhases] = React.useState<CustomPhase[]>([
+    { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed', repeat: 1, rampTo: null, rampDays: null },
+    { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication', repeat: 1, rampTo: null, rampDays: null }
   ]);
+  const [advancedOpen, setAdvancedOpen] = React.useState<Record<number, boolean>>({});
+
+  // Template categories state
+  const [templateCategory, setTemplateCategory] = React.useState<string>('Popular');
 
   // Tapering modal state
   const [taperingModalOpen, setTaperingModalOpen] = React.useState(false);
@@ -47,15 +52,53 @@ export function CyclicDosing() {
     if (!medication || !customPatternName.trim()) return;
 
     try {
+      const expanded: { phase: any; duration: number; dosageMultiplier: number; customMessage?: string }[] = [];
+      const expandPhase = (phase: CustomPhase) => {
+        const repeat = Math.max(1, phase.repeat || 1);
+        for (let r = 0; r < repeat; r++) {
+          const hasRamp = typeof phase.rampTo === 'number' && phase.rampTo !== phase.multiplier && (phase.rampDays || 0) > 0;
+          const totalDays = Math.max(1, phase.duration);
+          if (hasRamp) {
+            const rampDays = Math.min(totalDays, Math.max(1, Number(phase.rampDays)));
+            const stableDays = totalDays - rampDays;
+            // Linear ramp per-day from multiplier -> rampTo over rampDays
+            const start = phase.multiplier;
+            const end = Number(phase.rampTo);
+            for (let d = 1; d <= rampDays; d++) {
+              const t = d / rampDays;
+              const m = start + (end - start) * t;
+              expanded.push({
+                phase: phase.phase as any,
+                duration: 1,
+                dosageMultiplier: Number(m.toFixed(2)),
+                customMessage: d === 1 ? phase.message : undefined
+              });
+            }
+            if (stableDays > 0) {
+              expanded.push({
+                phase: phase.phase as any,
+                duration: stableDays,
+                dosageMultiplier: Number(end.toFixed(2)),
+                customMessage: undefined
+              });
+            }
+          } else {
+            expanded.push({
+              phase: phase.phase as any,
+              duration: totalDays,
+              dosageMultiplier: phase.multiplier,
+              customMessage: phase.message
+            });
+          }
+        }
+      };
+
+      customPhases.forEach(expandPhase);
+
       const pattern: Omit<CyclicDosingPattern, 'id'> = {
         name: customPatternName.trim(),
         type: 'variable-dose',
-        pattern: customPhases.map(phase => ({
-          phase: phase.phase as any,
-          duration: phase.duration,
-          dosageMultiplier: phase.multiplier,
-          customMessage: phase.message
-        })),
+        pattern: expanded,
         startDate: new Date(customStartDate),
         isActive: true,
         notes: `Custom pattern for ${medication.name}`
@@ -76,8 +119,8 @@ export function CyclicDosing() {
       // Reset form
       setCustomPatternName('');
       setCustomPhases([
-        { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed' },
-        { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication' }
+        { phase: 'on', duration: 5, multiplier: 1.0, message: 'Take medication as prescribed', repeat: 1, rampTo: null, rampDays: null },
+        { phase: 'off', duration: 2, multiplier: 0.0, message: 'Break period - no medication', repeat: 1, rampTo: null, rampDays: null }
       ]);
       
       // Switch to active tab to show the new pattern
@@ -171,6 +214,337 @@ export function CyclicDosing() {
     setTaperingModalOpen(false);
     setEditingMedication(null);
   };
+
+  // ---------- Template system ----------
+  type PhaseDef = { phase: string; duration: number; dosageMultiplier: number; customMessage: string };
+  type TemplateDef = {
+    id: string;
+    category: string;
+    name: string;
+    description: string;
+    icon: any;
+    iconColor: string;
+    accent: string; // border and hover color classes
+    kind: 'pattern' | 'tapering';
+    type?: 'on-off-cycle' | 'variable-dose';
+    phases?: PhaseDef[];
+  };
+
+  const allTemplates: TemplateDef[] = [
+    // Popular
+    {
+      id: 'onoff-5-2',
+      category: 'Popular',
+      name: 'On/Off 5–2',
+      description: 'Take 5 days, break for 2 days',
+      icon: Activity,
+      iconColor: 'text-blue-500',
+      accent: 'border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 5, dosageMultiplier: 1.0, customMessage: 'Weekday dose' },
+        { phase: 'off', duration: 2, dosageMultiplier: 0.0, customMessage: 'Weekend break' }
+      ]
+    },
+    {
+      id: 'weekday-full-weekend-half',
+      category: 'Popular',
+      name: 'Weekday Full, Weekend Half',
+      description: 'Full dose on weekdays, half dose on weekends',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'variable-dose',
+      phases: [
+        { phase: 'maintenance', duration: 5, dosageMultiplier: 1.0, customMessage: 'Weekday full dose' },
+        { phase: 'maintenance', duration: 2, dosageMultiplier: 0.5, customMessage: 'Weekend half dose' }
+      ]
+    },
+    // Work/Week
+    {
+      id: '6-1-workweek',
+      category: 'Work/Week',
+      name: '6 On / 1 Off',
+      description: 'Six days of use with one recovery day',
+      icon: Activity,
+      iconColor: 'text-blue-500',
+      accent: 'border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 6, dosageMultiplier: 1.0, customMessage: 'Use as prescribed' },
+        { phase: 'off', duration: 1, dosageMultiplier: 0.0, customMessage: 'Rest day' }
+      ]
+    },
+    {
+      id: '4-3-balance',
+      category: 'Work/Week',
+      name: '4 On / 3 Off',
+      description: 'Balanced weekly cycle with longer recovery',
+      icon: Activity,
+      iconColor: 'text-blue-500',
+      accent: 'border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 4, dosageMultiplier: 1.0, customMessage: 'Active days' },
+        { phase: 'off', duration: 3, dosageMultiplier: 0.0, customMessage: 'Recovery days' }
+      ]
+    },
+    {
+      id: 'weekday-full-weekend-off',
+      category: 'Work/Week',
+      name: 'Weekend Off',
+      description: 'Full dose Monday–Friday, no use on weekends',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 5, dosageMultiplier: 1.0, customMessage: 'Weekday use' },
+        { phase: 'off', duration: 2, dosageMultiplier: 0.0, customMessage: 'Weekend off' }
+      ]
+    },
+    // Alternate-Day
+    {
+      id: 'alternate-day',
+      category: 'Alternate-Day',
+      name: 'Alternate-Day (QOD)',
+      description: 'One day on, one day off (repeats)',
+      icon: Activity,
+      iconColor: 'text-blue-500',
+      accent: 'border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 1, dosageMultiplier: 1.0, customMessage: 'Dose day' },
+        { phase: 'off', duration: 1, dosageMultiplier: 0.0, customMessage: 'Off day' }
+      ]
+    },
+    // Pulse / Intermittent
+    {
+      id: 'pulse-2-5',
+      category: 'Pulse/Intermittent',
+      name: 'Pulse 2 On / 5 Off',
+      description: 'Two consecutive dose days per week',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 2, dosageMultiplier: 1.0, customMessage: 'Pulse phase' },
+        { phase: 'off', duration: 5, dosageMultiplier: 0.0, customMessage: 'Off phase' }
+      ]
+    },
+    {
+      id: 'pulse-3-4',
+      category: 'Pulse/Intermittent',
+      name: 'Pulse 3 On / 4 Off',
+      description: 'Three on, four off (weekly pulse)',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 3, dosageMultiplier: 1.0, customMessage: 'Pulse phase' },
+        { phase: 'off', duration: 4, dosageMultiplier: 0.0, customMessage: 'Recovery' }
+      ]
+    },
+    {
+      id: '1w-on-1w-off',
+      category: 'Pulse/Intermittent',
+      name: '1 Week On / 1 Week Off',
+      description: 'Seven days on followed by seven off',
+      icon: Activity,
+      iconColor: 'text-blue-500',
+      accent: 'border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 7, dosageMultiplier: 1.0, customMessage: 'Active week' },
+        { phase: 'off', duration: 7, dosageMultiplier: 0.0, customMessage: 'Rest week' }
+      ]
+    },
+    // Monthly-style cycles
+    {
+      id: '21-7',
+      category: 'Monthly',
+      name: '21 On / 7 Off',
+      description: 'Three weeks on, one week off',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 21, dosageMultiplier: 1.0, customMessage: 'On cycle' },
+        { phase: 'off', duration: 7, dosageMultiplier: 0.0, customMessage: 'Off cycle' }
+      ]
+    },
+    {
+      id: '14-7',
+      category: 'Monthly',
+      name: '14 On / 7 Off',
+      description: 'Two weeks on, one week off',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 14, dosageMultiplier: 1.0, customMessage: 'On cycle' },
+        { phase: 'off', duration: 7, dosageMultiplier: 0.0, customMessage: 'Off cycle' }
+      ]
+    },
+    {
+      id: '10-20-monthly',
+      category: 'Monthly',
+      name: '10 On / 20 Off',
+      description: 'Ten days per month with extended recovery',
+      icon: Calendar,
+      iconColor: 'text-green-600',
+      accent: 'border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50',
+      kind: 'pattern',
+      type: 'on-off-cycle',
+      phases: [
+        { phase: 'on', duration: 10, dosageMultiplier: 1.0, customMessage: 'On period' },
+        { phase: 'off', duration: 20, dosageMultiplier: 0.0, customMessage: 'Off period' }
+      ]
+    },
+    // Advanced
+    {
+      id: 'step-down-weekly-3step',
+      category: 'Advanced',
+      name: 'Step‑Down (Weekly 3‑step)',
+      description: '7d @1.0 → 7d @0.75 → 7d @0.5, then repeat',
+      icon: Activity,
+      iconColor: 'text-purple-600',
+      accent: 'border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50',
+      kind: 'pattern',
+      type: 'variable-dose',
+      phases: [
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 1.0, customMessage: 'Full dose week' },
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 0.75, customMessage: 'Step‑down week' },
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 0.5, customMessage: 'Lower dose week' }
+      ]
+    },
+    {
+      id: 'deload-4th-week',
+      category: 'Advanced',
+      name: 'Deload on 4th Week',
+      description: '3 weeks @1.0, 1 week @0.5 (repeat)',
+      icon: Calendar,
+      iconColor: 'text-purple-600',
+      accent: 'border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50',
+      kind: 'pattern',
+      type: 'variable-dose',
+      phases: [
+        { phase: 'maintenance', duration: 21, dosageMultiplier: 1.0, customMessage: 'On cycle' },
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 0.5, customMessage: 'Deload week' }
+      ]
+    },
+    {
+      id: 'burst-stabilize',
+      category: 'Advanced',
+      name: 'Burst & Stabilize',
+      description: '2d @1.25 then 5d @1.0 each week',
+      icon: Activity,
+      iconColor: 'text-purple-600',
+      accent: 'border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50',
+      kind: 'pattern',
+      type: 'variable-dose',
+      phases: [
+        { phase: 'maintenance', duration: 2, dosageMultiplier: 1.25, customMessage: 'Short burst' },
+        { phase: 'maintenance', duration: 5, dosageMultiplier: 1.0, customMessage: 'Stabilize' }
+      ]
+    },
+    {
+      id: '3-on-1-low',
+      category: 'Advanced',
+      name: '3 On / 1 Low',
+      description: '3 days @1.0 then 1 day @0.25 (repeat)',
+      icon: Activity,
+      iconColor: 'text-purple-600',
+      accent: 'border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50',
+      kind: 'pattern',
+      type: 'variable-dose',
+      phases: [
+        { phase: 'on', duration: 3, dosageMultiplier: 1.0, customMessage: 'Full dose' },
+        { phase: 'maintenance', duration: 1, dosageMultiplier: 0.25, customMessage: 'Cushion day' }
+      ]
+    },
+    {
+      id: 'reverse-taper-weekly',
+      category: 'Advanced',
+      name: 'Reverse Taper (Weekly)',
+      description: '7d @0.5 → 7d @0.75 → 7d @1.0',
+      icon: Calendar,
+      iconColor: 'text-purple-600',
+      accent: 'border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50',
+      kind: 'pattern',
+      type: 'variable-dose',
+      phases: [
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 0.5, customMessage: 'Start lower' },
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 0.75, customMessage: 'Increase' },
+        { phase: 'maintenance', duration: 7, dosageMultiplier: 1.0, customMessage: 'Stabilize' }
+      ]
+    },
+    // Tapering (uses existing tapering creator)
+    {
+      id: 'tapering-standard',
+      category: 'Tapering',
+      name: 'Tapering Schedule',
+      description: 'Create a gradual dose reduction plan',
+      icon: TrendingDown,
+      iconColor: 'text-orange-600',
+      accent: 'border-dashed border-gray-300 hover:border-orange-500 hover:bg-orange-50',
+      kind: 'tapering'
+    }
+  ];
+
+  function getTemplates(category: string): TemplateDef[] {
+    return allTemplates.filter(t => t.category === category);
+  }
+
+  function handleApplyTemplate(templateId: string) {
+    if (!selectedMedication) return;
+    const tpl = allTemplates.find(t => t.id === templateId);
+    if (!tpl) return;
+
+    if (tpl.kind === 'tapering') {
+      handleCreateCyclicPattern(selectedMedication, 'tapering');
+      return;
+    }
+
+    const medication = medications.find(m => m.id === selectedMedication);
+    if (!medication || !tpl.type || !tpl.phases) return;
+
+    try {
+      const pattern: Omit<CyclicDosingPattern, 'id'> = {
+        name: tpl.name,
+        type: tpl.type,
+        pattern: tpl.phases,
+        startDate: new Date(),
+        isActive: true,
+        notes: tpl.description
+      };
+
+      const patternId = generateId();
+      const patternWithId = { ...pattern, id: patternId };
+      addCyclicDosingPattern(patternWithId);
+      updateMedication(selectedMedication, { cyclicDosing: patternWithId });
+      toast.success(`${tpl.name} created`);
+      setActiveTab('active');
+    } catch (error) {
+      console.error('Error applying template:', error);
+      toast.error('Failed to create pattern. Please try again.');
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -345,41 +719,68 @@ export function CyclicDosing() {
               {selectedMedication && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-md font-medium text-gray-900 mb-4">Quick Setup Templates</h3>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <button
-                        onClick={() => handleCreateCyclicPattern(selectedMedication, 'on-off')}
-                        className="mobile-button p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
-                      >
-                        <Activity className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                        <h4 className="font-medium text-gray-900">On/Off Cycling</h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Take for 5 days, break for 2 days
-                        </p>
-                      </button>
+                    <h3 className="text-md font-medium text-gray-900 mb-3">Templates</h3>
 
-                      <button
-                        onClick={() => handleCreateCyclicPattern(selectedMedication, 'variable')}
-                        className="mobile-button p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors text-left"
-                      >
-                        <Calendar className="h-6 w-6 text-green-500 mx-auto mb-2" />
-                        <h4 className="font-medium text-gray-900">Variable Dosing</h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Weekday full dose, weekend half dose
-                        </p>
-                      </button>
+                    {/* Categories - horizontally scrollable */}
+                    <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide py-1 -mx-1 px-1">
+                      {[
+                        'Popular',
+                        'Work/Week',
+                        'Alternate-Day',
+                        'Pulse/Intermittent',
+                        'Monthly',
+                        'Advanced',
+                        'Tapering'
+                      ].map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setTemplateCategory(cat)}
+                          className={`px-3 py-1.5 rounded-full border text-sm whitespace-nowrap transition-colors min-h-[36px] ${
+                            templateCategory === cat
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          }`}
+                          aria-pressed={templateCategory === cat}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
 
-                      <button
-                        onClick={() => handleCreateCyclicPattern(selectedMedication, 'tapering')}
-                        className="mobile-button p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-colors text-left"
-                      >
-                        <TrendingDown className="h-6 w-6 text-orange-500 mx-auto mb-2" />
-                        <h4 className="font-medium text-gray-900">Tapering Schedule</h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Gradual dose reduction
-                        </p>
-                      </button>
+                    {/* Short Guide */}
+                    <div className="mt-3">
+                      <details className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                        <summary className="flex items-center space-x-2 cursor-pointer select-none">
+                          <Info className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium text-blue-900">Short Guide</span>
+                        </summary>
+                        <div className="mt-3 text-sm text-blue-800 space-y-2">
+                          <p><strong>1.</strong> Select a medication, choose a category, then tap a template. It will create an active schedule immediately. You can switch to the builder below to customize further.</p>
+                          <p><strong>2.</strong> Use the builder’s <em>Show advanced options</em> to repeat a phase or add a linear ramp (e.g., 1.0 → 0.5 over N days). This expands into day‑by‑day steps automatically.</p>
+                          <p><strong>3.</strong> Advanced templates provide step‑downs, deload weeks, burst & stabilize, and cushion‑day patterns. Adjust any phase after applying.</p>
+                          <p className="text-[12px]">This is general scheduling guidance and not medical advice. Consult your clinician for changes to treatment.</p>
+                        </div>
+                      </details>
+                    </div>
+
+                    {/* Template Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-4">
+                      {getTemplates(templateCategory).map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          onClick={() => handleApplyTemplate(tpl.id)}
+                          className={`p-4 rounded-lg border-2 transition-colors w-full h-auto min-h-[148px] whitespace-normal break-words ${tpl.accent}`}
+                          title={tpl.description}
+                        >
+                          <div className="flex items-start space-x-3">
+                            <tpl.icon className={`h-5 w-5 mt-0.5 flex-shrink-0 ${tpl.iconColor}`} />
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900">{tpl.name}</h4>
+                              <p className="text-sm text-gray-600 mt-1 leading-relaxed">{tpl.description}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -433,8 +834,7 @@ export function CyclicDosing() {
                                       newPhases[index].phase = e.target.value;
                                       setCustomPhases(newPhases);
                                     }}
-                                    className="mobile-input w-full text-sm"
-                                    style={{ fontSize: '14px' }}
+                                    className="mobile-input w-full"
                                   />
                                 </div>
                                 <div>
@@ -442,14 +842,15 @@ export function CyclicDosing() {
                                   <input
                                     type="number"
                                     min="1"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
                                     value={phase.duration}
                                     onChange={(e) => {
                                       const newPhases = [...customPhases];
                                       newPhases[index].duration = parseInt(e.target.value) || 1;
                                       setCustomPhases(newPhases);
                                     }}
-                                    className="mobile-input w-full text-sm"
-                                    style={{ fontSize: '14px' }}
+                                    className="mobile-input w-full"
                                   />
                                 </div>
                                 <div>
@@ -461,8 +862,8 @@ export function CyclicDosing() {
                                       newPhases[index].multiplier = parseFloat(e.target.value);
                                       setCustomPhases(newPhases);
                                     }}
-                                    className="mobile-input w-full text-sm"
-                                    style={{ fontSize: '14px' }}
+                                    className="mobile-input w-full"
+                                    aria-label="Dose Multiplier"
                                   >
                                     <option value={0}>0x (Skip)</option>
                                     <option value={0.25}>0.25x (Quarter)</option>
@@ -484,11 +885,81 @@ export function CyclicDosing() {
                                       setCustomPhases(newPhases);
                                     }}
                                     placeholder="Optional phase message"
-                                    className="mobile-input w-full text-sm"
-                                    style={{ fontSize: '14px' }}
+                                    className="mobile-input w-full"
                                   />
                                 </div>
                               </div>
+
+                          {/* Advanced options */}
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => setAdvancedOpen(prev => ({ ...prev, [index]: !prev[index] }))}
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              {advancedOpen[index] ? 'Hide advanced options' : 'Show advanced options'}
+                            </button>
+                            {advancedOpen[index] && (
+                              <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">Repeat Count</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={phase.repeat || 1}
+                                    onChange={(e) => {
+                                      const newPhases = [...customPhases];
+                                      newPhases[index].repeat = Math.max(1, parseInt(e.target.value) || 1);
+                                      setCustomPhases(newPhases);
+                                    }}
+                                    className="mobile-input w-full"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">Ramp To (Multiplier)</label>
+                                  <select
+                                    value={(phase.rampTo ?? '').toString()}
+                                    onChange={(e) => {
+                                      const value = e.target.value === '' ? null : parseFloat(e.target.value);
+                                      const newPhases = [...customPhases];
+                                      newPhases[index].rampTo = (value as any);
+                                      setCustomPhases(newPhases);
+                                    }}
+                                    className="mobile-input w-full"
+                                  >
+                                    <option value="">None (no ramp)</option>
+                                    <option value={0}>0x (Skip)</option>
+                                    <option value={0.25}>0.25x</option>
+                                    <option value={0.5}>0.5x</option>
+                                    <option value={0.75}>0.75x</option>
+                                    <option value={1}>1x</option>
+                                    <option value={1.25}>1.25x</option>
+                                    <option value={1.5}>1.5x</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">Ramp Over (days)</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={phase.rampDays || ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value === '' ? null : Math.max(1, parseInt(e.target.value) || 1);
+                                      const newPhases = [...customPhases];
+                                      newPhases[index].rampDays = (v as any);
+                                      setCustomPhases(newPhases);
+                                    }}
+                                    className="mobile-input w-full"
+                                  />
+                                  <p className="text-[11px] text-gray-500 mt-1">Linear ramp; remaining days stay at final multiplier.</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                               {customPhases.length > 1 && (
                                 <button
                                   onClick={() => {
@@ -506,7 +977,7 @@ export function CyclicDosing() {
                         
                         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
                           <button
-                            onClick={() => setCustomPhases([...customPhases, { phase: 'phase', duration: 1, multiplier: 1.0, message: '' }])}
+                            onClick={() => setCustomPhases([...customPhases, { phase: 'phase', duration: 1, multiplier: 1.0, message: '', repeat: 1, rampTo: null, rampDays: null }])}
                             className="mobile-button text-sm text-indigo-600 hover:text-indigo-700 font-medium min-h-[44px]"
                           >
                             + Add Phase
@@ -621,7 +1092,16 @@ export function CyclicDosing() {
                         <div className="mobile-text text-gray-600">
                           <p>Start: {new Date(medication.tapering.startDate).toLocaleDateString()}</p>
                           <p>End: {new Date(medication.tapering.endDate).toLocaleDateString()}</p>
-                          <p>Current Phase: {medication.tapering.currentPhase + 1} / {medication.tapering.phases.length}</p>
+                          {(() => {
+                            const phases = (medication.tapering as any)?.phases ?? (medication.tapering as any)?.customSteps;
+                            const totalPhases = Array.isArray(phases) ? phases.length : undefined;
+                            const currentPhaseIndex = typeof (medication.tapering as any)?.currentPhase === 'number'
+                              ? (medication.tapering as any).currentPhase
+                              : undefined;
+                            return (typeof totalPhases === 'number' && typeof currentPhaseIndex === 'number')
+                              ? (<p>Current Phase: {currentPhaseIndex + 1} / {totalPhases}</p>)
+                              : null;
+                          })()}
                         </div>
                       </div>
                     )}

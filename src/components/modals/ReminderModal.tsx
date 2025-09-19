@@ -187,14 +187,14 @@ export function ReminderModal({ isOpen, onClose, reminder }: ReminderModalProps)
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto mobile-safe-area">
+    <div className="fixed inset-0 z-[60] overflow-y-auto mobile-safe-area">
       <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 glass-overlay transition-opacity" onClick={onClose} />
         
-        <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg mobile-modal">
+        <div className="relative transform overflow-hidden rounded-lg glass-panel text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg mobile-modal">
           <div className="max-h-[90vh] overflow-y-auto mobile-scroll">
           <form onSubmit={handleSubmit(onSubmit)}>
-            <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+            <div className="bg-white/0 px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
                   <Bell className="h-6 w-6 text-blue-600" />
@@ -357,7 +357,7 @@ export function ReminderModal({ isOpen, onClose, reminder }: ReminderModalProps)
 
                 {/* Preview */}
                 {selectedMedication && selectedDays.length > 0 && (
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-900 mb-2">Reminder Preview</h4>
                     <div className="flex items-center space-x-3">
                       <div

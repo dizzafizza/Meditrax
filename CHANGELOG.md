@@ -5,6 +5,20 @@ All notable changes to Meditrax will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2025-09-19
+
+### Fixed
+- Inventory: Configuration dialog now reliably appears above all UI layers on the Inventory page and follows the shared modal pattern to prevent stacking issues
+
+### Improved
+- iOS Safari: Added body scroll locking and mobile-safe-area/mobile-scroll utilities to relevant modals for better WebKit behavior
+- Mobile: Updated viewport meta to include `viewport-fit=cover` for proper safe-area handling on iOS devices
+- Advanced Schedules: Refined Create Pattern tab with mobile-first inputs (no iOS zoom), numeric keyboard hints, and consistent spacing/components
+ - Advanced Schedules: Added scrollable template categories with a larger library of cyclic dosing templates (5–2 on/off, alternate-day, 6–1, 4–3, pulse 2–5, pulse 3–4, 1w on/1w off, 21–7, 14–7, 10–20) and a quick tapering entry, aligned with app UI patterns
+ - Advanced Schedules: Added Advanced templates (weekly step‑down, deload week, burst & stabilize, 3 on/1 low, reverse taper) and a collapsible Short Guide explaining how to apply and customize patterns
+ - Search: Added background blur overlay on mobile and desktop, improved desktop overlay dismissal; fixed search navigation by preserving query when routing to pages; consistent glass UI on results dropdown
+ - UI Theme: Subtle glass theme across surfaces (header, cards, results) using semi‑transparent backgrounds, softened borders, and backdrop blur
+
 ## [1.1.1] - 2025-09-18
 
 ### Improved

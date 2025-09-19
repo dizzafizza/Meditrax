@@ -5,6 +5,9 @@ import { Toaster } from 'react-hot-toast'
 import App from './App.tsx'
 import './index.css'
 
+// Enable global glass theme
+document.body.classList.add('glass-theme')
+
 // Service Worker Registration with Update Detection
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

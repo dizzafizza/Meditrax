@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Package, MapPin, Star } from 'lucide-react';
 import { PharmacyInfo, PersonalMedicationTracking } from '@/types/enhanced-inventory';
 import { Medication } from '@/types';
@@ -91,11 +92,25 @@ export function InventoryConfigModal({
     onClose();
   };
 
+  // Prevent body scroll when modal is open (iOS Safari friendly)
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+  return createPortal(
+    <div className="fixed inset-0 z-[60] overflow-y-auto mobile-safe-area">
+      <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+        <div className="fixed inset-0 glass-overlay transition-opacity" onClick={onClose} />
+        
+        <div className="relative transform overflow-hidden rounded-lg glass-panel text-left shadow-xl transition-all sm:my-8 w-full max-w-4xl mx-4 sm:mx-0 mobile-modal">
+          <div className="max-h-[90vh] overflow-y-auto mobile-scroll">
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-semibold text-gray-900">Inventory Configuration</h2>
           <button
@@ -138,7 +153,7 @@ export function InventoryConfigModal({
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
+        <div className="p-6 overflow-y-auto max-h-[60vh] mobile-scroll">
           {activeTab === 'pharmacies' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -450,7 +465,10 @@ export function InventoryConfigModal({
             Save Configuration
           </button>
         </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -120,13 +120,18 @@ class NotificationService {
       this.loadFCMToken();
       this.checkMissedNotifications();
 
-      // Send Firebase config to service worker and wait for confirmation
-      const firebaseReady = await this.sendFirebaseConfigToServiceWorker();
-      
-      if (firebaseReady) {
-        console.log('✅ Service worker confirmed Firebase is ready');
+      // Only try to initialize Firebase in the SW if notifications are already granted
+      const permissionState = await this.getPermissionState();
+      const enableSwFirebase = import.meta.env.PROD || import.meta.env.VITE_ENABLE_SW_FIREBASE === 'true';
+      if (permissionState.status === 'granted' && enableSwFirebase) {
+        const firebaseReady = await this.sendFirebaseConfigToServiceWorker();
+        if (firebaseReady) {
+          console.log('✅ Service worker confirmed Firebase is ready');
+        } else {
+          console.warn('⚠️ Service worker Firebase initialization timed out');
+        }
       } else {
-        console.warn('⚠️ Service worker Firebase initialization timed out');
+        console.warn('Skipping Firebase SW initialization (permission not granted or disabled for this environment)');
       }
 
       // Try Firebase first, then fallback to legacy VAPID
@@ -142,6 +147,15 @@ class NotificationService {
 
   private async initializePushNotifications(): Promise<void> {
     try {
+      // Skip push initialization until the user has granted permission
+      const perm = await this.getPermissionState();
+      if (perm.status !== 'granted') {
+        console.warn('Notification permission not granted - skipping push initialization');
+        this.useFirebase = false;
+        this.pushNotificationsAvailable = false;
+        return;
+      }
+
       // iOS PWA specific handling
       if (this.isIOSPWA()) {
         console.log('📱 iOS PWA detected - applying iOS-specific notification handling');
@@ -1759,6 +1773,21 @@ class NotificationService {
       try {
         if (!this.serviceWorkerRegistration) {
           console.warn('Service worker not available for Firebase config');
+          resolve(false);
+          return;
+        }
+
+        // Do not attempt SW Firebase init unless permission is granted
+        if (!('Notification' in window) || Notification.permission !== 'granted') {
+          console.warn('Notification permission not granted - not sending Firebase config to SW');
+          resolve(false);
+          return;
+        }
+
+        // Gate SW Firebase config to production or explicit opt-in
+        const enableSwFirebase = import.meta.env.PROD || import.meta.env.VITE_ENABLE_SW_FIREBASE === 'true';
+        if (!enableSwFirebase) {
+          console.warn('Service worker Firebase config disabled in this environment');
           resolve(false);
           return;
         }

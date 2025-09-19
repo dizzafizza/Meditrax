@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, Bell, Search, User, Clock, Settings, Heart, ChevronDown, Pill } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { formatTime } from '@/utils/helpers';
@@ -12,6 +12,7 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { getTodaysReminders, userProfile } = useMedicationStore();
   const [currentTime, setCurrentTime] = React.useState(new Date());
   const [showNotificationDropdown, setShowNotificationDropdown] = React.useState(false);
@@ -86,8 +87,15 @@ export function Header({ onMenuClick }: HeaderProps) {
     if (e.key === 'Escape') {
       setShowSearchResults(false);
       searchInputRef.current?.blur();
-    } else if (showSearchResults) {
+      return;
+    }
+    // Always allow Enter/Arrow keys to trigger navigation logic, even if dropdown is hidden
+    if (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       handleKeyNavigation(e);
+      // Ensure results are visible for arrow navigation feedback
+      if (!showSearchResults && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        setShowSearchResults(true);
+      }
     }
   };
 
@@ -98,6 +106,32 @@ export function Header({ onMenuClick }: HeaderProps) {
     searchInputRef.current?.blur();
   };
 
+  // If a page is navigated to with ?q=, hydrate the search UI with that term
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const q = params.get('q');
+    if (!q) return;
+
+    // Seed the input with the query
+    if (q !== searchTerm) {
+      setSearchTerm(q);
+    }
+
+    // For most pages, show the search results overlay so users immediately see matches
+    // Skip opening the overlay on pages that implement their own in-page filtering
+    const path = location.pathname;
+    const pageHandlesOwnQuery = path === '/medications';
+    if (!pageHandlesOwnQuery) {
+      setShowSearchResults(true);
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setShowMobileSearch(true);
+      }
+    } else {
+      setShowSearchResults(false);
+      setShowMobileSearch(false);
+    }
+  }, [location.search, location.pathname, searchTerm, setSearchTerm]);
+
   const todaysReminders = getTodaysReminders();
   const upcomingReminders = todaysReminders.filter(reminder => {
     const reminderTime = new Date();
@@ -107,23 +141,16 @@ export function Header({ onMenuClick }: HeaderProps) {
   });
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm backdrop-blur-sm bg-white/95 supports-[backdrop-filter]:bg-white/95">
+    <header className="sticky top-0 z-50 bg-white/70 border-b border-gray-200/70 px-4 py-3 flex items-center justify-between shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/60 relative">
       {/* Left side */}
       <div className="flex items-center space-x-3 sm:space-x-4">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 touch-target"
+          aria-label="Open menu"
+          className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 touch-target flex items-center justify-center"
         >
           <Menu className="h-5 w-5" />
         </button>
-        
-        {/* Mobile Logo */}
-        <div className="sm:hidden flex items-center space-x-2">
-          <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
-            <Pill className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-lg font-semibold text-gray-900">Meditrax</span>
-        </div>
         
         {/* Desktop Greeting */}
         <div className="hidden sm:block">
@@ -173,16 +200,16 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Right side */}
       <div className="flex items-center space-x-3">
-        {/* Mobile Search Button */}
+        {/* Mobile Search Button (visible on small screens) */}
         <button
           onClick={handleMobileSearchOpen}
-          className="md:hidden p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-full touch-target transition-colors"
+          className="md:hidden p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-full touch-target transition-colors flex items-center justify-center"
           title="Search"
         >
           <Search className="h-5 w-5" />
         </button>
-        {/* Notifications */}
-        <div className="relative dropdown-container">
+        {/* Notifications (hidden on mobile) */}
+        <div className="hidden md:block relative dropdown-container">
           <button 
             onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
             className="relative p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-full touch-target transition-colors" 
@@ -252,8 +279,8 @@ export function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
 
-        {/* Profile */}
-        <div className="relative dropdown-container">
+        {/* Profile (hidden on mobile) */}
+        <div className="hidden md:block relative dropdown-container">
           <button 
             onClick={() => setShowProfileDropdown(!showProfileDropdown)}
             className="flex items-center space-x-2 p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-lg touch-target transition-colors" 
@@ -322,9 +349,27 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
       </div>
 
+      {/* Centered Mobile Brand */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none sm:hidden">
+        <div className="flex items-center space-x-2">
+          <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
+            <Pill className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-lg font-semibold text-gray-900">Meditrax</span>
+        </div>
+      </div>
+
+      {/* Desktop overlay blur when dropdown is open */}
+      {showSearchResults && (
+        <div
+          className="hidden md:block fixed inset-0 z-40 glass-overlay"
+          onClick={() => setShowSearchResults(false)}
+        />
+      )}
+
       {/* Mobile Search Modal */}
       {showMobileSearch && (
-        <div className="fixed inset-0 z-50 bg-white mobile-search-modal md:hidden">
+        <div className="fixed inset-0 z-50 bg-gray-900/30 backdrop-blur-md mobile-search-modal md:hidden">
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h2 className="text-lg font-medium text-gray-900">Search</h2>

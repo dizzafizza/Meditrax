@@ -11,6 +11,7 @@ import { getFunctions, httpsCallable, connectFunctionsEmulator } from 'firebase/
 import { getAuth, signInAnonymously, User } from 'firebase/auth';
 import { Reminder, Medication, UserProfile } from '@/types';
 import { firebaseMessaging } from '@/services/firebaseMessaging';
+import { isFirebaseConfigured } from '@/config/firebase';
 
 // Firebase configuration (using same config as existing firebase.ts)
 const firebaseConfig = {
@@ -30,6 +31,7 @@ class BackendSyncService {
   private user: User | null = null;
   private isInitialized = false;
   private syncInProgress = false;
+  private backendEnabled = false;
   
   private readonly LAST_SYNC_KEY = 'medtrack_last_backend_sync';
   private readonly USER_ID_KEY = 'medtrack_backend_user_id';
@@ -38,6 +40,31 @@ class BackendSyncService {
     if (this.isInitialized) return;
 
     try {
+      // Basic runtime gating: only enable backend sync when push preconditions are met
+      if (!('serviceWorker' in navigator)) {
+        console.warn('Service Worker not supported - backend sync disabled');
+        this.backendEnabled = false;
+        this.isInitialized = true;
+        return;
+      }
+
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        console.warn('Notification permission not granted - backend sync disabled');
+        this.backendEnabled = false;
+        this.isInitialized = true;
+        return;
+      }
+
+      // Skip initialization if Firebase is not configured
+      if (!isFirebaseConfigured()) {
+        console.warn('Firebase configuration not available - backend sync disabled');
+        // Create a fallback user id for consistency even without Firebase
+        await this.authenticateUser();
+        this.backendEnabled = false;
+        this.isInitialized = true;
+        return;
+      }
+
       // Initialize Firebase app (check if already exists)
       if (getApps().length === 0) {
         this.app = initializeApp(firebaseConfig);
@@ -62,18 +89,22 @@ class BackendSyncService {
       await this.authenticateUser();
 
       this.isInitialized = true;
+      this.backendEnabled = true;
       console.log('🔄 Backend sync service initialized');
 
     } catch (error) {
-      console.error('❌ Failed to initialize backend sync service:', error);
-      throw error;
+      console.warn('⚠️ Backend sync initialization failed - using client-side notifications only:', error);
+      this.backendEnabled = false;
+      // Do not throw; allow app to continue with client-side only
     }
   }
 
   private async authenticateUser(): Promise<void> {
     try {
-      // Try Firebase Auth if available
-      if (this.auth) {
+      const enableBackendAuth = import.meta.env.VITE_ENABLE_BACKEND_AUTH === 'true';
+
+      // Try Firebase Auth only if explicitly enabled
+      if (this.auth && enableBackendAuth) {
         try {
           if (this.auth.currentUser) {
             this.user = this.auth.currentUser;
@@ -153,6 +184,11 @@ class BackendSyncService {
   ): Promise<boolean> {
     if (!this.isInitialized) {
       await this.initialize();
+    }
+
+    if (!this.backendEnabled || !this.functions) {
+      console.warn('⚠️ Backend not available - skipping sync');
+      return false;
     }
 
     if (this.syncInProgress) {
@@ -250,6 +286,10 @@ class BackendSyncService {
     }
 
     try {
+      if (!this.backendEnabled || !this.functions) {
+        console.warn('⚠️ Backend not available - skipping scheduling');
+        return false;
+      }
       console.log('📅 Manually triggering backend notification scheduling...');
 
       const scheduleFunction = httpsCallable(this.functions, 'scheduleUserNotifications');
@@ -309,6 +349,10 @@ class BackendSyncService {
     try {
       if (!this.isInitialized) {
         await this.initialize();
+      }
+
+      if (!this.backendEnabled || !this.functions) {
+        return false;
       }
 
       // Try to call a simple function to test connection

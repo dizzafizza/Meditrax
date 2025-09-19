@@ -236,8 +236,6 @@ self.addEventListener('message', async (event) => {
   }
 });
 
-// Try to initialize immediately when service worker starts
-initializeFirebaseMessaging();
-
+// Initialization will be triggered explicitly by the main app via INIT_FIREBASE
 // Export messaging for potential use by main service worker
 self.firebaseMessaging = messaging;

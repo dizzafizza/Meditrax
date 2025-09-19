@@ -134,8 +134,8 @@ export function BreakManagementModal({ isOpen, onClose, medication }: BreakManag
     Math.floor((new Date().getTime() - (currentBreak.startDate instanceof Date ? currentBreak.startDate : new Date(currentBreak.startDate)).getTime()) / (1000 * 60 * 60 * 24)) : 0;
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-      <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 glass-overlay overflow-y-auto h-full w-full z-[60] flex items-center justify-center">
+      <div className="relative glass-panel rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">
             {isOnBreak ? 'Manage Active Break' : 'Start Tapering Break'}

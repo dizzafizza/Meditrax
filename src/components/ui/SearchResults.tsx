@@ -76,8 +76,8 @@ export function SearchResults({
   }, [categories]);
 
   const containerClass = isMobile 
-    ? "bg-white rounded-lg border border-gray-200 p-4 h-full overflow-y-auto"
-    : "absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50 p-4";
+    ? "bg-white/90 backdrop-blur rounded-lg border border-gray-200/70 p-4 h-full overflow-y-auto"
+    : "absolute top-full left-0 right-0 mt-1 bg-white/90 backdrop-blur rounded-lg shadow-lg border border-gray-200/70 z-50 p-4";
 
   if (!searchTerm.trim()) {
     return (
@@ -119,8 +119,8 @@ export function SearchResults({
   }
 
   const resultsContainerClass = isMobile 
-    ? "bg-white rounded-lg border border-gray-200 h-full overflow-y-auto"
-    : "absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-[70vh] overflow-y-auto";
+    ? "bg-white/90 backdrop-blur rounded-lg border border-gray-200/70 h-full overflow-y-auto"
+    : "absolute top-full left-0 right-0 mt-1 bg-white/90 backdrop-blur rounded-lg shadow-lg border border-gray-200/70 z-50 max-h-[70vh] overflow-y-auto";
 
   return (
     <div className={resultsContainerClass}>

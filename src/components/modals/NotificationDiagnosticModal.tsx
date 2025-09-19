@@ -41,11 +41,21 @@ export function NotificationDiagnosticModal({ isOpen, onClose }: NotificationDia
     }
   }, [isOpen]);
 
+  // Prevent body scroll when modal is open (improves iOS Safari behavior)
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-[60] mobile-safe-area">
+      <div className="glass-panel rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto mobile-scroll">
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Bell className="h-6 w-6" />
@@ -96,9 +106,9 @@ export function NotificationDiagnosticModal({ isOpen, onClose }: NotificationDia
                     <h4 className="font-medium">Service Worker</h4>
                   </div>
                   <p className={`text-sm ${
-                    diagnostic.serviceWorkerStatus === 'active' ? 'text-green-600' : 'text-red-600'
+                    diagnostic?.technicalDetails?.serviceWorkerActive ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    {diagnostic.serviceWorkerStatus}
+                    {diagnostic?.technicalDetails?.serviceWorkerActive ? 'active' : 'inactive'}
                   </p>
                 </div>
 
@@ -108,9 +118,9 @@ export function NotificationDiagnosticModal({ isOpen, onClose }: NotificationDia
                     <h4 className="font-medium">Background Execution</h4>
                   </div>
                   <p className={`text-sm ${
-                    diagnostic.backgroundExecution === 'responsive' ? 'text-green-600' : 'text-red-600'
+                    diagnostic?.backgroundExecution === 'responsive' ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    {diagnostic.backgroundExecution}
+                    {diagnostic?.backgroundExecution || 'unknown'}
                   </p>
                 </div>
 
@@ -119,13 +129,9 @@ export function NotificationDiagnosticModal({ isOpen, onClose }: NotificationDia
                     <Bell className="h-5 w-5 text-gray-600" />
                     <h4 className="font-medium">Notification Status</h4>
                   </div>
-                  {diagnostic.notificationTracking.map((item: any, index: number) => (
-                    <p key={index} className="text-sm text-gray-600">
-                      {Object.entries(item).map(([key, value]) => (
-                        <span key={key}>{key}: {String(value)}</span>
-                      ))}
-                    </p>
-                  ))}
+                  <p className="text-sm text-gray-600">
+                    {diagnostic?.notificationStatus || 'unknown'}
+                  </p>
                 </div>
               </div>
 
@@ -145,21 +151,23 @@ export function NotificationDiagnosticModal({ isOpen, onClose }: NotificationDia
                 </ul>
               </div>
 
-              {/* Alternative Solutions */}
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                  Alternative Solutions
-                </h4>
-                <ul className="space-y-2">
-                  {diagnostic.alternativeSolutions.map((solution: string, index: number) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="text-green-500 mt-1">•</span>
-                      {solution}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {/* Alternative Solutions (optional) */}
+              {Array.isArray(diagnostic?.alternativeSolutions) && diagnostic.alternativeSolutions.length > 0 && (
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    Alternative Solutions
+                  </h4>
+                  <ul className="space-y-2">
+                    {diagnostic.alternativeSolutions.map((solution: string, index: number) => (
+                      <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="text-green-500 mt-1">•</span>
+                        {solution}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex gap-3 pt-4">

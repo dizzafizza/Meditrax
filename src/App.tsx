@@ -1,17 +1,17 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
-import { Dashboard } from '@/pages/Dashboard';
-import { Medications } from '@/pages/Medications';
-import { Inventory } from '@/pages/Inventory';
-import { Calendar } from '@/pages/Calendar';
-import { Analytics } from '@/pages/Analytics';
-import { Settings } from '@/pages/Settings';
-import { Reminders } from '@/pages/Reminders';
-import { Reports } from '@/pages/Reports';
-import { HealthProfile } from '@/pages/HealthProfile';
-import { Wiki } from '@/pages/Wiki';
-import { CyclicDosing } from '@/pages/CyclicDosing';
+const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Medications = React.lazy(() => import('@/pages/Medications').then(m => ({ default: m.Medications })));
+const Inventory = React.lazy(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })));
+const Calendar = React.lazy(() => import('@/pages/Calendar').then(m => ({ default: m.Calendar })));
+const Analytics = React.lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })));
+const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const Reminders = React.lazy(() => import('@/pages/Reminders').then(m => ({ default: m.Reminders })));
+const Reports = React.lazy(() => import('@/pages/Reports').then(m => ({ default: m.Reports })));
+const HealthProfile = React.lazy(() => import('@/pages/HealthProfile').then(m => ({ default: m.HealthProfile })));
+const Wiki = React.lazy(() => import('@/pages/Wiki').then(m => ({ default: m.Wiki })));
+const CyclicDosing = React.lazy(() => import('@/pages/CyclicDosing').then(m => ({ default: m.CyclicDosing })));
 import { ChangelogModal } from '@/components/ui/ChangelogModal';
 import { UpdateNotification, useUpdateNotification } from '@/components/ui/UpdateNotification';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
@@ -45,7 +45,9 @@ function App() {
       
       // **CONSOLE CAPTURE**: Initialize global console capture for PWA debugging
       // This persists across page navigation
-      consoleCapture; // Initialize the singleton
+      if (import.meta.env.DEV) {
+        consoleCapture; // Initialize the singleton only in development
+      }
       
       // Get current reminders and medications from store
       const { reminders, medications } = useMedicationStore.getState();
@@ -142,6 +144,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Layout>
+        <React.Suspense fallback={<div className="p-6 text-sm text-gray-600">Loading…</div>}>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -157,6 +160,7 @@ function App() {
           <Route path="/cyclic-dosing" element={<CyclicDosing />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </React.Suspense>
       </Layout>
       
       {/* Hidden Admin Integration - tracks UI sequences for admin access */}

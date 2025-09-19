@@ -15,6 +15,7 @@ import {
   Brain
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
+import { shallow } from 'zustand/shallow';
 import { getAdherenceColor, formatPillDisplayShort } from '@/utils/helpers';
 import { generateListItemKey } from '@/utils/reactKeyHelper';
 import { TodaysMedications } from '@/components/ui/TodaysMedications';
@@ -23,9 +24,9 @@ import { WithdrawalSymptomTracker } from '@/components/ui/WithdrawalSymptomTrack
 import { Medication } from '@/types';
 
 export function Dashboard() {
+  const medications = useMedicationStore(s => s.medications);
+  const logs = useMedicationStore(s => s.logs);
   const {
-    medications,
-    logs,
     getTodaysReminders,
     getTodaysLogs,
     getMissedDoses,
@@ -40,7 +41,22 @@ export function Dashboard() {
     generatePsychologicalSafetyAlerts,
     getActivePsychologicalSafetyAlerts,
     acknowledgePsychologicalAlert
-  } = useMedicationStore();
+  } = useMedicationStore((s) => ({
+    getTodaysReminders: s.getTodaysReminders,
+    getTodaysLogs: s.getTodaysLogs,
+    getMissedDoses: s.getMissedDoses,
+    getUpcomingRefills: s.getUpcomingRefills,
+    getMedicationAdherence: s.getMedicationAdherence,
+    markMedicationTaken: s.markMedicationTaken,
+    markMedicationMissed: s.markMedicationMissed,
+    smartMessages: s.smartMessages,
+    getSmartInsights: s.getSmartInsights,
+    markMessageAsRead: s.markMessageAsRead,
+    getCurrentDose: s.getCurrentDose,
+    generatePsychologicalSafetyAlerts: s.generatePsychologicalSafetyAlerts,
+    getActivePsychologicalSafetyAlerts: s.getActivePsychologicalSafetyAlerts,
+    acknowledgePsychologicalAlert: s.acknowledgePsychologicalAlert,
+  }), shallow);
 
   const todaysReminders = getTodaysReminders();
   const todaysLogs = getTodaysLogs();
