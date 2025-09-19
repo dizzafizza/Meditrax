@@ -31,35 +31,33 @@ import * as functions from 'firebase-functions/v1';
 **Solution**: Added automatic cleanup policy setup in GitHub Actions workflow  
 **Implementation**: Uses `firebase functions:artifacts:setpolicy` with 30-day retention
 
-### ✅ 5. Firebase Service Account Input Error (NEW)
+### ✅ 5. Incorrect Deployment Configuration (NEW)
 **Problem**: `Input required and not supplied: firebaseServiceAccount` error in GitHub Actions  
-**Root Causes**:
-- Missing or incorrectly named `FIREBASE_SERVICE_ACCOUNT_KEY` secret
-- Dependabot PRs triggering deployment without secret access
-- Missing Firebase CLI installation for functions deployment
-- Inconsistent project ID references
+**Root Cause**: The workflow was incorrectly configured for Firebase Hosting instead of GitHub Pages deployment
 
 **Solutions Applied**:
-- Added Dependabot check: `if: github.actor != 'dependabot[bot]'`
-- Added Firebase CLI installation step
-- Standardized project ID references to use `VITE_FIREBASE_PROJECT_ID`
-- Updated documentation with specific troubleshooting for this error
-- Clarified secret naming and setup requirements
+- **Replaced Firebase deployment with GitHub Pages deployment**
+- Updated workflow to use official GitHub Pages actions (`actions/configure-pages@v4`, `actions/upload-pages-artifact@v3`, `actions/deploy-pages@v4`)
+- Removed Firebase-specific deployment steps and service account requirements
+- Added proper GitHub Pages permissions (`pages: write`, `id-token: write`)
+- Updated documentation to reflect GitHub Pages deployment instead of Firebase Hosting
+- Clarified that Firebase configuration is only needed for frontend build, not hosting
 
 ## New GitHub Actions Workflow
 
 The new workflow (`.github/workflows/deploy.yml`) includes:
 
-1. **Proper Authentication**: Uses `GOOGLE_APPLICATION_CREDENTIALS` instead of deprecated tokens
-2. **Automatic Cleanup**: Sets up container image cleanup policy automatically
-3. **Error Handling**: Continues deployment even if cleanup policy setup fails
-4. **Security**: Uses GitHub Secrets for all sensitive data
+1. **GitHub Pages Deployment**: Uses official GitHub Pages actions instead of Firebase Hosting
+2. **Proper Permissions**: Includes `pages: write` and `id-token: write` permissions
+3. **Build Process**: Builds the application with Firebase configuration for frontend features
+4. **Automatic Deployment**: Deploys to GitHub Pages on every push to main branch
+5. **Security**: Uses GitHub Secrets only for build-time configuration, not deployment credentials
 
 ## Required GitHub Secrets
 
-To use the new deployment workflow, you need to set up these GitHub Secrets:
+To use the new deployment workflow, you need to set up these GitHub Secrets for the build process:
 
-### Frontend Configuration
+### Frontend Configuration (for build-time)
 - `VITE_FIREBASE_API_KEY`
 - `VITE_FIREBASE_AUTH_DOMAIN` 
 - `VITE_FIREBASE_PROJECT_ID`
@@ -69,9 +67,7 @@ To use the new deployment workflow, you need to set up these GitHub Secrets:
 - `VITE_FIREBASE_VAPID_KEY`
 - `VITE_FIREBASE_MEASUREMENT_ID` (optional)
 
-### Backend Authentication
-- `FIREBASE_SERVICE_ACCOUNT_KEY` - Service account JSON key
-- `FIREBASE_PROJECT_ID` - Firebase project ID
+**Note**: These secrets are only used during the build process to configure Firebase features in the frontend. No service account or deployment credentials are needed since we're using GitHub Pages.
 
 ## Verification
 

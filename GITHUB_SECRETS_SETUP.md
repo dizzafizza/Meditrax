@@ -1,6 +1,6 @@
-# GitHub Secrets Setup for Firebase Deployment
+# GitHub Secrets Setup for GitHub Pages Deployment
 
-This document explains how to set up GitHub Secrets for secure Firebase deployment without using deprecated authentication methods.
+This document explains how to set up GitHub Secrets for building the application with Firebase configuration for GitHub Pages deployment.
 
 ## Required GitHub Secrets
 
@@ -16,82 +16,91 @@ These secrets are used to build the frontend with proper Firebase configuration:
 - `VITE_FIREBASE_VAPID_KEY` - Your Firebase VAPID key for push notifications
 - `VITE_FIREBASE_MEASUREMENT_ID` - Your Firebase measurement ID (optional)
 
-### Firebase Service Account (Backend)
-- `FIREBASE_SERVICE_ACCOUNT_KEY` - Service account JSON key for Firebase Functions deployment
+**Note**: This project uses GitHub Pages for hosting, not Firebase Hosting. The Firebase configuration is only needed for the frontend build process.
 
-## Setting Up Service Account Authentication
+## Setting Up GitHub Secrets
 
-### Step 1: Create a Service Account
+### Step 1: Get Firebase Configuration
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+1. Go to the [Firebase Console](https://console.firebase.google.com/)
 2. Select your Firebase project
-3. Navigate to **IAM & Admin** > **Service Accounts**
-4. Click **Create Service Account**
-5. Name it `firebase-github-actions` (or similar)
-6. Add the following roles:
-   - **Firebase Admin**
-   - **Cloud Functions Admin**
-   - **Artifact Registry Administrator**
-   - **Cloud Scheduler Admin**
+3. Go to **Project Settings** (gear icon)
+4. Scroll down to **Your apps** section
+5. Click on your web app or create one if it doesn't exist
+6. Copy the configuration values
 
-### Step 2: Generate Service Account Key
-
-1. Click on the created service account
-2. Go to the **Keys** tab
-3. Click **Add Key** > **Create new key**
-4. Choose **JSON** format
-5. Download the JSON file
-
-### Step 3: Add to GitHub Secrets
+### Step 2: Add Secrets to GitHub
 
 1. Go to your GitHub repository
 2. Navigate to **Settings** > **Secrets and variables** > **Actions**
-3. Click **New repository secret**
-4. Name: `FIREBASE_SERVICE_ACCOUNT_KEY`
-5. Value: Copy the entire contents of the downloaded JSON file
+3. Click **New repository secret** for each of the following:
 
-### Step 4: Verify Project ID Secret
+   - **Name**: `VITE_FIREBASE_API_KEY`
+     **Value**: Your Firebase API key
+   
+   - **Name**: `VITE_FIREBASE_AUTH_DOMAIN`
+     **Value**: Your Firebase auth domain (e.g., `your-project.firebaseapp.com`)
+   
+   - **Name**: `VITE_FIREBASE_PROJECT_ID`
+     **Value**: Your Firebase project ID
+   
+   - **Name**: `VITE_FIREBASE_STORAGE_BUCKET`
+     **Value**: Your Firebase storage bucket
+   
+   - **Name**: `VITE_FIREBASE_MESSAGING_SENDER_ID`
+     **Value**: Your Firebase messaging sender ID
+   
+   - **Name**: `VITE_FIREBASE_APP_ID`
+     **Value**: Your Firebase app ID
+   
+   - **Name**: `VITE_FIREBASE_VAPID_KEY`
+     **Value**: Your Firebase VAPID key (for push notifications)
 
-The workflow uses `VITE_FIREBASE_PROJECT_ID` for both frontend and backend deployment, so no additional project ID secret is needed. Just ensure your `VITE_FIREBASE_PROJECT_ID` secret is set correctly.
+### Step 3: Enable GitHub Pages
+
+1. Go to your GitHub repository
+2. Navigate to **Settings** > **Pages**
+3. Under **Source**, select **GitHub Actions**
+4. The deployment will happen automatically when you push to the main branch
 
 ## Benefits of This Setup
 
-✅ **No deprecated warnings** - Uses modern service account authentication  
-✅ **Secure** - No tokens in deployment logs  
-✅ **Automatic cleanup** - Sets up container image cleanup policy  
-✅ **Proper permissions** - Service account has only necessary permissions  
+✅ **Modern GitHub Pages deployment** - Uses official GitHub Actions for Pages  
+✅ **Secure** - Firebase secrets are only used during build, not stored in deployment  
+✅ **Automatic deployment** - Deploys on every push to main branch  
+✅ **No external dependencies** - Uses GitHub's native Pages infrastructure  
 
 ## Troubleshooting
 
 ### "Input required and not supplied: firebaseServiceAccount" error
-- **Most Common Cause**: The `FIREBASE_SERVICE_ACCOUNT_KEY` secret is missing or incorrectly named
-- **Solution**: Verify the secret exists in GitHub repository settings with the exact name `FIREBASE_SERVICE_ACCOUNT_KEY`
-- **Dependabot Issue**: If triggered by Dependabot, the workflow will now skip deployment automatically
-- **Check Secret Content**: Ensure the secret contains the complete JSON service account key
+- **Root Cause**: This error occurs when using Firebase deployment actions instead of GitHub Pages
+- **Solution**: The workflow has been updated to use GitHub Pages deployment instead of Firebase Hosting
+- **Note**: This project uses GitHub Pages, not Firebase Hosting
 
-### "Failed to authenticate" error
-- Ensure the service account JSON is properly formatted
-- Verify the service account has the required roles
-- Check that `VITE_FIREBASE_PROJECT_ID` secret matches your actual project ID
+### Build fails with missing environment variables
+- Ensure all required Firebase secrets are set in GitHub repository settings
+- Check that secret names match exactly (case-sensitive)
+- Verify the Firebase project configuration is correct
 
-### "Cleanup policy setup failed" error
-- This is non-critical and won't prevent deployment
-- The workflow will continue even if cleanup policy setup fails
-- You can manually set it up later using the Firebase CLI
+### GitHub Pages deployment fails
+- Check that GitHub Pages is enabled in repository settings
+- Ensure the source is set to "GitHub Actions"
+- Verify the workflow has the correct permissions (pages: write, id-token: write)
 
-### Functions deployment fails
-- Check that the service account has **Cloud Functions Admin** role
-- Verify the project ID is correct
-- Ensure the functions build successfully locally
-- Make sure Firebase CLI is installed (now handled automatically in the workflow)
-
-## Local Development
-
-For local development, you can still use `firebase login`:
+### Local development
+For local development, create a `.env.local` file with your Firebase configuration:
 
 ```bash
-firebase login
-firebase use your-project-id
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_VAPID_KEY=your_vapid_key
 ```
 
-The service account setup is only required for CI/CD deployments.
+Then run:
+```bash
+npm run dev
+```
