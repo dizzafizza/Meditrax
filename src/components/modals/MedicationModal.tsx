@@ -57,6 +57,8 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
   const [showSuggestions, setShowSuggestions] = React.useState(false);
   const [selectedMedicationData, setSelectedMedicationData] = React.useState<any>(null);
   const [taperingPlan, setTaperingPlan] = React.useState<any>(null);
+  const [isSelectingSuggestion, setIsSelectingSuggestion] = React.useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = React.useState(-1);
 
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormData>({
     defaultValues: {
@@ -203,6 +205,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
   };
 
   const handleMedicationSelect = (suggestionName: string) => {
+    setIsSelectingSuggestion(true);
     const medicationData = getMedicationByName(suggestionName);
     if (medicationData) {
       setValue('name', medicationData.name);
@@ -229,6 +232,7 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
 
       setSelectedMedicationData(medicationData);
       setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
 
       // Generate tapering plan if needed
       if (medicationData.taperingRequired) {
@@ -240,6 +244,50 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
       }
     }
   };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSuggestions || medicationSuggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => 
+          prev < medicationSuggestions.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => 
+          prev > 0 ? prev - 1 : medicationSuggestions.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < medicationSuggestions.length) {
+          handleMedicationSelect(medicationSuggestions[selectedSuggestionIndex].name);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+        break;
+    }
+  };
+
+  // Reset selection state after a short delay
+  React.useEffect(() => {
+    if (isSelectingSuggestion) {
+      const timer = setTimeout(() => {
+        setIsSelectingSuggestion(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isSelectingSuggestion]);
+
+  // Reset selected suggestion index when suggestions change
+  React.useEffect(() => {
+    setSelectedSuggestionIndex(-1);
+  }, [medicationSuggestions]);
 
   // Watch for medication name changes to trigger search
   React.useEffect(() => {
@@ -454,7 +502,12 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
                           className="input mt-1 pl-10"
                           placeholder="Search medications, supplements, vitamins..."
                           onFocus={() => medicationName && medicationName.length >= 2 && setShowSuggestions(true)}
-                          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                          onBlur={() => {
+                            if (!isSelectingSuggestion) {
+                              setTimeout(() => setShowSuggestions(false), 200);
+                            }
+                          }}
+                          onKeyDown={handleKeyDown}
                         />
                       </div>
                       
@@ -465,8 +518,15 @@ export function MedicationModal({ isOpen, onClose, medication, preSelectedMedica
                             <button
                               key={`${suggestion.name}-${index}`}
                               type="button"
-                              onClick={() => handleMedicationSelect(suggestion.name)}
-                              className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleMedicationSelect(suggestion.name);
+                              }}
+                              className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 ${
+                                index === selectedSuggestionIndex 
+                                  ? 'bg-blue-50 border-blue-200' 
+                                  : 'hover:bg-gray-50'
+                              }`}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">

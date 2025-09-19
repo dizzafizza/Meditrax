@@ -5,7 +5,7 @@
  * Solves the iOS PWA limitation where service workers don't run when app is closed
  */
 
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin

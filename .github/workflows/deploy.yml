@@ -1,28 +1,17 @@
-name: Deploy to GitHub Pages
+name: Deploy to Firebase
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    environment: github-pages
     
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Setup Node.js
@@ -32,114 +21,43 @@ jobs:
         cache: 'npm'
         
     - name: Install dependencies
-      run: npm ci
-      
-    - name: Create .env file with Firebase configuration
       run: |
-        echo "🔧 Creating .env file with Firebase configuration..."
-        echo "🔍 Debug - checking if secrets are available:"
-        echo "API_KEY length: ${#VITE_FIREBASE_API_KEY}"
-        echo "PROJECT_ID length: ${#VITE_FIREBASE_PROJECT_ID}"
-        echo "VAPID_KEY length: ${#VITE_FIREBASE_VAPID_KEY}"
+        npm ci
+        cd functions && npm ci
         
-        echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" > .env
-        echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
-        echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
-        echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
-        echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
-        echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
-        echo "VITE_FIREBASE_MEASUREMENT_ID=${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}" >> .env
-        echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
-        
-        echo "📋 .env file contents:"
-        cat .env | sed 's/=.*$/=<hidden>/'
-        echo "✅ .env file created successfully"
+    - name: Build frontend
+      run: npm run build
       env:
         VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+        VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
         VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+        VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
+        VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
         
-    - name: Validate Firebase configuration
-      run: |
-        echo "🔍 Checking Firebase configuration..."
-        echo "🔍 Loading .env file for validation..."
-        set -a && source .env && set +a
-        npm run check-firebase
+    - name: Build Firebase Functions
+      run: cd functions && npm run build
       
-    - name: Build application
-      run: |
-        echo "🏗️ Building application with Firebase configuration..."
-        npm run build
-        echo "📦 Build completed successfully"
-    
-    - name: Install Firebase CLI
-      run: |
-        npm install -g firebase-tools
-        echo "🔥 Firebase CLI installed"
-    
-    - name: Build and Deploy Cloud Functions  
-      run: |
-        echo "☁️ Building and deploying Cloud Functions..."
-        
-        # Check if Firebase CLI token is available
-        if [ -z "${{ secrets.FIREBASE_TOKEN }}" ]; then
-          echo "⚠️ FIREBASE_TOKEN not available - skipping backend deployment"
-          echo "📋 To enable backend notifications, add FIREBASE_TOKEN to GitHub Secrets:"
-          echo "   1. Run: npm install -g firebase-tools && firebase login:ci"
-          echo "   2. Add the token to GitHub Secrets as FIREBASE_TOKEN"
-          echo "📱 App will work with client-side notifications only"
-          exit 0
-        fi
-        
-        # Deploy Cloud Functions using existing Firebase project ID
-        cd functions
-        npm ci
-        npm run build
-        cd ..
-        
-        echo "🚀 Deploying to Firebase project: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}"
-        firebase deploy --only functions --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}"
-        echo "✅ Cloud Functions deployed successfully"
-      env:
-        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-        
-    - name: Deploy Firestore rules and indexes
-      run: |
-        # Only deploy Firestore if Firebase token is available  
-        if [ -z "${{ secrets.FIREBASE_TOKEN }}" ]; then
-          echo "⚠️ Skipping Firestore deployment - no FIREBASE_TOKEN"
-          exit 0
-        fi
-        
-        echo "🗂️ Deploying Firestore rules and indexes..."
-        firebase deploy --only firestore --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}"
-        echo "✅ Firestore rules and indexes deployed"
-      env:
-        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-        
-    - name: Prepare deployment
-      run: |
-        # Copy 404.html for GitHub Pages SPA routing
-        cp public/404.html dist/404.html
-        echo "🚀 Deployment files prepared"
-        
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
+    - name: Deploy to Firebase
+      uses: FirebaseExtended/action-hosting-deploy@v0
       with:
-        path: './dist'
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-      
-    steps:
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+        repoToken: '${{ secrets.GITHUB_TOKEN }}'
+        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}'
+        channelId: live
+        projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+        
+    - name: Deploy Firebase Functions
+      run: |
+        cd functions
+        firebase deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }}
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        
+    - name: Setup cleanup policy
+      run: |
+        firebase functions:artifacts:setpolicy --location=us-central1 --days=30 --force --project ${{ secrets.FIREBASE_PROJECT_ID }}
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      continue-on-error: true
