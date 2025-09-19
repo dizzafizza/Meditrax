@@ -8,6 +8,8 @@ on:
 
 jobs:
   deploy:
+    # Skip deployment for Dependabot PRs as they don't have access to secrets
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     
     steps:
@@ -40,24 +42,27 @@ jobs:
     - name: Build Firebase Functions
       run: cd functions && npm run build
       
-    - name: Deploy to Firebase
+    - name: Deploy to Firebase Hosting
       uses: FirebaseExtended/action-hosting-deploy@v0
       with:
         repoToken: '${{ secrets.GITHUB_TOKEN }}'
         firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}'
         channelId: live
-        projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+        projectId: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        
+    - name: Setup Firebase CLI
+      run: npm install -g firebase-tools
         
     - name: Deploy Firebase Functions
       run: |
         cd functions
-        firebase deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }}
+        firebase deploy --only functions --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
         
     - name: Setup cleanup policy
       run: |
-        firebase functions:artifacts:setpolicy --location=us-central1 --days=30 --force --project ${{ secrets.FIREBASE_PROJECT_ID }}
+        firebase functions:artifacts:setpolicy --location=us-central1 --days=30 --force --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
       continue-on-error: true

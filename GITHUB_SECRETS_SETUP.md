@@ -50,10 +50,9 @@ These secrets are used to build the frontend with proper Firebase configuration:
 4. Name: `FIREBASE_SERVICE_ACCOUNT_KEY`
 5. Value: Copy the entire contents of the downloaded JSON file
 
-### Step 4: Add Firebase Project ID
+### Step 4: Verify Project ID Secret
 
-1. Create another secret named `FIREBASE_PROJECT_ID`
-2. Value: Your Firebase project ID (same as `VITE_FIREBASE_PROJECT_ID`)
+The workflow uses `VITE_FIREBASE_PROJECT_ID` for both frontend and backend deployment, so no additional project ID secret is needed. Just ensure your `VITE_FIREBASE_PROJECT_ID` secret is set correctly.
 
 ## Benefits of This Setup
 
@@ -64,10 +63,16 @@ These secrets are used to build the frontend with proper Firebase configuration:
 
 ## Troubleshooting
 
+### "Input required and not supplied: firebaseServiceAccount" error
+- **Most Common Cause**: The `FIREBASE_SERVICE_ACCOUNT_KEY` secret is missing or incorrectly named
+- **Solution**: Verify the secret exists in GitHub repository settings with the exact name `FIREBASE_SERVICE_ACCOUNT_KEY`
+- **Dependabot Issue**: If triggered by Dependabot, the workflow will now skip deployment automatically
+- **Check Secret Content**: Ensure the secret contains the complete JSON service account key
+
 ### "Failed to authenticate" error
 - Ensure the service account JSON is properly formatted
 - Verify the service account has the required roles
-- Check that `FIREBASE_PROJECT_ID` secret matches your actual project ID
+- Check that `VITE_FIREBASE_PROJECT_ID` secret matches your actual project ID
 
 ### "Cleanup policy setup failed" error
 - This is non-critical and won't prevent deployment
@@ -78,6 +83,7 @@ These secrets are used to build the frontend with proper Firebase configuration:
 - Check that the service account has **Cloud Functions Admin** role
 - Verify the project ID is correct
 - Ensure the functions build successfully locally
+- Make sure Firebase CLI is installed (now handled automatically in the workflow)
 
 ## Local Development
 

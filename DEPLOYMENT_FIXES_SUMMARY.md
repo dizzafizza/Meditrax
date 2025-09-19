@@ -31,6 +31,21 @@ import * as functions from 'firebase-functions/v1';
 **Solution**: Added automatic cleanup policy setup in GitHub Actions workflow  
 **Implementation**: Uses `firebase functions:artifacts:setpolicy` with 30-day retention
 
+### ✅ 5. Firebase Service Account Input Error (NEW)
+**Problem**: `Input required and not supplied: firebaseServiceAccount` error in GitHub Actions  
+**Root Causes**:
+- Missing or incorrectly named `FIREBASE_SERVICE_ACCOUNT_KEY` secret
+- Dependabot PRs triggering deployment without secret access
+- Missing Firebase CLI installation for functions deployment
+- Inconsistent project ID references
+
+**Solutions Applied**:
+- Added Dependabot check: `if: github.actor != 'dependabot[bot]'`
+- Added Firebase CLI installation step
+- Standardized project ID references to use `VITE_FIREBASE_PROJECT_ID`
+- Updated documentation with specific troubleshooting for this error
+- Clarified secret naming and setup requirements
+
 ## New GitHub Actions Workflow
 
 The new workflow (`.github/workflows/deploy.yml`) includes:
