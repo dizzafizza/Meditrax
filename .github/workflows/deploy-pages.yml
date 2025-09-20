@@ -64,6 +64,10 @@ jobs:
           VITE_ENABLE_SW_FIREBASE: ${{ vars.VITE_ENABLE_SW_FIREBASE }}
           VITE_ENABLE_BACKEND_AUTH: ${{ vars.VITE_ENABLE_BACKEND_AUTH }}
 
+      - name: Include CNAME (custom domain)
+        run: |
+          if [ -f CNAME ]; then cp CNAME dist/CNAME; fi
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
