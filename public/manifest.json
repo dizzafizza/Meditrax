@@ -28,12 +28,7 @@
     }
   ],
   "icons": [
-    {
-      "src": "/pill-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
+    
     {
       "src": "/icons/icon-48x48.png",
       "sizes": "48x48",

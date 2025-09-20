@@ -25,13 +25,13 @@ self.addEventListener('push', (event) => {
   let notificationData = {
     title: 'Meditrax Reminder',
     body: 'Time to take your medication!',
-    icon: '/pill-icon.svg',
-    badge: '/pill-icon.svg',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
     data: {},
     requireInteraction: true,
     actions: [
-      { action: 'take', title: '✅ Mark as Taken', icon: '/pill-icon.svg' },
-      { action: 'snooze', title: '⏰ Snooze 15min', icon: '/pill-icon.svg' }
+      { action: 'take', title: '✅ Mark as Taken', icon: '/icons/icon-48x48.png' },
+      { action: 'snooze', title: '⏰ Snooze 15min', icon: '/icons/icon-48x48.png' }
     ],
     tag: 'medication-reminder',
     renotify: true,
@@ -94,8 +94,8 @@ self.addEventListener('push', (event) => {
         try {
           await self.registration.showNotification('MedTrack Notification Error', {
             body: 'A medication notification could not be displayed properly. Please open the app.',
-            icon: '/pill-icon.svg',
-            badge: '/pill-icon.svg',
+            icon: '/icons/icon-192x192.png',
+            badge: '/icons/icon-192x192.png',
             requireInteraction: true,
             tag: 'error-notification',
             timestamp: Date.now()
@@ -369,8 +369,8 @@ async function showSnoozeNotification(data) {
   try {
     await self.registration.showNotification(`Reminder: ${data.medicationName}`, {
       body: `Snoozed reminder - Time to take your ${data.dosage}${data.unit} dose`,
-      icon: '/pill-icon.svg',
-      badge: '/pill-icon.svg',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       data: data,
       requireInteraction: true,
       tag: `medication-${data.medicationId}`,
@@ -551,8 +551,8 @@ async function showTestNotification() {
       requireInteraction: true,
       tag: 'test-notification',
       actions: [
-        { action: 'confirm', title: '✅ Got it!', icon: '/pill-icon.svg' },
-        { action: 'close', title: '❌ Close', icon: '/pill-icon.svg' }
+        { action: 'confirm', title: '✅ Got it!', icon: '/icons/icon-48x48.png' },
+        { action: 'close', title: '❌ Close', icon: '/icons/icon-48x48.png' }
       ],
       data: {
         type: 'test',
@@ -576,15 +576,15 @@ async function showImmediateNotification(payload) {
     const title = payload.title || 'MedTrack Reminder';
     const options = {
       body: payload.body || 'Time for your medication',
-      icon: payload.icon || '/pill-icon.svg',
-      badge: payload.badge || '/pill-icon.svg',
+      icon: payload.icon || '/icons/icon-192x192.png',
+      badge: payload.badge || '/icons/icon-192x192.png',
       data: payload.data || {},
       tag: payload.tag || 'medtrack-immediate',
       requireInteraction: payload.requireInteraction !== false,
       actions: payload.actions || [
-        { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
-        { action: 'snooze', title: '⏰ Snooze', icon: '/pill-icon.svg' },
-        { action: 'skip', title: '⏸️ Skip', icon: '/pill-icon.svg' }
+        { action: 'take', title: '✅ Taken', icon: '/icons/icon-48x48.png' },
+        { action: 'snooze', title: '⏰ Snooze', icon: '/icons/icon-48x48.png' },
+        { action: 'skip', title: '⏸️ Skip', icon: '/icons/icon-48x48.png' }
       ],
       vibrate: [200, 100, 200],
       silent: false,
@@ -634,8 +634,8 @@ async function checkScheduledNotifications() {
               notification.title || '💊 Meditrax Reminder',
               {
                 body: notification.body || 'Time to take your medication!',
-                icon: notification.icon || '/pill-icon.svg',
-                badge: notification.badge || '/pill-icon.svg',
+                icon: notification.icon || '/icons/icon-192x192.png',
+                badge: notification.badge || '/icons/icon-192x192.png',
                 data: notification.data || {},
                 requireInteraction: notification.requireInteraction !== false,
                 tag: notification.tag || `medication-reminder-${Date.now()}`,
@@ -644,8 +644,8 @@ async function checkScheduledNotifications() {
                 silent: false,
                 vibrate: [200, 100, 200],
                 actions: notification.actions || [
-                  { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
-                  { action: 'snooze', title: '⏰ Snooze 15min', icon: '/pill-icon.svg' }
+                  { action: 'take', title: '✅ Taken', icon: '/icons/icon-48x48.png' },
+                  { action: 'snooze', title: '⏰ Snooze 15min', icon: '/icons/icon-48x48.png' }
                 ]
               }
             );

@@ -105,6 +105,23 @@ function App() {
         
         // Still run standard missed notification check
         notificationService.checkMissedNotifications();
+
+        // Ensure backend is initialized after permissions/env become available, then sync
+        try {
+          await backendSyncService.initialize();
+          if (backendSyncService.isBackendAvailable()) {
+            const state = (useMedicationStore as any).getState ? (useMedicationStore as any).getState() : null;
+            const reminders = state?.reminders || [];
+            const medications = state?.medications || [];
+            const userProfile = state?.userProfile || null;
+            console.log('📤 Syncing existing data to backend...');
+            await backendSyncService.syncUserDataToBackend(reminders, medications, userProfile);
+            // Trigger backend scheduling
+            await backendSyncService.scheduleNotifications();
+          }
+        } catch (e) {
+          // Non-fatal
+        }
         
       } catch (error) {
         console.error('❌ Failed to run iOS PWA diagnostic:', error);
@@ -120,6 +137,17 @@ function App() {
     const handleFocus = () => {
       console.log('Window gained focus, checking for missed notifications');
       notificationService.checkMissedNotifications();
+      // Re-attempt backend init and sync on focus (permissions may have changed)
+      backendSyncService.initialize().then(async () => {
+        if (backendSyncService.isBackendAvailable()) {
+          const state = (useMedicationStore as any).getState ? (useMedicationStore as any).getState() : null;
+          const reminders = state?.reminders || [];
+          const medications = state?.medications || [];
+          const userProfile = state?.userProfile || null;
+          await backendSyncService.syncUserDataToBackend(reminders, medications, userProfile);
+          await backendSyncService.scheduleNotifications();
+        }
+      });
     };
     
     window.addEventListener('focus', handleFocus);

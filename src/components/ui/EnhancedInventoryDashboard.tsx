@@ -13,7 +13,7 @@ import { PersonalRefillService } from '@/services/smartRefillService';
 import { formatDate } from '@/utils/helpers';
 import { InventoryConfigModal } from '@/components/modals/InventoryConfigModal';
 import { PharmacyInfo, PersonalMedicationTracking } from '@/types/enhanced-inventory';
-import { calculateDailyUsageRate, isInventoryLow, getInventoryStatus, formatInventoryDisplay } from '@/utils/inventoryHelpers';
+import { calculateDailyUsageRate, isInventoryLow, getInventoryStatus, formatInventoryDisplay, getCurrentInventoryCount } from '@/utils/inventoryHelpers';
 
 interface InventoryInsight {
   type: 'info' | 'warning' | 'success' | 'error';
@@ -374,10 +374,10 @@ export function PersonalMedicationDashboard() {
         </div>
 
         <div className="p-6">
-          {medications.filter(med => med.isActive && (med.pillsRemaining || 0) > 0).length > 0 ? (
+          {medications.filter(med => med.isActive && getCurrentInventoryCount(med) > 0).length > 0 ? (
             <div className="space-y-4">
               {medications
-                .filter(med => med.isActive && (med.pillsRemaining || 0) > 0)
+                .filter(med => med.isActive && getCurrentInventoryCount(med) > 0)
                 .map((medication) => {
                   const status = getInventoryStatus(medication, logs);
                   const inventoryDisplay = formatInventoryDisplay(medication);

@@ -226,15 +226,15 @@ class FirebaseMessagingService {
     return {
       title: notification?.title || 'MedTrack Reminder',
       body: notification?.body || 'Time for your medication',
-      icon: notification?.icon || '/pill-icon.svg',
-      badge: '/pill-icon.svg',
+      icon: notification?.icon || '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       data: payload.data || {},
       tag: payload.data?.medicationId ? `medication_${payload.data.medicationId}` : 'medtrack-notification',
       requireInteraction: true,
       actions: [
-        { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
-        { action: 'snooze', title: '⏰ Snooze 15min', icon: '/pill-icon.svg' },
-        { action: 'skip', title: '⏸️ Skip', icon: '/pill-icon.svg' }
+        { action: 'take', title: '✅ Taken', icon: '/icons/icon-48x48.png' },
+        { action: 'snooze', title: '⏰ Snooze 15min', icon: '/icons/icon-48x48.png' },
+        { action: 'skip', title: '⏸️ Skip', icon: '/icons/icon-48x48.png' }
       ]
     };
   }

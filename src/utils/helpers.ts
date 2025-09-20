@@ -453,8 +453,8 @@ export const notifications = {
     }
 
     return new Notification(title, {
-      icon: '/pill-icon.svg',
-      badge: '/pill-icon.svg',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       ...options,
     });
   },

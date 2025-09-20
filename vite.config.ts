@@ -109,7 +109,15 @@ export default defineConfig({
         clientsClaim: true,
         cleanupOutdatedCaches: true,
       },
-      includeAssets: ['pill-icon.svg'],
+      includeAssets: [
+        'icons/favicon-16x16.png',
+        'icons/favicon-32x32.png',
+        'icons/icon-180x180.png',
+        'icons/icon-192x192.png',
+        'icons/icon-256x256.png',
+        'icons/icon-384x384.png',
+        'icons/icon-512x512.png'
+      ],
       manifest: {
         name: 'Meditrax - Medication Tracker',
         short_name: 'Meditrax',
@@ -120,11 +128,6 @@ export default defineConfig({
         scope: '/',
         start_url: '/',
         icons: [
-          {
-            src: 'pill-icon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml'
-          },
           {
             src: 'icons/icon-192x192.png',
             sizes: '192x192',

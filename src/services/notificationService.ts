@@ -52,6 +52,7 @@ class NotificationService {
   private readonly BADGE_COUNT_KEY = 'meditrax_badge_count';
   private readonly FCM_TOKEN_KEY = 'meditrax_fcm_token';
   private readonly FCM_TOKEN_REFRESH_KEY = 'meditrax_fcm_token_refresh';
+  private readonly WEBPUSH_REFRESH_KEY = 'meditrax_webpush_refresh';
   private readonly MIGRATION_FLAG_KEY = 'meditrax_ios_migration_completed';
   
   private pushNotificationsAvailable = false;
@@ -186,6 +187,22 @@ class NotificationService {
             console.log('📱 iOS PWA - Firebase FCM configured for reliable delivery');
             // iOS specific: ensure service worker is properly configured
             await this.configureIOSFirebaseNotifications();
+
+            // CRITICAL FOR iOS PWA: Ensure a standard Web Push (VAPID) subscription as well
+            // Safari iOS uses Web Push, not FCM, for background delivery
+            if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY) && this.isIOSWebPushSupported()) {
+              try {
+                const sub = await this.subscribeToPushNotifications();
+                if (sub) {
+                  console.log('✅ iOS PWA Web Push subscription ensured');
+                  this.setupWebPushRefresh();
+                }
+              } catch (e) {
+                console.warn('⚠️ Failed to ensure iOS Web Push subscription:', (e as Error)?.message || e);
+              }
+            } else {
+              console.warn('⚠️ VAPID not available; cannot ensure iOS Web Push subscription');
+            }
           }
           return;
         }
@@ -501,8 +518,8 @@ class NotificationService {
       // Enhanced notification options for iOS PWA compatibility
       const notificationOptions = {
         body: payload.body,
-        icon: payload.icon || '/pill-icon.svg',
-        badge: payload.badge || '/pill-icon.svg',
+        icon: payload.icon || '/icons/icon-192x192.png',
+        badge: payload.badge || '/icons/icon-192x192.png',
         data: payload.data,
         tag: payload.tag,
         requireInteraction: payload.requireInteraction !== false,
@@ -602,8 +619,8 @@ class NotificationService {
               scheduledTime: scheduledTime,
               title: scheduledNotification.payload.title,
               body: scheduledNotification.payload.body,
-              icon: scheduledNotification.payload.icon || '/pill-icon.svg',
-              badge: scheduledNotification.payload.badge || '/pill-icon.svg',
+              icon: scheduledNotification.payload.icon || '/icons/icon-192x192.png',
+              badge: scheduledNotification.payload.badge || '/icons/icon-192x192.png',
               data: scheduledNotification.payload.data,
               tag: scheduledNotification.payload.tag,
               requireInteraction: scheduledNotification.payload.requireInteraction !== false,
@@ -633,8 +650,8 @@ class NotificationService {
             scheduledTime: scheduledTime,
             title: scheduledNotification.payload.title,
             body: scheduledNotification.payload.body,
-            icon: scheduledNotification.payload.icon || '/pill-icon.svg',
-            badge: scheduledNotification.payload.badge || '/pill-icon.svg',
+            icon: scheduledNotification.payload.icon || '/icons/icon-192x192.png',
+            badge: scheduledNotification.payload.badge || '/icons/icon-192x192.png',
             data: scheduledNotification.payload.data,
             tag: scheduledNotification.payload.tag,
             requireInteraction: scheduledNotification.payload.requireInteraction !== false,
@@ -839,8 +856,8 @@ class NotificationService {
     const payload: NotificationPayload = {
       title: '🧪 Test Notification',
       body: 'Meditrax notifications are working correctly! ✅',
-      icon: '/pill-icon.svg',
-      badge: '/pill-icon.svg',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       requireInteraction: false,
       tag: 'test-notification',
       data: {
@@ -858,13 +875,13 @@ class NotificationService {
     const payload: NotificationPayload = {
       title: '🧪 Scheduled Test Notification',
       body: `This was scheduled ${delayMinutes} minute(s) ago! Closed-app delivery works! 🚀`,
-      icon: '/pill-icon.svg',
-      badge: '/pill-icon.svg',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       requireInteraction: true,
       tag: 'scheduled-test-notification',
       actions: [
-        { action: 'confirm', title: '✅ Got it!', icon: '/pill-icon.svg' },
-        { action: 'close', title: '❌ Close', icon: '/pill-icon.svg' }
+        { action: 'confirm', title: '✅ Got it!', icon: '/icons/icon-48x48.png' },
+        { action: 'close', title: '❌ Close', icon: '/icons/icon-48x48.png' }
       ],
       data: {
         type: 'scheduled-test',
@@ -1054,8 +1071,8 @@ class NotificationService {
         await this.sendImmediateNotificationWithBadge({
           title: summaryTitle,
           body: summaryBody,
-          icon: '/pill-icon.svg',
-          badge: '/pill-icon.svg',
+          icon: '/icons/icon-192x192.png',
+          badge: '/icons/icon-192x192.png',
           tag: 'missed-medications-summary',
           requireInteraction: true,
           data: {
@@ -1229,6 +1246,45 @@ class NotificationService {
     }
   }
 
+  // Weekly Web Push subscription health check (iOS PWA)
+  private setupWebPushRefresh(): void {
+    try {
+      const now = Date.now();
+      const last = localStorage.getItem(this.WEBPUSH_REFRESH_KEY);
+      const sixDays = 6 * 24 * 60 * 60 * 1000;
+      if (!last || now - parseInt(last) > sixDays) {
+        // Touch the subscription to ensure it's still valid; do not re-subscribe if already present
+        this.ensureWebPushSubscription().finally(() => {
+          localStorage.setItem(this.WEBPUSH_REFRESH_KEY, Date.now().toString());
+        });
+      }
+      // Weekly cadence
+      setInterval(() => {
+        this.ensureWebPushSubscription().finally(() => {
+          localStorage.setItem(this.WEBPUSH_REFRESH_KEY, Date.now().toString());
+        });
+      }, 7 * 24 * 60 * 60 * 1000);
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  private async ensureWebPushSubscription(): Promise<void> {
+    try {
+      if (!this.serviceWorkerRegistration) return;
+      const existing = await this.serviceWorkerRegistration.pushManager.getSubscription();
+      if (existing) {
+        // Already subscribed
+        return;
+      }
+      if (this.VAPID_PUBLIC_KEY && this.isValidVapidKey(this.VAPID_PUBLIC_KEY)) {
+        await this.subscribeToPushNotifications();
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
   // Get notification system diagnostics
   async getNotificationDiagnostics(): Promise<{
     scheduledCount: number;
@@ -1322,7 +1378,7 @@ class NotificationService {
     const payload: NotificationPayload = {
       title: 'DEBUG: MedTrack Test',
       body: 'If you see this, notifications are working!',
-      icon: '/pill-icon.svg',
+      icon: '/icons/icon-192x192.png',
       requireInteraction: true
     };
     
@@ -1479,8 +1535,8 @@ class NotificationService {
       const summaryPayload = {
         title: `MedTrack: ${missedNotifications.length} Missed Doses Detected`,
         body: `You may have missed ${missedNotifications.length} medication reminder(s). Tap to review your schedule.`,
-        icon: '/pill-icon.svg',
-        badge: '/pill-icon.svg',
+        icon: '/icons/icon-192x192.png',
+        badge: '/icons/icon-192x192.png',
         tag: 'missed-dose-recovery',
         requireInteraction: true,
         actions: [
@@ -1756,8 +1812,8 @@ class NotificationService {
         const notification = {
           title: payload.notification?.title || 'MedTrack Reminder',
           body: payload.notification?.body || 'Time for your medication',
-          icon: '/pill-icon.svg',
-          badge: '/pill-icon.svg',
+          icon: '/icons/icon-192x192.png',
+          badge: '/icons/icon-192x192.png',
           requireInteraction: true,
           tag: `ios-fcm-${Date.now()}`,
           data: payload.data || {}
@@ -1908,9 +1964,9 @@ class NotificationService {
           icon: '/pill-icon.svg',
           badge: '/pill-icon.svg',
           actions: [
-            { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
-            { action: 'snooze', title: '⏰ Remind me in 5 min', icon: '/pill-icon.svg' },
-            { action: 'skip', title: '⏸️ Skip this dose', icon: '/pill-icon.svg' }
+            { action: 'take', title: '✅ Taken', icon: '/icons/icon-48x48.png' },
+            { action: 'snooze', title: '⏰ Remind me in 5 min', icon: '/icons/icon-48x48.png' },
+            { action: 'skip', title: '⏸️ Skip this dose', icon: '/icons/icon-48x48.png' }
           ],
           data: {
             medicationId: medication.id,

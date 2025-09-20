@@ -112,8 +112,9 @@ export const syncUserReminders = functions.https.onCall(async (data, context) =>
       });
     }
 
-    // Store user's FCM tokens
-    for (const token of fcmTokens) {
+    // Store user's FCM tokens (dedup by doc id = token)
+    const uniqueTokens = Array.from(new Set<string>(fcmTokens || []));
+    for (const token of uniqueTokens) {
       const tokenRef = db.collection('users').doc(userId).collection('fcmTokens').doc(token);
       batch.set(tokenRef, {
         token,
@@ -123,6 +124,45 @@ export const syncUserReminders = functions.https.onCall(async (data, context) =>
     }
 
     await batch.commit();
+
+    // Remove reminders that no longer exist client-side
+    try {
+      const existingRemindersSnap = await db.collection('users').doc(userId).collection('reminders').get();
+      const incomingIds = new Set((reminders || []).map((r: any) => r.id));
+      const toDelete: FirebaseFirestore.DocumentReference[] = [];
+      existingRemindersSnap.docs.forEach(doc => {
+        if (!incomingIds.has(doc.id)) toDelete.push(doc.ref);
+      });
+      if (toDelete.length) {
+        const delBatch = db.batch();
+        toDelete.forEach(ref => delBatch.delete(ref));
+        await delBatch.commit();
+        console.log(`🧹 Deleted ${toDelete.length} removed reminder(s) for user ${userId}`);
+      }
+    } catch (e) {
+      console.warn('Reminder prune failed (non-fatal):', (e as Error)?.message);
+    }
+
+    // Prune stale FCM tokens not present in the latest sync
+    try {
+      const existing = await db.collection('users').doc(userId).collection('fcmTokens').get();
+      const toRemove: FirebaseFirestore.DocumentReference[] = [];
+      const currentSet = new Set(uniqueTokens);
+      existing.docs.forEach(doc => {
+        const t = (doc.data() as any)?.token;
+        if (!currentSet.has(t)) {
+          toRemove.push(doc.ref);
+        }
+      });
+      if (toRemove.length) {
+        const pruneBatch = db.batch();
+        toRemove.forEach(ref => pruneBatch.delete(ref));
+        await pruneBatch.commit();
+        console.log(`🧹 Pruned ${toRemove.length} stale FCM token(s) for user ${userId}`);
+      }
+    } catch (pruneErr) {
+      console.warn('Token prune failed (non-fatal):', (pruneErr as Error)?.message);
+    }
 
     // Schedule notifications for active reminders
     await scheduleNotificationsForUser(userId);
@@ -474,7 +514,7 @@ async function scheduleNotificationsForUser(userId: string) {
       medications[doc.id] = doc.data();
     });
 
-    const fcmTokens = tokensSnapshot.docs.map((doc) => doc.data().token);
+      const fcmTokens = Array.from(new Set(tokensSnapshot.docs.map((doc) => (doc.data() as any).token))).filter(Boolean);
 
     if (fcmTokens.length === 0) {
       console.warn(`⚠️ No FCM tokens for user ${userId}`);
@@ -535,8 +575,8 @@ async function scheduleNotificationsForUser(userId: string) {
               payload: {
                 title: `💊 Time for ${medication.name}`,
                 body: reminder.customMessage || `Take your ${medication.dosage || ''} ${medication.unit || ''} dose of ${medication.name}`.trim(),
-                icon: '/pill-icon.svg',
-                badge: '/pill-icon.svg',
+                icon: '/icons/icon-192x192.png',
+                badge: '/icons/icon-192x192.png',
                 data: {
                   type: 'medication-reminder',
                   medicationId: reminder.medicationId,
@@ -619,6 +659,68 @@ export const cleanupOldNotifications = functions.pubsub
   });
 
 /**
+ * Cleanup old/stale FCM tokens (no update for 60 days)
+ */
+export const cleanupOldFcmTokens = functions.pubsub
+  .schedule('every 24 hours')
+  .onRun(async () => {
+    try {
+      console.log('🧹 Cleaning up stale FCM tokens');
+      const sixtyDaysAgo = admin.firestore.Timestamp.fromMillis(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+      const usersSnap = await db.collection('users').get();
+      let deleted = 0;
+      const batch = db.batch();
+
+      for (const userDoc of usersSnap.docs) {
+        const tokensSnap = await userDoc.ref.collection('fcmTokens').where('updatedAt', '<=', sixtyDaysAgo).get();
+        tokensSnap.docs.forEach(doc => batch.delete(doc.ref));
+        deleted += tokensSnap.docs.length;
+      }
+
+      if (deleted > 0) {
+        await batch.commit();
+      }
+      console.log(`🧹 Deleted ${deleted} stale FCM tokens`);
+      return { deleted };
+    } catch (error) {
+      console.error('❌ Failed to cleanup FCM tokens:', error);
+      return { deleted: 0 };
+    }
+  });
+
+/**
+ * Health check endpoint to validate backend configuration and readiness.
+ * Returns status of VAPID keys, Firestore access, and project info.
+ */
+export const health = functions.https.onRequest(async (req, res) => {
+  try {
+    // Check web push config presence
+    const vapidConfigured = !!(WEB_PUSH_VAPID_PUBLIC && WEB_PUSH_VAPID_PRIVATE);
+
+    // Simple Firestore check (read-only) – get a non-sensitive collection list
+    let firestoreOk = true;
+    try {
+      await admin.firestore().listCollections();
+    } catch (e) {
+      firestoreOk = false;
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.status(200).json({
+      ok: true,
+      projectId: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || admin.app().options.projectId || null,
+      region: 'us-central1',
+      vapidConfigured,
+      firestoreOk,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: (error as Error)?.message || 'unknown' });
+  }
+});
+
+/**
  * Manually send a test Web Push to the current user's subscriptions
  */
 export const sendTestWebPush = functions.https.onCall(async (data, context) => {
@@ -630,8 +732,8 @@ export const sendTestWebPush = functions.https.onCall(async (data, context) => {
     const result = await sendWebPushToUser(userId, {
       title: '🧪 MedTrack Test',
       body: 'If you see this, Web Push is working!',
-      icon: '/pill-icon.svg',
-      badge: '/pill-icon.svg',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       data: { type: 'test', timestamp: Date.now() },
     } as any);
     return { success: result.sent > 0, ...result };

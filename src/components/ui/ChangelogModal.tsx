@@ -20,6 +20,60 @@ interface ChangelogEntry {
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "1.2.1",
+    date: "2025-9-19",
+    changes: [
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "iOS PWA Push Reliability",
+        description: "Added Web Push (VAPID) subscription alongside FCM for Safari PWAs, weekly subscription health check, and strict user-visible notifications in the service worker."
+      },
+      {
+        type: 'new',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Service Worker Handlers",
+        description: "Implemented STORE_REMINDER_PATTERN, DEACTIVATE_REMINDER_PATTERN, CANCEL_REMINDER_NOTIFICATIONS, and APP_VISIBILITY_CHANGED to improve closed‑app delivery and reconciliation."
+      },
+      {
+        type: 'improved',
+        icon: <Shield className="h-4 w-4" />,
+        title: "Backend Scheduling & Health",
+        description: "Added backend health endpoint; deduplicate FCM tokens; prune tokens not present in latest sync; nightly cleanup of stale tokens; re‑schedule upcoming notifications server‑side."
+      },
+      {
+        type: 'fixed',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "FCM Token Spam",
+        description: "Frontend now prefers cached token and avoids reissuing on every open; backend deduplicates/sanitizes token lists before scheduling."
+      },
+      {
+        type: 'improved',
+        icon: <CheckCircle className="h-4 w-4" />,
+        title: "Import / Export Reliability",
+        description: "Hardened data import mapping and export consistency (medication upserts, pill inventory preservation, and safer date/number normalization)."
+      },
+      {
+        type: 'improved',
+        icon: <Star className="h-4 w-4" />,
+        title: "Inventory Page UI",
+        description: "Refined layout, mobile scaling, and dialog layering to match the shared modal pattern and fix cases where panels rendered behind headers."
+      },
+      {
+        type: 'improved',
+        icon: <Smartphone className="h-4 w-4" />,
+        title: "iOS Offline Reliability",
+        description: "Tweaked service worker caching and app‑load timing to reduce blank loads when launched fully offline from the Home Screen."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "PWA Build & SW Imports",
+        description: "Workbox is configured to import custom notification SW and Firebase messaging SW to ensure diagnostic pings and push handlers are always active."
+      }
+    ]
+  },
+  {
     version: "1.2.0",
     date: "2025-9-19",
     changes: [

@@ -451,8 +451,9 @@ export const useMedicationStore = create<MedicationStore>()(
           });
         }
 
-        // Update inventory - handle both weight-based and discrete units
+        // Update inventory
         if (!medication.useMultiplePills) {
+          // Single-inventory path: delegate to unit-aware handler (bridges mass↔discrete when possible)
           get().updateInventoryAfterDose(medicationId, dosage, medication.unit);
         }
 
@@ -477,12 +478,6 @@ export const useMedicationStore = create<MedicationStore>()(
             
             get().updatePillInventory(medicationId, inventoryUpdates);
           }
-        } else if (!medication.useMultiplePills && medication.pillsRemaining) {
-          // Handle legacy single pill inventory
-          const pillsTaken = dosage || parseFloat(medication.dosage) || 1;
-          get().updateMedication(medicationId, {
-            pillsRemaining: Math.max(0, medication.pillsRemaining - pillsTaken)
-          });
         }
       },
 
@@ -493,38 +488,77 @@ export const useMedicationStore = create<MedicationStore>()(
         if (!medication) return;
 
         const inventoryUnit = medication.inventoryUnit || medication.unit;
+        
+        // Treat mass units explicitly to avoid misclassifying volume units
+        const massUnits = new Set<string>(['ng','mcg','μg','mg','g','grams','kg','oz','ounces','lbs','g powder','mg powder','kg powder','oz powder','lbs powder']);
+        const isMass = (u: string) => massUnits.has(u);
 
-        // Handle weight-based units
-        if (isWeightBasedUnit(doseUnit) && isWeightBasedUnit(inventoryUnit)) {
+        // Case A: mass→mass
+        if (isMass(doseUnit) && isMass(inventoryUnit)) {
           if (medication.pillsRemaining !== undefined) {
-            // Convert dose to base unit (mg), then convert to inventory unit
             const doseInBaseMg = convertToBaseWeight(dosageTaken, doseUnit);
             const doseInInventoryUnit = convertFromBaseWeight(doseInBaseMg, inventoryUnit);
-            
-            const newRemaining = Math.max(0, medication.pillsRemaining - doseInInventoryUnit);
-            
-            get().updateMedication(medicationId, {
-              pillsRemaining: newRemaining
-            });
+            const newRemaining = Math.max(0, (Number(medication.pillsRemaining) || 0) - doseInInventoryUnit);
+            get().updateMedication(medicationId, { pillsRemaining: newRemaining });
           }
-        } 
-        // Handle discrete units (pills, capsules, etc.)
-        else if (!isWeightBasedUnit(doseUnit) && !isWeightBasedUnit(inventoryUnit)) {
+          return;
+        }
+
+        // Case B: discrete→discrete
+        if (!isMass(doseUnit) && !isMass(inventoryUnit)) {
           if (medication.pillsRemaining !== undefined) {
-            // For discrete units, subtract 1 unit per dose
-            get().updateMedication(medicationId, {
-              pillsRemaining: Math.max(0, medication.pillsRemaining - 1)
-            });
+            // Subtract units taken this dose (fallback to prescribed or 1)
+            const unitsTaken = Math.max(1, Number(dosageTaken) || parseFloat(medication.dosage) || 1);
+            const newRemaining = Math.max(0, (Number(medication.pillsRemaining) || 0) - unitsTaken);
+            get().updateMedication(medicationId, { pillsRemaining: newRemaining });
+          }
+          return;
+        }
+
+        // Case C: mass↔discrete bridge using pill configurations when available
+        const hasPillConfigs = Array.isArray(medication.pillConfigurations) && medication.pillConfigurations.length > 0;
+        if (hasPillConfigs && medication.pillsRemaining !== undefined) {
+          // Pick a representative pill configuration to infer per-unit strength
+          let chosenConfigId: string | undefined;
+          if (Array.isArray(medication.pillInventory) && medication.pillInventory.length > 0) {
+            chosenConfigId = medication.pillInventory[0].pillConfigurationId;
+          } else if (medication.pillConfigurations!.length === 1) {
+            chosenConfigId = medication.pillConfigurations![0].id;
+          } else {
+            // Fallback: choose the strongest available pill, minimizing unit count
+            chosenConfigId = [...medication.pillConfigurations!]
+              .sort((a, b) => b.strength - a.strength)[0].id;
+          }
+
+          const chosenConfig = medication.pillConfigurations!.find(c => c.id === chosenConfigId);
+          if (chosenConfig) {
+            const perUnitMg = convertToBaseWeight(chosenConfig.strength, chosenConfig.unit);
+
+            if (isMass(doseUnit) && !isMass(inventoryUnit)) {
+              const doseMg = convertToBaseWeight(dosageTaken, doseUnit);
+              const unitsToSubtract = perUnitMg > 0 ? (doseMg / perUnitMg) : 1;
+              const newRemaining = Math.max(0, (Number(medication.pillsRemaining) || 0) - unitsToSubtract);
+              get().updateMedication(medicationId, { pillsRemaining: newRemaining });
+              return;
+            }
+
+            if (!isMass(doseUnit) && isMass(inventoryUnit)) {
+              // Dose is "1 capsule" etc., inventory tracked in mass units
+              const doseUnits = Math.max(1, Number(dosageTaken) || 1);
+              const doseMg = perUnitMg * doseUnits;
+              const doseInInventoryUnit = convertFromBaseWeight(doseMg, inventoryUnit);
+              const newRemaining = Math.max(0, (Number(medication.pillsRemaining) || 0) - doseInInventoryUnit);
+              get().updateMedication(medicationId, { pillsRemaining: newRemaining });
+              return;
+            }
           }
         }
-        // Handle mixed units - log warning and fall back to discrete counting
-        else {
-          console.warn(`Unit mismatch: dose unit "${doseUnit}" and inventory unit "${inventoryUnit}" are not compatible. Falling back to discrete counting.`);
-          if (medication.pillsRemaining !== undefined) {
-            get().updateMedication(medicationId, {
-              pillsRemaining: Math.max(0, medication.pillsRemaining - 1)
-            });
-          }
+
+        // Final fallback when no bridge is possible
+        console.warn(`Unit mismatch: dose unit "${doseUnit}" and inventory unit "${inventoryUnit}" are not directly compatible. Falling back to subtracting one counted unit.`);
+        if (medication.pillsRemaining !== undefined) {
+          const newRemaining = Math.max(0, (Number(medication.pillsRemaining) || 0) - 1);
+          get().updateMedication(medicationId, { pillsRemaining: newRemaining });
         }
       },
 
@@ -915,15 +949,17 @@ export const useMedicationStore = create<MedicationStore>()(
         const state = get();
         const filteredData: any = {};
 
-        // Apply date range filtering if specified
-        if (options.dateRange) {
-          const { start, end } = options.dateRange;
-          filteredData.logs = state.logs.filter(log => {
-            const logDate = new Date(log.timestamp);
-            return logDate >= start && logDate <= end;
-          });
-        } else {
-          filteredData.logs = state.logs;
+        // Apply date range filtering if specified and when logs are included
+        if (options.includeLogs !== false) {
+          if (options.dateRange) {
+            const { start, end } = options.dateRange;
+            filteredData.logs = state.logs.filter(log => {
+              const logDate = new Date(log.timestamp);
+              return logDate >= start && logDate <= end;
+            });
+          } else {
+            filteredData.logs = state.logs;
+          }
         }
 
         // Include data based on options
@@ -976,46 +1012,130 @@ export const useMedicationStore = create<MedicationStore>()(
           // Backup current data before import
           get().backupData();
 
-          // Apply imported data
+          // Normalize data before applying
+          const source = { ...data };
+          if (source.profile && !source.userProfile) {
+            source.userProfile = source.profile;
+          }
+
+          const extraWarnings: string[] = [];
+
           set((state) => {
-            const newState = { ...state };
-            
-            if (data.medications) {
-              // Merge medications, avoiding duplicates by name
-              const existingNames = new Set(state.medications.map(med => med.name));
-              const newMedications = data.medications.filter((med: any) => !existingNames.has(med.name));
-              newState.medications = [...state.medications, ...newMedications.map((med: any) => ({
-                ...med,
-                id: generateId(),
-                createdAt: new Date(),
-                updatedAt: new Date()
-              }))];
+            const newState = { ...state } as any;
+
+            // Build maps of existing medications
+            const existingById = new Map<string, any>(state.medications.map(m => [m.id, m]));
+            const existingByName = new Map<string, any>(state.medications.map(m => [m.name, m]));
+
+            // Map of imported medication originalId -> finalId in state
+            const idMap: Record<string, string> = {};
+
+            // Upsert medications
+            let updatedMedications = [...state.medications];
+            (source.medications || []).forEach((rawMed: any) => {
+              const originalId: string | undefined = rawMed.id;
+              const normalized: any = { ...rawMed };
+
+              // Coerce/normalize fields
+              if (normalized.startDate) normalized.startDate = new Date(normalized.startDate);
+              if (normalized.endDate) normalized.endDate = new Date(normalized.endDate);
+              if (normalized.pillsRemaining !== undefined) {
+                normalized.pillsRemaining = typeof normalized.pillsRemaining === 'string' 
+                  ? parseFloat(normalized.pillsRemaining)
+                  : normalized.pillsRemaining;
+                if (!Number.isFinite(normalized.pillsRemaining)) normalized.pillsRemaining = 0;
+              }
+              if (Array.isArray(normalized.pillInventory)) {
+                normalized.pillInventory = normalized.pillInventory.map((pi: any) => ({
+                  ...pi,
+                  currentCount: typeof pi.currentCount === 'string' ? parseFloat(pi.currentCount) : (pi.currentCount || 0),
+                  expirationDate: pi.expirationDate ? new Date(pi.expirationDate) : undefined,
+                  lastUpdated: pi.lastUpdated ? new Date(pi.lastUpdated) : new Date(),
+                }));
+              }
+              if ((normalized.pillInventory && normalized.pillInventory.length > 0) && normalized.useMultiplePills === undefined) {
+                normalized.useMultiplePills = true;
+              }
+              if ((normalized.pillsRemaining === undefined || normalized.pillsRemaining === 0) && Array.isArray(normalized.pillInventory) && normalized.pillInventory.length > 0) {
+                normalized.pillsRemaining = normalized.pillInventory.reduce((sum: number, item: any) => sum + (Number(item.currentCount) || 0), 0);
+              }
+              if (!normalized.inventoryUnit && normalized.unit) {
+                normalized.inventoryUnit = normalized.unit;
+              }
+
+              // Determine if this medication already exists
+              const existing = (originalId && existingById.get(originalId)) || existingByName.get(normalized.name);
+              if (existing) {
+                const merged = {
+                  ...existing,
+                  ...normalized,
+                  id: existing.id,
+                  createdAt: existing.createdAt,
+                  updatedAt: new Date(),
+                };
+                // Replace existing entry
+                updatedMedications = updatedMedications.map(m => m.id === existing.id ? merged : m);
+                idMap[originalId || normalized.name] = existing.id;
+              } else {
+                const newId = generateId();
+                const created = {
+                  ...normalized,
+                  id: newId,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                };
+                updatedMedications.push(created);
+                if (originalId) idMap[originalId] = newId;
+              }
+            });
+
+            newState.medications = updatedMedications;
+
+            // Import logs with ID remapping
+            if (source.logs && Array.isArray(source.logs)) {
+              const remappedLogs = source.logs.map((log: any) => {
+                const originalMedId = log.medicationId;
+                const mappedId = idMap[originalMedId] || originalMedId;
+                if (!state.medications.find(m => m.id === mappedId) && !updatedMedications.find(m => m.id === mappedId)) {
+                  extraWarnings.push(`Log for unknown medicationId '${originalMedId}' was imported but may not be linked.`);
+                }
+                return {
+                  ...log,
+                  medicationId: mappedId,
+                  id: generateId(),
+                  timestamp: new Date(log.timestamp),
+                  createdAt: new Date(),
+                };
+              });
+              newState.logs = [...state.logs, ...remappedLogs];
             }
 
-            if (data.logs) {
-              newState.logs = [...state.logs, ...data.logs.map((log: any) => ({
-                ...log,
-                id: generateId(),
-                timestamp: new Date(log.timestamp),
-                createdAt: new Date()
-              }))];
+            // Import reminders with ID remapping
+            if (source.reminders && Array.isArray(source.reminders)) {
+              const remappedReminders = source.reminders.map((reminder: any) => {
+                const originalMedId = reminder.medicationId;
+                const mappedId = idMap[originalMedId] || originalMedId;
+                if (!updatedMedications.find(m => m.id === mappedId)) {
+                  extraWarnings.push(`Reminder for unknown medicationId '${originalMedId}' was imported but may not be linked.`);
+                }
+                return {
+                  ...reminder,
+                  medicationId: mappedId,
+                  id: generateId(),
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                };
+              });
+              newState.reminders = [...state.reminders, ...remappedReminders];
             }
 
-            if (data.reminders) {
-              newState.reminders = [...state.reminders, ...data.reminders.map((reminder: any) => ({
-                ...reminder,
-                id: generateId(),
-                createdAt: new Date(),
-                updatedAt: new Date()
-              }))];
-            }
-
-            if (data.userProfile && !state.userProfile) {
+            // Import user profile if absent
+            if (source.userProfile && !state.userProfile) {
               newState.userProfile = {
-                ...data.userProfile,
+                ...source.userProfile,
                 id: generateId(),
                 createdAt: new Date(),
-                updatedAt: new Date()
+                updatedAt: new Date(),
               };
             }
 
@@ -1025,7 +1145,7 @@ export const useMedicationStore = create<MedicationStore>()(
           return {
             success: true,
             errors: [],
-            warnings: validation.warnings
+            warnings: [...validation.warnings, ...extraWarnings]
           };
         } catch (error) {
           return {
@@ -1063,6 +1183,21 @@ export const useMedicationStore = create<MedicationStore>()(
               }
               if (!med.frequency || typeof med.frequency !== 'string') {
                 errors.push(`Medication ${index + 1}: frequency is required and must be a string`);
+              }
+
+              // Inventory validation
+              if (med.pillInventory) {
+                if (!Array.isArray(med.pillInventory)) {
+                  errors.push(`Medication ${index + 1}: pillInventory must be an array`);
+                } else {
+                  med.pillInventory.forEach((pi: any, piIndex: number) => {
+                    if (pi.currentCount === undefined) {
+                      warnings.push(`Medication ${index + 1}: pillInventory[${piIndex}].currentCount is missing; defaulting to 0`);
+                    } else if (isNaN(Number(pi.currentCount))) {
+                      errors.push(`Medication ${index + 1}: pillInventory[${piIndex}].currentCount must be a number`);
+                    }
+                  });
+                }
               }
             });
           }
@@ -1114,6 +1249,11 @@ export const useMedicationStore = create<MedicationStore>()(
         // Version compatibility warnings
         if (data.exportMetadata?.version && data.exportMetadata.version !== '2.0.0') {
           warnings.push(`Import data was exported with version ${data.exportMetadata.version}, some features may not be compatible`);
+        }
+
+        // Profile alias support
+        if (data.profile && !data.userProfile) {
+          warnings.push('Using legacy "profile" field; mapping to userProfile');
         }
 
         return {

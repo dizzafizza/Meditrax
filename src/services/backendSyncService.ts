@@ -37,7 +37,8 @@ class BackendSyncService {
   private readonly USER_ID_KEY = 'medtrack_backend_user_id';
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) return;
+    // Allow re-initialization if previously disabled or functions were not available
+    if (this.isInitialized && this.backendEnabled && this.functions) return;
 
     try {
       // Basic runtime gating: only enable backend sync when push preconditions are met
@@ -51,7 +52,7 @@ class BackendSyncService {
       if (!('Notification' in window) || Notification.permission !== 'granted') {
         console.warn('Notification permission not granted - backend sync disabled');
         this.backendEnabled = false;
-        this.isInitialized = true;
+        // Do NOT mark initialized so we can retry when permission becomes granted
         return;
       }
 
@@ -61,7 +62,7 @@ class BackendSyncService {
         // Create a fallback user id for consistency even without Firebase
         await this.authenticateUser();
         this.backendEnabled = false;
-        this.isInitialized = true;
+        // Leave isInitialized=false to allow retry later when envs become available
         return;
       }
 
@@ -324,26 +325,21 @@ class BackendSyncService {
    * Get current FCM tokens for push notifications
    */
   private async getCurrentFCMTokens(): Promise<string[]> {
-    const tokens = [];
-
+    const tokens: string[] = [];
     try {
-      // Get FCM token from firebase messaging service
-      const token = await firebaseMessaging.getToken();
-      if (token) {
-        tokens.push(token);
-      }
-
-      // Also check for stored token in localStorage
+      // Prefer cached token to avoid forcing refresh on every sync
       const storedToken = localStorage.getItem('meditrax_fcm_token');
-      if (storedToken && !tokens.includes(storedToken)) {
-        tokens.push(storedToken);
-      }
+      if (storedToken) tokens.push(storedToken);
 
+      // If no cached token available, obtain one (may be same value if already registered)
+      if (tokens.length === 0) {
+        const token = await firebaseMessaging.getToken();
+        if (token) tokens.push(token);
+      }
     } catch (error) {
       console.error('Failed to get FCM tokens:', error);
     }
-
-    return tokens;
+    return Array.from(new Set(tokens));
   }
 
   /**

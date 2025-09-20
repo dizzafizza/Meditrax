@@ -241,6 +241,12 @@ Notes:
 - FCM may not deliver to iOS Safari PWAs on some versions. Web Push ensures delivery on iOS (iOS 16.4+ and installed to Home Screen).
 - The app will use FCM where supported (Android/desktop Chromium) and Web Push where needed (iOS/Safari).
 
+### Inventory Units and Compatibility
+
+- For single-inventory medications with discrete units (e.g., `capsules`) and weight-based dosing (e.g., `g` or `mg`), add a single `pillConfiguration` with the per-unit strength (e.g., `500 mg`). The app will bridge mass↔discrete automatically for inventory updates and predictions.
+- For multi-pill medications, define `pillConfigurations` and a default `doseConfiguration`; predictions use mg-based math accounting for cyclic dosing and tapering.
+- Powder units (e.g., `g powder`) are treated as mass units and work with the mg-based inventory math.
+
 ### Customization
 - **Colors**: Modify `tailwind.config.js` for brand colors
 - **Themes**: Extend theme options in the settings page

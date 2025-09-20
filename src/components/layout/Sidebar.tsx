@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   X, 
   Home, 
-  Pill, 
+  Pill,
   Calendar,
   BarChart3, 
   Settings, 
@@ -88,9 +88,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Header */}
         <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 border-b border-gray-200/70 bg-white/70 backdrop-blur-md z-10">
           <div className="flex items-center space-x-3" data-testid="header-logo">
-            <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Pill className="h-5 w-5 text-white" />
-            </div>
+            <img src="/icons/favicon-32x32.png" alt="Meditrax" className="h-8 w-8 rounded-lg" />
             <span className="text-lg font-semibold text-gray-900">Meditrax</span>
           </div>
           <button

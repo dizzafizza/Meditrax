@@ -138,8 +138,8 @@ async function initializeFirebaseMessaging() {
           const notificationTitle = payload.notification?.title || 'MedTrack Reminder';
           const notificationOptions = {
             body: payload.notification?.body || 'Time for your medication',
-            icon: payload.notification?.icon || '/pill-icon.svg',
-            badge: '/pill-icon.svg',
+            icon: payload.notification?.icon || '/icons/icon-192x192.png',
+            badge: '/icons/icon-192x192.png',
             data: {
               ...payload.data,
               fcm: true,
@@ -148,9 +148,9 @@ async function initializeFirebaseMessaging() {
             tag: payload.data?.medicationId ? `medication_${payload.data.medicationId}` : 'medtrack-fcm',
             requireInteraction: true,
             actions: [
-              { action: 'take', title: '✅ Taken', icon: '/pill-icon.svg' },
-              { action: 'snooze', title: '⏰ Snooze 15min', icon: '/pill-icon.svg' },
-              { action: 'skip', title: '⏸️ Skip', icon: '/pill-icon.svg' }
+              { action: 'take', title: '✅ Taken', icon: '/icons/icon-48x48.png' },
+              { action: 'snooze', title: '⏰ Snooze 15min', icon: '/icons/icon-48x48.png' },
+              { action: 'skip', title: '⏸️ Skip', icon: '/icons/icon-48x48.png' }
             ],
             vibrate: [200, 100, 200],
             silent: false,
@@ -166,8 +166,8 @@ async function initializeFirebaseMessaging() {
           // Fallback notification
           return self.registration.showNotification('MedTrack Reminder', {
             body: 'Time for your medication',
-            icon: '/pill-icon.svg',
-            badge: '/pill-icon.svg',
+            icon: '/icons/icon-192x192.png',
+            badge: '/icons/icon-192x192.png',
             requireInteraction: true
           });
         }

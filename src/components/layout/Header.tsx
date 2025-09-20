@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Bell, Search, User, Clock, Settings, Heart, ChevronDown, Pill } from 'lucide-react';
+import { Menu, Bell, Search, User, Clock, Settings, Heart, ChevronDown } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { formatTime } from '@/utils/helpers';
 import { useGlobalSearch } from '@/hooks/useGlobalSearch';
@@ -151,6 +151,12 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
+        {/* Brand icon on desktop */}
+        <img
+          src="/icons/favicon-32x32.png"
+          alt="Meditrax"
+          className="hidden sm:block h-8 w-8 rounded-lg"
+        />
         
         {/* Desktop Greeting */}
         <div className="hidden sm:block">
@@ -352,9 +358,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       {/* Centered Mobile Brand */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none sm:hidden">
         <div className="flex items-center space-x-2">
-          <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
-            <Pill className="h-5 w-5 text-white" />
-          </div>
+          <img src="/icons/favicon-32x32.png" alt="Meditrax" className="h-8 w-8 rounded-lg" />
           <span className="text-lg font-semibold text-gray-900">Meditrax</span>
         </div>
       </div>

@@ -1,52 +1,182 @@
 import { Medication, MedicationLog } from '@/types';
-import { isWeightBasedUnit, convertToBaseWeight, convertFromBaseWeight } from './helpers';
+import { isWeightBasedUnit, convertToBaseWeight, convertFromBaseWeight, calculateCyclicDose, calculateTaperingDose } from './helpers';
+
+// Compute average dosage multiplier across an entire cyclic pattern
+function getCycleAverageMultiplier(cyclicPattern: any): number {
+  if (!cyclicPattern?.pattern || !Array.isArray(cyclicPattern.pattern) || cyclicPattern.pattern.length === 0) {
+    return 1;
+  }
+  const totalDuration = cyclicPattern.pattern.reduce((sum: number, step: any) => sum + (Number(step.duration) || 0), 0);
+  if (totalDuration <= 0) return 1;
+  const weightedSum = cyclicPattern.pattern.reduce((sum: number, step: any) => {
+    const duration = Number(step.duration) || 0;
+    const multiplier = Number(step.dosageMultiplier) || 0;
+    return sum + duration * multiplier;
+  }, 0);
+  return weightedSum / totalDuration;
+}
 
 /**
  * Calculate daily usage rate for a medication
  */
 export function calculateDailyUsageRate(medication: Medication, logs: MedicationLog[]): number {
   const medicationLogs = logs.filter(log => log.medicationId === medication.id);
-  
-  if (medicationLogs.length === 0) {
-    // Fallback to scheduled dosage
-    const scheduledDose = parseFloat(medication.dosage) || 1;
-    const frequency = medication.frequency;
-    
+
+  // Frequency multiplier helper
+  const perDayFromFrequency = (frequency: any) => {
     switch (frequency) {
-      case 'once-daily': return scheduledDose;
-      case 'twice-daily': return scheduledDose * 2;
-      case 'three-times-daily': return scheduledDose * 3;
-      case 'four-times-daily': return scheduledDose * 4;
-      default: return scheduledDose;
+      case 'once-daily': return 1;
+      case 'twice-daily': return 2;
+      case 'three-times-daily': return 3;
+      case 'four-times-daily': return 4;
+      default: return 1;
+    }
+  };
+
+  // No logs yet → estimate from schedule
+  if (medicationLogs.length === 0) {
+    const cycleAvg = medication.cyclicDosing?.isActive ? getCycleAverageMultiplier(medication.cyclicDosing) : 1;
+    if (medication.useMultiplePills) {
+      const defaultConfig = medication.doseConfigurations?.find(
+        c => c.id === medication.defaultDoseConfigurationId
+      ) || medication.doseConfigurations?.[0];
+
+      const perDosePillCount = defaultConfig
+        ? defaultConfig.pillComponents.reduce((sum, c) => sum + c.quantity, 0)
+        : 1;
+      return perDosePillCount * perDayFromFrequency(medication.frequency) * cycleAvg;
+    }
+
+    const scheduledDose = parseFloat(medication.dosage) || 1;
+    if (isWeightBasedUnit(medication.unit)) {
+      return scheduledDose * perDayFromFrequency(medication.frequency) * cycleAvg;
+    } else {
+      const unitsPerDose = Number.isFinite(scheduledDose) ? scheduledDose : 1;
+      return unitsPerDose * perDayFromFrequency(medication.frequency) * cycleAvg;
     }
   }
 
-  // Calculate actual usage from logs
-  const recentLogs = medicationLogs.slice(-30); // Last 30 logs
-  const totalDaysLogged = Math.max(1, recentLogs.length);
-  
-  if (isWeightBasedUnit(medication.unit)) {
-    // For weight-based units, sum actual dosages
-    const totalDosage = recentLogs.reduce((sum, log) => {
-      return sum + (log.dosageTaken || parseFloat(medication.dosage) || 0);
-    }, 0);
-    return totalDosage / totalDaysLogged;
-  } else {
-    // For discrete units, count doses taken
-    return recentLogs.length / totalDaysLogged;
+  // With logs → compute average per calendar day across a fixed window (includes skipped days)
+  const WINDOW_DAYS = 30;
+  const windowStart = new Date();
+  windowStart.setDate(windowStart.getDate() - (WINDOW_DAYS - 1));
+
+  const recentLogs = medicationLogs.filter(l => new Date(l.timestamp) >= windowStart);
+  const byDay = new Map<string, number>();
+
+  for (const log of recentLogs) {
+    const dayKey = new Date(log.timestamp).toDateString();
+    let amount = 0;
+
+    if (medication.useMultiplePills && (log as any).pillsLogged) {
+      amount = (log as any).pillsLogged.reduce(
+        (sum: number, pl: any) => sum + (Number(pl.quantityTaken) || 0),
+        0
+      );
+    } else if (isWeightBasedUnit(medication.unit)) {
+      amount = Number(log.dosageTaken) || parseFloat(medication.dosage) || 0;
+    } else {
+      amount = Number(log.dosageTaken) || parseFloat(medication.dosage) || 1;
+    }
+
+    byDay.set(dayKey, (byDay.get(dayKey) || 0) + amount);
   }
+
+  const totalDays = WINDOW_DAYS; // include skipped days as zeros
+  const total = Array.from(byDay.values()).reduce((a, b) => a + b, 0);
+  return total / totalDays;
 }
 
 /**
  * Calculate how many days the current inventory will last
  */
 export function calculateDaysRemaining(medication: Medication, logs: MedicationLog[]): number {
-  const currentCount = getCurrentInventoryCount(medication);
-  const dailyUsage = calculateDailyUsageRate(medication, logs);
-  
+  // Helper: determine frequency per day (approximate for weekly/monthly)
+  const frequencyPerDayMap: Record<string, number> = {
+    'as-needed': 0,
+    'once-daily': 1,
+    'twice-daily': 2,
+    'three-times-daily': 3,
+    'four-times-daily': 4,
+    'every-other-day': 0.5,
+    'weekly': 1 / 7,
+    'monthly': 1 / 30,
+    'custom': 1,
+  };
+
+  // Prefer multiple-pill mg-based calculation when data is available
+  const hasMulti = medication.useMultiplePills && Array.isArray(medication.pillConfigurations) && Array.isArray(medication.pillInventory) && medication.pillConfigurations.length > 0 && medication.pillInventory.length > 0;
+
+  if (hasMulti) {
+    // Total inventory in mg
+    const totalInventoryMg = medication.pillInventory!.reduce((sum, item) => {
+      const cfg = medication.pillConfigurations!.find(c => c.id === item.pillConfigurationId);
+      if (!cfg) return sum;
+      const perUnitMg = convertToBaseWeight(cfg.strength, cfg.unit);
+      return sum + (perUnitMg * (Number(item.currentCount) || 0));
+    }, 0);
+
+    // Base daily dose (mg) from default dose configuration
+    const defaultConfig = medication.doseConfigurations?.find(c => c.id === medication.defaultDoseConfigurationId) || medication.doseConfigurations?.[0];
+    let doseMg = 0;
+    if (defaultConfig) {
+      doseMg = convertToBaseWeight(defaultConfig.totalDoseAmount, defaultConfig.totalDoseUnit);
+    } else {
+      // Legacy fallback: parse medication.dosage in medication.unit
+      const baseDose = Number.parseFloat(medication.dosage) || 0;
+      doseMg = convertToBaseWeight(baseDose, medication.unit);
+    }
+
+    // Apply tapering adjustment for today (base dose per dose)
+    if (medication.tapering?.isActive) {
+      doseMg = calculateTaperingDose({ ...medication.tapering, initialDose: doseMg, finalDose: Math.min(doseMg, medication.tapering.finalDose ?? 0) }, new Date(), medication);
+    }
+
+    const perDay = frequencyPerDayMap[medication.frequency] ?? 1;
+    // Incorporate cyclic average multiplier across the full cycle
+    const cycleAvg = medication.cyclicDosing?.isActive ? getCycleAverageMultiplier(medication.cyclicDosing) : 1;
+    const dailyUsageMg = perDay === 0
+      ? // As-needed: estimate mg/day over a fixed window (includes skipped days)
+        (() => {
+          const WINDOW_DAYS = 30;
+          const windowStart = new Date();
+          windowStart.setDate(windowStart.getDate() - (WINDOW_DAYS - 1));
+          const medLogs = logs.filter(l => l.medicationId === medication.id && new Date(l.timestamp) >= windowStart);
+          const totalMg = medLogs.reduce((s, l) => s + convertToBaseWeight(l.dosageTaken || 0, l.unit), 0);
+          return totalMg / WINDOW_DAYS;
+        })()
+      : doseMg * perDay * cycleAvg;
+
+    if (dailyUsageMg <= 0) return Infinity;
+    return Math.floor(totalInventoryMg / dailyUsageMg);
+  }
+
+  // Legacy single-inventory path
+  const inventoryUnits = Number(medication.pillsRemaining) || 0;
+  if (inventoryUnits <= 0) return 0;
+
+  // If we can infer per-unit strength from a single pill config, use mg-based math
+  if (Array.isArray(medication.pillConfigurations) && medication.pillConfigurations.length === 1) {
+    const cfg = medication.pillConfigurations[0];
+    const perUnitMg = convertToBaseWeight(cfg.strength, cfg.unit);
+
+    // Determine dose mg per dose
+    let doseMg = convertToBaseWeight(Number.parseFloat(medication.dosage) || 0, medication.unit);
+    if (medication.tapering?.isActive) {
+      doseMg = calculateTaperingDose({ ...medication.tapering, initialDose: doseMg, finalDose: Math.min(doseMg, medication.tapering.finalDose ?? 0) }, new Date(), medication);
+    }
+
+    const perDay = frequencyPerDayMap[medication.frequency] ?? 1;
+    const cycleAvg = medication.cyclicDosing?.isActive ? getCycleAverageMultiplier(medication.cyclicDosing) : 1;
+    const dailyUnits = perUnitMg > 0 ? (doseMg / perUnitMg) * perDay * cycleAvg : perDay * cycleAvg;
+    if (dailyUnits <= 0) return Infinity;
+    return Math.floor(inventoryUnits / dailyUnits);
+  }
+
+  // Final fallback: use logs-per-day against counted units
+  const dailyUsage = calculateDailyUsageRate(medication, logs); // doses/day
   if (dailyUsage === 0) return Infinity;
-  
-  return Math.floor(currentCount / dailyUsage);
+  return Math.floor(inventoryUnits / dailyUsage);
 }
 
 /**

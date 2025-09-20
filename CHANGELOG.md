@@ -5,7 +5,44 @@ All notable changes to Meditrax will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2025-09-19
+
+### Added
+- iOS PWA Web Push compatibility hardening: ensure VAPID subscription alongside FCM for Safari PWAs; weekly Web Push subscription health check (lightweight, non‑spamming)
+- Service Worker message handlers: `STORE_REMINDER_PATTERN`, `DEACTIVATE_REMINDER_PATTERN`, `CANCEL_REMINDER_NOTIFICATIONS`, and `APP_VISIBILITY_CHANGED` to improve closed‑app delivery and reconciliation
+- Backend health endpoint (`/health`) exposing VAPID configured status, Firestore access, project id, and timestamp for diagnostics
+- GitHub Actions: Functions deploy workflow with Web Push config support; Pages workflow writes `.env` from Actions Variables (booleans) and Secrets (keys), includes CNAME copy and safe env presence check
+
+### Changed
+- Workbox PWA config now imports custom notification logic and Firebase messaging SW to guarantee diagnostic ping/handlers are active
+- Backend token and schedule generation now deduplicate FCM tokens and only include current tokens in `scheduledNotifications`
+- Backend reminder sync prunes removed reminders and prunes user FCM tokens not present in the latest sync
+- Frontend backendSyncService no longer “sticks” disabled if permission wasn’t granted at first load; it re‑initializes and syncs on app load and on focus
+- App boot/focus flow explicitly initializes backend, syncs data, and triggers backend scheduling for upcoming reminders
+- Inventory/UI: refined Inventory page layout, dialog layering, and mobile scaling to match the shared modal pattern
+- Import/Export: further hardened mapping and export (upserts, pill inventory preservation, safer date/number normalization)
+- iOS Offline: improved SW caching and load timing to reduce offline blank loads when launched from Home Screen
+
+### Fixed
+- Resolved FCM token spam: frontend prefers cached token; backend deduplicates and prunes tokens; nightly stale token cleanup added
+- Ensured user‑visible notifications for every push in SW (iOS requirement) and improved missed notification recovery when app regains focus
+- Eliminated duplicate SW registration/import issues by consolidating imports via Workbox `importScripts`
+
+### Improved
+- iOS background notification reliability: dual‑path push (Web Push for Safari PWA, FCM for other platforms), periodic checks in SW, and consistent closed‑app scheduling via backend
+- CI/CD and deployment ergonomics: environment variables handled in Pages workflow; Functions workflow manages VAPID config and deploys safely
+
 ## [1.1.2] - 2025-09-19
+
+## [1.1.3] - 2025-09-20
+
+### Fixed
+- Inventory page now correctly detects inventory using multi‑pill data; no longer shows 0 after importing data
+
+### Improved
+- Import now upserts medications by id/name, preserves `pillInventory`, converts dates/numbers, remaps logs/reminders, and sets `pillsRemaining` from `pillInventory` for backwards compatibility
+- Export respects the `includeLogs` option and includes metadata consistently
+- Validation enhanced to check `pillInventory` structure and accept legacy `profile` field
 
 ### Fixed
 - Inventory: Configuration dialog now reliably appears above all UI layers on the Inventory page and follows the shared modal pattern to prevent stacking issues
