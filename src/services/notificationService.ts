@@ -5,6 +5,7 @@
 import { Reminder, Medication } from '@/types';
 import { MEDICATION_DATABASE } from './medicationDatabase';
 import { firebaseMessaging, type FCMSubscription, type FCMStatus } from './firebaseMessaging';
+import { backendSyncService } from './backendSyncService';
 import { isFirebaseConfigured, VAPID_KEY } from '@/config/firebase';
 
 export interface NotificationPermissionState {
@@ -372,6 +373,14 @@ class NotificationService {
       }
 
       this.pushNotificationsAvailable = true;
+
+      // Register subscription in backend for server-side Web Push (iOS/Safari)
+      try {
+        await backendSyncService.registerWebPushSubscription(this.pushSubscription);
+      } catch (e) {
+        // Non-fatal if backend not available
+        console.warn('Web Push backend registration failed (non-fatal):', (e as Error)?.message);
+      }
       return this.pushSubscription;
     } catch (error) {
       console.error('Failed to subscribe to push notifications:', error);

@@ -227,6 +227,72 @@ self.addEventListener('message', (event) => {
       // Continue with full diagnostic + broadcast to all clients
       event.waitUntil(handleDiagnosticPing(data));
       break;
+    
+    // Store full reminder pattern so SW can independently schedule/check when app is closed
+    case 'STORE_REMINDER_PATTERN':
+      event.waitUntil((async () => {
+        try {
+          const cache = await caches.open(NOTIFICATION_CACHE);
+          const key = `reminder-pattern-${data?.reminderId}`;
+          await cache.put(key, new Response(JSON.stringify({ ...data, storedAt: Date.now() })));
+          console.log('Service Worker: ✅ Stored reminder pattern', data?.reminderId);
+        } catch (e) {
+          console.warn('Service Worker: Failed to store reminder pattern:', e);
+        }
+      })());
+      break;
+
+    // Deactivate a reminder pattern by removing it from cache
+    case 'DEACTIVATE_REMINDER_PATTERN':
+      event.waitUntil((async () => {
+        try {
+          const cache = await caches.open(NOTIFICATION_CACHE);
+          const key = `reminder-pattern-${data?.reminderId}`;
+          await cache.delete(key);
+          console.log('Service Worker: ✅ Deactivated reminder pattern', data?.reminderId);
+        } catch (e) {
+          console.warn('Service Worker: Failed to deactivate reminder pattern:', e);
+        }
+      })());
+      break;
+
+    // Cancel any scheduled notifications for a given reminderId
+    case 'CANCEL_REMINDER_NOTIFICATIONS':
+      event.waitUntil((async () => {
+        try {
+          const cache = await caches.open(NOTIFICATION_CACHE);
+          const keys = await cache.keys();
+          let removed = 0;
+          for (const request of keys) {
+            if (request.url.includes('scheduled-')) {
+              const resp = await cache.match(request);
+              const json = resp ? await resp.json() : null;
+              if (json && json.reminderId && json.reminderId === data?.reminderId) {
+                await cache.delete(request);
+                removed += 1;
+              }
+            }
+          }
+          console.log(`Service Worker: 🗑️ Cancelled ${removed} scheduled notifications for reminder ${data?.reminderId}`);
+        } catch (e) {
+          console.warn('Service Worker: Failed to cancel reminder notifications:', e);
+        }
+      })());
+      break;
+
+    // Track app visibility so we can opportunistically check missed notifications on blur/hide
+    case 'APP_VISIBILITY_CHANGED':
+      try {
+        const isVisible = !!data?.visible;
+        console.log('Service Worker: App visibility changed:', isVisible ? 'visible' : 'hidden');
+        // If app just became visible, trigger a quick check to reconcile missed/queued notifications
+        if (isVisible) {
+          event.waitUntil(checkScheduledNotifications());
+        }
+      } catch (e) {
+        // no-op
+      }
+      break;
       
     default:
       console.log('Service Worker: Unknown message type:', type);

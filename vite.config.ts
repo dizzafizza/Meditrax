@@ -37,6 +37,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       strategies: 'generateSW',
       workbox: {
+        // Import our custom notification logic and Firebase messaging into the generated SW
+        // This ensures DIAGNOSTIC_PING handling and iOS PWA notification paths are active
+        importScripts: ['notification-sw.js', 'firebase-messaging-sw.js'],
         navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,vue,txt,woff2}'],
         additionalManifestEntries: [

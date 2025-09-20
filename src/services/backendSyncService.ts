@@ -175,6 +175,75 @@ class BackendSyncService {
   }
 
   /**
+   * Register a Web Push subscription in the backend for this user
+   */
+  async registerWebPushSubscription(subscription: PushSubscription): Promise<boolean> {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+      if (!this.functions) {
+        console.warn('Functions not available; cannot register Web Push subscription');
+        return false;
+      }
+
+      const registerFn = httpsCallable(this.functions, 'registerWebPushSubscription');
+      const result = await registerFn({
+        userId: this.user?.uid,
+        subscription,
+        userAgent: navigator.userAgent
+      });
+      console.log('✅ Web Push subscription registered:', result.data);
+      return true;
+    } catch (error) {
+      console.warn('⚠️ Failed to register Web Push subscription:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Unregister a Web Push subscription by endpoint
+   */
+  async unregisterWebPushSubscription(endpoint: string): Promise<boolean> {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+      if (!this.functions) {
+        return false;
+      }
+      const unregisterFn = httpsCallable(this.functions, 'unregisterWebPushSubscription');
+      await unregisterFn({ userId: this.user?.uid, endpoint });
+      console.log('🗑️ Web Push subscription unregistered');
+      return true;
+    } catch (error) {
+      console.warn('Failed to unregister Web Push subscription:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send a server-side test Web Push
+   */
+  async sendTestWebPush(): Promise<boolean> {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+      if (!this.functions) {
+        return false;
+      }
+      const testFn = httpsCallable(this.functions, 'sendTestWebPush');
+      const result = await testFn({ userId: this.user?.uid });
+      console.log('🧪 Test Web Push result:', result.data);
+      return !!(result.data as any)?.success;
+    } catch (error) {
+      console.warn('Test Web Push failed:', error);
+      return false;
+    }
+  }
+
+  /**
    * Sync all user data to backend for scheduling
    */
   async syncUserDataToBackend(

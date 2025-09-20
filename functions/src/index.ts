@@ -7,11 +7,25 @@
 
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
+import * as webpush from 'web-push';
 
 // Initialize Firebase Admin
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
+const FIELD_VALUE = admin.firestore.FieldValue;
+
+// Configure Web Push (VAPID)
+const WEB_PUSH_CONTACT = process.env.WEB_PUSH_CONTACT_EMAIL || 'mailto:notifications@meditrax.ca';
+const WEB_PUSH_VAPID_PUBLIC = process.env.WEB_PUSH_VAPID_PUBLIC_KEY || (functions.config().webpush?.vapid_public_key as string | undefined);
+const WEB_PUSH_VAPID_PRIVATE = process.env.WEB_PUSH_VAPID_PRIVATE_KEY || (functions.config().webpush?.vapid_private_key as string | undefined);
+
+if (WEB_PUSH_VAPID_PUBLIC && WEB_PUSH_VAPID_PRIVATE) {
+  webpush.setVapidDetails(WEB_PUSH_CONTACT, WEB_PUSH_VAPID_PUBLIC, WEB_PUSH_VAPID_PRIVATE);
+  console.log('🔐 Web Push VAPID configured');
+} else {
+  console.warn('⚠️ Web Push VAPID keys not configured. iOS/ Safari Web Push will be disabled.');
+}
 
 // Types matching frontend
 interface MedTrackReminder {
@@ -49,6 +63,17 @@ interface ScheduledNotification {
   createdAt: admin.firestore.Timestamp;
 }
 
+interface WebPushSubscriptionRecord {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  userAgent?: string;
+  createdAt: admin.firestore.Timestamp;
+  updatedAt: admin.firestore.Timestamp;
+}
+
 /**
  * HTTP function to sync reminders from frontend to backend
  * Called when user creates/updates/deletes reminders
@@ -73,7 +98,7 @@ export const syncUserReminders = functions.https.onCall(async (data, context) =>
       batch.set(reminderRef, {
         ...reminder,
         userId,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FIELD_VALUE.serverTimestamp(),
       });
     }
 
@@ -83,7 +108,7 @@ export const syncUserReminders = functions.https.onCall(async (data, context) =>
       batch.set(medRef, {
         ...medication,
         userId,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FIELD_VALUE.serverTimestamp(),
       });
     }
 
@@ -93,7 +118,7 @@ export const syncUserReminders = functions.https.onCall(async (data, context) =>
       batch.set(tokenRef, {
         token,
         userId,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FIELD_VALUE.serverTimestamp(),
       });
     }
 
@@ -108,6 +133,73 @@ export const syncUserReminders = functions.https.onCall(async (data, context) =>
   } catch (error) {
     console.error('❌ Failed to sync user reminders:', error);
     throw new functions.https.HttpsError('internal', 'Failed to sync reminders');
+  }
+});
+
+/**
+ * Register a Web Push subscription for the current user (Safari/iOS/desktop)
+ */
+export const registerWebPushSubscription = functions.https.onCall(async (data, context) => {
+  const userId = context.auth?.uid || data.userId;
+  const subscription = data.subscription as { endpoint: string; keys: { p256dh: string; auth: string } } | undefined;
+  const userAgent = data.userAgent as string | undefined;
+
+  if (!userId) {
+    throw new functions.https.HttpsError('unauthenticated', 'User ID must be provided');
+  }
+  if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+    throw new functions.https.HttpsError('invalid-argument', 'Valid Web Push subscription is required');
+  }
+  if (!WEB_PUSH_VAPID_PUBLIC || !WEB_PUSH_VAPID_PRIVATE) {
+    console.warn('registerWebPushSubscription called but VAPID keys are not configured.');
+  }
+
+  try {
+    const subId = Buffer.from(subscription.endpoint).toString('base64').replace(/\W/g, '').slice(0, 64);
+    const subRef = db.collection('users').doc(userId).collection('webPushSubscriptions').doc(subId);
+
+    await subRef.set({
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+      },
+      userAgent: userAgent || null,
+      createdAt: FIELD_VALUE.serverTimestamp(),
+      updatedAt: FIELD_VALUE.serverTimestamp(),
+    } as unknown as WebPushSubscriptionRecord, { merge: true });
+
+    console.log('✅ Web Push subscription registered:', userId, subId);
+    return { success: true, id: subId };
+  } catch (error) {
+    console.error('❌ Failed to register Web Push subscription:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to register subscription');
+  }
+});
+
+/**
+ * Unregister a Web Push subscription by endpoint
+ */
+export const unregisterWebPushSubscription = functions.https.onCall(async (data, context) => {
+  const userId = context.auth?.uid || data.userId;
+  const endpoint = data.endpoint as string | undefined;
+
+  if (!userId) {
+    throw new functions.https.HttpsError('unauthenticated', 'User ID must be provided');
+  }
+  if (!endpoint) {
+    throw new functions.https.HttpsError('invalid-argument', 'Endpoint is required');
+  }
+
+  try {
+    const subId = Buffer.from(endpoint).toString('base64').replace(/\W/g, '').slice(0, 64);
+    const subRef = db.collection('users').doc(userId).collection('webPushSubscriptions').doc(subId);
+    await subRef.delete();
+    console.log('🗑️ Web Push subscription removed:', userId, subId);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Failed to unregister Web Push subscription:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to unregister subscription');
   }
 });
 
@@ -151,7 +243,7 @@ export const sendScheduledNotifications = functions.pubsub
         batch.update(doc.ref, {
           status: 'sending',
           attempts: (notification.attempts || 0) + 1,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FIELD_VALUE.serverTimestamp(),
         });
       }
 
@@ -224,7 +316,7 @@ async function sendNotificationToUser(notification: ScheduledNotification & { id
           ],
         },
         fcmOptions: {
-          link: 'https://your-pwa-url.com/', // Replace with your PWA URL
+          link: 'https://www.meditrax.ca/',
         },
       },
     };
@@ -245,17 +337,92 @@ async function sendNotificationToUser(notification: ScheduledNotification & { id
     const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.success).length;
 
     if (successCount > 0) {
-      await updateNotificationStatus(notification.id, 'sent', `Sent to ${successCount}/${fcmTokens.length} tokens`);
-      console.log(`✅ Notification ${notification.id} sent successfully to ${successCount} devices`);
+      await updateNotificationStatus(notification.id, 'sent', `Sent to ${successCount}/${fcmTokens.length} FCM tokens`);
+      console.log(`✅ Notification ${notification.id} sent successfully to ${successCount} FCM devices`);
     } else {
-      await updateNotificationStatus(notification.id, 'failed', 'Failed to send to any tokens');
-      console.error(`❌ Notification ${notification.id} failed to send to all tokens`);
+      console.warn(`⚠️ Notification ${notification.id} failed to send via FCM`);
+    }
+
+    // Additionally send via Web Push to iOS/Safari subscriptions
+    try {
+      const webPushResult = await sendWebPushToUser(notification.userId, notification.payload);
+      if (webPushResult.sent > 0) {
+        console.log(`✅ Web Push sent to ${webPushResult.sent}/${webPushResult.total} subscriptions`);
+        // Mark as sent if either channel succeeded
+        await updateNotificationStatus(notification.id, 'sent', `WebPush ${webPushResult.sent}/${webPushResult.total}; FCM ${successCount}/${fcmTokens.length}`);
+      } else if (successCount === 0) {
+        await updateNotificationStatus(notification.id, 'failed', 'Failed via both FCM and Web Push');
+        console.error(`❌ Notification ${notification.id} failed via both channels`);
+      }
+    } catch (wpError) {
+      console.error('❌ Web Push sending error:', wpError);
+      if (successCount === 0) {
+        await updateNotificationStatus(notification.id, 'failed', 'FCM and Web Push errors');
+      }
     }
 
   } catch (error) {
     console.error(`❌ Error sending notification ${notification.id}:`, error);
     await updateNotificationStatus(notification.id, 'failed', (error as Error).message);
   }
+}
+
+/**
+ * Send a web push to all subscriptions of a user
+ */
+async function sendWebPushToUser(userId: string, payload: ScheduledNotification['payload']) {
+  if (!WEB_PUSH_VAPID_PUBLIC || !WEB_PUSH_VAPID_PRIVATE) {
+    return { sent: 0, total: 0 };
+  }
+
+  const subsSnap = await db.collection('users').doc(userId).collection('webPushSubscriptions').get();
+  const subscriptions = subsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Array<WebPushSubscriptionRecord & { id: string }>;
+
+  if (subscriptions.length === 0) {
+    return { sent: 0, total: 0 };
+  }
+
+  const body = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    icon: payload.icon,
+    badge: payload.badge,
+    data: payload.data,
+  });
+
+  let sent = 0;
+  const removals: Array<Promise<any>> = [];
+
+  await Promise.allSettled(
+    subscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+          } as any,
+          body,
+          { TTL: 60 * 60 } // 1 hour TTL
+        );
+        sent += 1;
+      } catch (err: any) {
+        const status = err?.statusCode || err?.statusCode;
+        console.warn(`Web Push send failed for ${sub.id} (status: ${status})`);
+        if (status === 404 || status === 410) {
+          // Subscription expired or gone, remove it
+          removals.push(
+            db.collection('users').doc(userId).collection('webPushSubscriptions').doc(sub.id).delete()
+          );
+        }
+      }
+    })
+  );
+
+  if (removals.length) {
+    await Promise.allSettled(removals);
+  }
+
+  return { sent, total: subscriptions.length };
 }
 
 /**
@@ -266,7 +433,7 @@ async function updateNotificationStatus(notificationId: string, status: string, 
     await db.collection('scheduledNotifications').doc(notificationId).update({
       status,
       error: error || null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FIELD_VALUE.serverTimestamp(),
     });
   } catch (updateError) {
     console.error(`Failed to update notification ${notificationId} status:`, updateError);
@@ -450,3 +617,26 @@ export const cleanupOldNotifications = functions.pubsub
     console.log(`🧹 Cleaned up ${oldNotifications.docs.length} old notifications`);
     return { deleted: oldNotifications.docs.length };
   });
+
+/**
+ * Manually send a test Web Push to the current user's subscriptions
+ */
+export const sendTestWebPush = functions.https.onCall(async (data, context) => {
+  const userId = context.auth?.uid || data.userId;
+  if (!userId) {
+    throw new functions.https.HttpsError('unauthenticated', 'User ID must be provided');
+  }
+  try {
+    const result = await sendWebPushToUser(userId, {
+      title: '🧪 MedTrack Test',
+      body: 'If you see this, Web Push is working!',
+      icon: '/pill-icon.svg',
+      badge: '/pill-icon.svg',
+      data: { type: 'test', timestamp: Date.now() },
+    } as any);
+    return { success: result.sent > 0, ...result };
+  } catch (error) {
+    console.error('Test Web Push failed:', error);
+    throw new functions.https.HttpsError('internal', 'Test Web Push failed');
+  }
+});

@@ -4,11 +4,10 @@
 
 A modern, responsive web application built with React and TypeScript for tracking medications, managing schedules, and monitoring adherence.
 
-## 🐞🔧 Known Bugs:
+## 🐞🔧 Known Notes:
 - **Tapering System:** Sometimes you may get an incorrect dosage. *WIP*
-- **PWA Push Notifications:** Push notifications may not send when app is closed due to iOS PWA limitations. *WIP*
-**Workaround:** Keep app open (don't swipe up/close the app)
-- **App Doesn't Update Properly:** Previous versions are loaded fron cache, clear your cache to update to the latest version.
+- **iOS PWA Push Notifications:** Fully supported via Web Push (VAPID) and/or FCM once environment variables are configured. See "Web Push (iOS/ Safari) and FCM Setup" below. If env keys are missing, the app falls back to local SW scheduling with missed‑dose recovery.
+- **App Doesn't Update Properly:** Previous versions may be loaded from cache; refresh or clear cache to update to the latest version.
 
 ## ✨ Features
 
@@ -184,10 +183,63 @@ src/
 ## 🔧 Configuration
 
 ### Environment Variables
-The application uses client-side storage by default. For production deployments, you may want to configure:
+The application uses client-side storage by default. For production deployments, configure:
 - API endpoints (if adding backend integration)
 - Analytics tracking IDs
 - Notification service keys
+
+#### Web Push (iOS/ Safari) and FCM Setup
+
+To deliver notifications reliably on iOS PWAs, enable standard Web Push alongside FCM:
+
+1) Get VAPID keys (one-time):
+- Recommended: In Firebase Console → Project Settings → Cloud Messaging → Web Push certificates, click "Generate key pair". Copy both Public and Private keys.
+- Or generate your own pair:
+```bash
+npx web-push generate-vapid-keys
+```
+Either pair works for standard Web Push and FCM Web; reusing Firebase’s pair keeps one set of keys.
+
+2) Configure Cloud Functions secrets (preferred) or env vars:
+```bash
+# Using Firebase Functions config
+firebase functions:config:set webpush.vapid_public_key="<PUBLIC_KEY>" webpush.vapid_private_key="<PRIVATE_KEY>" webpush.contact_email="mailto:notifications@meditrax.ca"
+
+# Or set env for local emulators
+export WEB_PUSH_VAPID_PUBLIC_KEY="<PUBLIC_KEY>"
+export WEB_PUSH_VAPID_PRIVATE_KEY="<PRIVATE_KEY>"
+export WEB_PUSH_CONTACT_EMAIL="mailto:notifications@meditrax.ca"
+```
+
+3) Frontend env (.env):
+```bash
+# Firebase (used for FCM + callable functions)
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+
+# Web Push VAPID public key used for PushManager.subscribe
+# You can re-use the same PUBLIC key as above
+VITE_FIREBASE_VAPID_KEY=<PUBLIC_KEY>
+
+# Optional gates to enable background features
+# Enable initializing Firebase Messaging inside the service worker (prod recommended)
+VITE_ENABLE_SW_FIREBASE=true
+# Enable anonymous Firebase Auth for backend scheduling (optional)
+VITE_ENABLE_BACKEND_AUTH=true
+```
+
+4) Deploy functions after setting config:
+```bash
+cd functions && npm run deploy
+```
+
+Notes:
+- FCM may not deliver to iOS Safari PWAs on some versions. Web Push ensures delivery on iOS (iOS 16.4+ and installed to Home Screen).
+- The app will use FCM where supported (Android/desktop Chromium) and Web Push where needed (iOS/Safari).
 
 ### Customization
 - **Colors**: Modify `tailwind.config.js` for brand colors
