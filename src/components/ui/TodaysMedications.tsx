@@ -41,9 +41,13 @@ function TodaysMedicationsInner() {
     med.frequency !== 'as-needed'
   );
 
-  // Calculate total medications for today
+  // Calculate total required doses for today across scheduled medications
   const getTotalMedicationsForToday = () => {
-    return todaysReminders.length + scheduledMedicationsWithoutReminders.length;
+    const scheduledMeds = activeMedications.filter(med => med.frequency !== 'as-needed');
+    return scheduledMeds.reduce((sum, med) => {
+      const status = calculateRemainingDosesForDay(med, todaysLogs);
+      return sum + status.total;
+    }, 0);
   };
   
   const asNeededMedications = medicationsWithoutReminders.filter(med => 
@@ -66,11 +70,11 @@ function TodaysMedicationsInner() {
   };
 
   const getCompletedCount = () => {
-    return todaysReminders.filter(reminder => 
-      loggedMedicationIds.has(reminder.medicationId)
-    ).length + medicationsWithoutReminders.filter(med => 
-      loggedMedicationIds.has(med.id)
-    ).length;
+    const scheduledMeds = activeMedications.filter(med => med.frequency !== 'as-needed');
+    return scheduledMeds.reduce((sum, med) => {
+      const status = calculateRemainingDosesForDay(med, todaysLogs);
+      return sum + (status.total - status.remaining);
+    }, 0);
   };
 
   // Enhanced completion tracking for multiple doses per day
@@ -98,7 +102,7 @@ function TodaysMedicationsInner() {
         message: `🎉 Milestone reached! ${streakEmoji} ${overallStreak} day streak! All medications completed!`,
         color: "text-green-600 bg-green-50 border-green-200"
       };
-    } else if (percentage === 100) {
+    } else if (allScheduledComplete) {
       return {
         message: "🎉 Perfect! You've completed all your medications for today!",
         color: "text-green-600 bg-green-50 border-green-200"

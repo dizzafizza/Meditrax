@@ -10,11 +10,13 @@ interface DependencyPreventionModalProps {
   isOpen: boolean;
   onClose: () => void;
   medication: Medication;
+  onStartTaper?: (medication: Medication) => void;
 }
 
-export function DependencyPreventionModal({ isOpen, onClose, medication }: DependencyPreventionModalProps) {
+export function DependencyPreventionModal({ isOpen, onClose, medication, onStartTaper }: DependencyPreventionModalProps) {
   const { updateMedication, addSmartMessage, logs } = useMedicationStore();
   const [activeTab, setActiveTab] = React.useState<'overview' | 'alerts' | 'timeline' | 'recommendations'>('overview');
+  const [alertFilter, setAlertFilter] = React.useState<'all' | 'critical' | 'high' | 'medium'>('all');
   
   // Get or initialize dependency prevention data
   const dependencyPrevention = React.useMemo(() => {
@@ -51,6 +53,16 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
   const unacknowledgedAlerts = currentAssessment.alerts.filter(alert => !alert.acknowledged);
   const acknowledgedAlerts = currentAssessment.alerts.filter(alert => alert.acknowledged);
 
+  const filteredUnacknowledgedAlerts = React.useMemo(() => {
+    if (alertFilter === 'all') return unacknowledgedAlerts;
+    return unacknowledgedAlerts.filter(a => a.priority === alertFilter);
+  }, [unacknowledgedAlerts, alertFilter]);
+
+  const filteredAcknowledgedAlerts = React.useMemo(() => {
+    if (alertFilter === 'all') return acknowledgedAlerts;
+    return acknowledgedAlerts.filter(a => a.priority === alertFilter);
+  }, [acknowledgedAlerts, alertFilter]);
+
   const handleAcknowledgeAlert = (alertId: string) => {
     const updatedAlerts = currentAssessment.alerts.map(alert =>
       alert.id === alertId ? { ...alert, acknowledged: true } : alert
@@ -58,6 +70,7 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
 
     updateMedication(medication.id, {
       dependencePrevention: {
+        ...dependencyPrevention,
         ...currentAssessment,
         alerts: updatedAlerts
       }
@@ -66,9 +79,23 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
     toast.success('Alert acknowledged');
   };
 
+  const handleAcknowledgeAllAlerts = () => {
+    if (unacknowledgedAlerts.length === 0) return;
+    const updatedAlerts = currentAssessment.alerts.map(alert => ({ ...alert, acknowledged: true }));
+    updateMedication(medication.id, {
+      dependencePrevention: {
+        ...dependencyPrevention,
+        ...currentAssessment,
+        alerts: updatedAlerts
+      }
+    });
+    toast.success('All alerts acknowledged');
+  };
+
   const handleUpdatePreventionData = () => {
     updateMedication(medication.id, {
       dependencePrevention: {
+        ...dependencyPrevention,
         ...currentAssessment,
         lastUpdated: new Date()
       }
@@ -112,14 +139,21 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
     return Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   };
 
+  const getNextReviewDate = () => {
+    const base = currentAssessment.lastUpdated ? new Date(currentAssessment.lastUpdated) : new Date(medication.startDate);
+    const next = new Date(base);
+    next.setDate(next.getDate() + (currentAssessment.reviewFrequency || 7));
+    return next;
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-[60]">
-      <div className="glass-panel rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-[80]">
+      <div className="glass-panel rounded-lg shadow-xl w-full max-w-5xl mobile-modal overflow-y-auto">
         
         {/* Header */}
-        <div className="sticky top-0 bg-white/70 backdrop-blur-md border-b border-gray-200/70 px-6 py-4">
+        <div className="sticky top-0 z-10 bg-white/70 backdrop-blur-md border-b border-gray-200/70 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Shield className="h-6 w-6 text-blue-600" />
@@ -139,7 +173,7 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
 
           {/* Tab Navigation */}
           <div className="mt-4 border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
+            <nav className="-mb-px flex space-x-4 sm:space-x-8 px-1 overflow-x-auto scrollbar-hide touch-manipulation">
               {[
                 { id: 'overview', label: 'Overview', icon: Activity },
                 { id: 'alerts', label: 'Alerts', icon: AlertTriangle, badge: unacknowledgedAlerts.length },
@@ -149,18 +183,16 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
                 <button
                   key={id}
                   onClick={() => setActiveTab(id as any)}
-                  className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`flex items-center space-x-2 py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap touch-manipulation min-h-[44px] ${
                     activeTab === id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="w-4 h-4 flex-shrink-0" />
                   <span>{label}</span>
                   {badge && badge > 0 && (
-                    <span className="bg-red-100 text-red-800 text-xs rounded-full px-2 py-0.5">
-                      {badge}
-                    </span>
+                    <span className="badge badge-danger ml-1">{badge}</span>
                   )}
                 </button>
               ))}
@@ -259,12 +291,38 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
               {/* Unacknowledged Alerts */}
               {unacknowledgedAlerts.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-4 flex items-center space-x-2">
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
-                    <span>Active Alerts ({unacknowledgedAlerts.length})</span>
-                  </h4>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-gray-900 flex items-center space-x-2">
+                      <AlertTriangle className="h-5 w-5 text-red-500" />
+                      <span>Active Alerts ({filteredUnacknowledgedAlerts.length})</span>
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <div className="hidden sm:flex rounded-md border border-gray-200 overflow-hidden">
+                        {(['all','critical','high','medium'] as const).map(f => (
+                          <button
+                            key={f}
+                            onClick={() => setAlertFilter(f)}
+                            className={`px-2 py-1 text-xs font-medium capitalize ${
+                              alertFilter === f ? 'bg-blue-50 text-blue-700' : 'bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                            aria-pressed={alertFilter === f}
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                      {filteredUnacknowledgedAlerts.length > 0 && (
+                        <button
+                          onClick={handleAcknowledgeAllAlerts}
+                          className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                        >
+                          Acknowledge All
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div className="space-y-3">
-                    {unacknowledgedAlerts.map((alert) => (
+                    {filteredUnacknowledgedAlerts.map((alert) => (
                       <div key={alert.id} className={`border rounded-lg p-4 ${getPriorityColor(alert.priority)}`}>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -298,10 +356,10 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
                 <div>
                   <h4 className="font-medium text-gray-900 mb-4 flex items-center space-x-2">
                     <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>Acknowledged Alerts ({acknowledgedAlerts.length})</span>
+                    <span>Acknowledged Alerts ({filteredAcknowledgedAlerts.length})</span>
                   </h4>
                   <div className="space-y-3">
-                    {acknowledgedAlerts.slice(0, 5).map((alert) => (
+                    {filteredAcknowledgedAlerts.slice(0, 5).map((alert) => (
                       <div key={alert.id} className="border border-gray-200 bg-gray-50 rounded-lg p-4">
                         <div className="flex items-start space-x-3">
                           <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
@@ -429,11 +487,34 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
                         </div>
                       ))}
                     </div>
+
+                    <div className="pt-2 border-t border-gray-200 flex items-center justify-between flex-wrap gap-3">
+                      <div className="text-sm text-gray-600">
+                        Next review: <span className="font-medium text-gray-800">{formatDate(getNextReviewDate())}</span>
+                      </div>
+                      <button
+                        onClick={() => { onStartTaper?.(medication); onClose(); }}
+                        className="btn-primary"
+                      >
+                        Start Tapering Plan
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                     <p className="text-sm text-green-800">Tapering is not currently recommended for this medication.</p>
                     <p className="text-sm text-green-700 mt-1">Continue regular monitoring and follow-up with your healthcare provider.</p>
+                    <div className="mt-3 flex items-center justify-between flex-wrap gap-3">
+                      <div className="text-sm text-gray-600">
+                        Next review: <span className="font-medium text-gray-800">{formatDate(getNextReviewDate())}</span>
+                      </div>
+                      <button
+                        onClick={() => { onStartTaper?.(medication); onClose(); }}
+                        className="btn-secondary"
+                      >
+                        Start Tapering Plan
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -480,21 +561,21 @@ export function DependencyPreventionModal({ isOpen, onClose, medication }: Depen
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 px-6 py-4 border-t border-gray-200">
+        <div className="sticky bottom-0 z-10 bg-gray-50 px-6 py-4 border-t border-gray-200">
           <div className="flex justify-between items-center">
             <div className="text-sm text-gray-500">
-              Last updated: {formatDate(currentAssessment.lastUpdated)}
+              Last updated: {currentAssessment.lastUpdated ? formatDate(currentAssessment.lastUpdated) : 'N/A'}
             </div>
             <div className="flex space-x-3">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="btn-secondary"
               >
                 Close
               </button>
               <button
                 onClick={handleUpdatePreventionData}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                className="btn-primary"
               >
                 Update Assessment
               </button>

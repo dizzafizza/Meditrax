@@ -39,7 +39,7 @@ class NotificationService {
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
   private pushSubscription: PushSubscription | null = null;
   
-  // VAPID key for push notifications (uses Firebase VAPID key)
+  // Single VAPID key used for both FCM getToken and standard Web Push
   private readonly VAPID_PUBLIC_KEY = VAPID_KEY || null;
   
   // Firebase Cloud Messaging support

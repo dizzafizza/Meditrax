@@ -2070,24 +2070,46 @@ export const useMedicationStore = create<MedicationStore>()(
 
       // Enhanced streak tracking
       getCurrentStreak: (medicationId) => {
-        const logs = get().logs.filter(log => log.medicationId === medicationId)
+        const state = get();
+        const medication = state.medications.find(med => med.id === medicationId);
+        if (!medication) return 0;
+        if (medication.frequency === 'as-needed') return 0; // Streaks apply to scheduled meds only
+
+        // Determine required doses per day for this medication
+        const frequencyMap: Record<string, number> = {
+          'once-daily': 1,
+          'twice-daily': 2,
+          'three-times-daily': 3,
+          'four-times-daily': 4,
+        };
+        const requiredDosesPerDay = frequencyMap[medication.frequency as keyof typeof frequencyMap] || 1;
+
+        // Build a map of dayKey -> count of 'taken' logs for this medication
+        const takenLogs = state.logs
+          .filter(log => log.medicationId === medicationId && log.adherence === 'taken')
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-        if (logs.length === 0) return 0;
+        if (takenLogs.length === 0) return 0;
 
+        const countsByDay = new Map<string, number>();
+        for (const log of takenLogs) {
+          const d = new Date(log.timestamp);
+          d.setHours(0, 0, 0, 0);
+          const key = d.toDateString();
+          countsByDay.set(key, (countsByDay.get(key) || 0) + 1);
+        }
+
+        // Walk backward day-by-day and require full daily completion
         let streak = 0;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Count consecutive days of taking medication
-        for (let i = 0; i < logs.length; i++) {
-          const logDate = new Date(logs[i].timestamp);
-          logDate.setHours(0, 0, 0, 0);
-          
-          const expectedDate = new Date(today.getTime() - (streak * 24 * 60 * 60 * 1000));
-          
-          if (logDate.getTime() === expectedDate.getTime() && logs[i].adherence === 'taken') {
-            streak++;
+        const cursor = new Date();
+        cursor.setHours(0, 0, 0, 0);
+        while (true) {
+          const key = cursor.toDateString();
+          const takenCount = countsByDay.get(key) || 0;
+          if (takenCount >= requiredDosesPerDay) {
+            streak += 1;
+            // move to previous calendar day
+            cursor.setDate(cursor.getDate() - 1);
           } else {
             break;
           }

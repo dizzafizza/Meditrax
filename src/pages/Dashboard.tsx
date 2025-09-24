@@ -12,7 +12,8 @@ import {
   Star,
   TrendingUp,
   Activity,
-  Brain
+  Brain,
+  Shield
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { shallow } from 'zustand/shallow';
@@ -21,6 +22,8 @@ import { generateListItemKey } from '@/utils/reactKeyHelper';
 import { TodaysMedications } from '@/components/ui/TodaysMedications';
 import '@/utils/fixKratomData'; // Import the fix utility
 import { WithdrawalSymptomTracker } from '@/components/ui/WithdrawalSymptomTracker';
+import { DependencyPreventionModal } from '@/components/modals/DependencyPreventionModal';
+import { TaperingPlanModal } from '@/components/modals/TaperingPlanModal';
 import { Medication } from '@/types';
 
 export function Dashboard() {
@@ -40,7 +43,10 @@ export function Dashboard() {
     getCurrentDose,
     generatePsychologicalSafetyAlerts,
     getActivePsychologicalSafetyAlerts,
-    acknowledgePsychologicalAlert
+    acknowledgePsychologicalAlert,
+    initializeDependencePrevention,
+    updateDependenceAssessment,
+    acknowledgeDependenceAlert
   } = useMedicationStore((s) => ({
     getTodaysReminders: s.getTodaysReminders,
     getTodaysLogs: s.getTodaysLogs,
@@ -56,6 +62,9 @@ export function Dashboard() {
     generatePsychologicalSafetyAlerts: s.generatePsychologicalSafetyAlerts,
     getActivePsychologicalSafetyAlerts: s.getActivePsychologicalSafetyAlerts,
     acknowledgePsychologicalAlert: s.acknowledgePsychologicalAlert,
+    initializeDependencePrevention: s.initializeDependencePrevention,
+    updateDependenceAssessment: s.updateDependenceAssessment,
+    acknowledgeDependenceAlert: s.acknowledgeDependenceAlert,
   }), shallow);
 
   const todaysReminders = getTodaysReminders();
@@ -237,6 +246,28 @@ export function Dashboard() {
   // State for withdrawal tracking modal
   const [selectedWithdrawalMedication, setSelectedWithdrawalMedication] = React.useState<Medication | null>(null);
 
+  // Dependency modal + tapering flow
+  const [dependencyMedication, setDependencyMedication] = React.useState<Medication | null>(null);
+  const [dependencyModalOpen, setDependencyModalOpen] = React.useState(false);
+  const [taperingMedication, setTaperingMedication] = React.useState<Medication | null>(null);
+  const [taperingModalOpen, setTaperingModalOpen] = React.useState(false);
+
+  const handleOpenDependency = (med: Medication) => {
+    setDependencyMedication(med);
+    setDependencyModalOpen(true);
+  };
+
+  const handleCloseDependency = () => {
+    setDependencyModalOpen(false);
+    setDependencyMedication(null);
+  };
+
+  const handleStartTaperFromDependency = (med: Medication) => {
+    handleCloseDependency();
+    setTaperingMedication(med);
+    setTaperingModalOpen(true);
+  };
+
   // Enhanced Psychological Safety Alerts (with 7-day minimum requirement)
   React.useEffect(() => {
     // Regenerate alerts when medications or logs change
@@ -244,6 +275,18 @@ export function Dashboard() {
       generatePsychologicalSafetyAlerts();
     }
   }, [medications, logs]); // Remove generatePsychologicalSafetyAlerts from deps to prevent infinite loop
+
+  // Ensure Dependence Prevention is initialized and assessed for high-risk meds
+  React.useEffect(() => {
+    activeMedications.forEach((med) => {
+      if (!med.dependencePrevention && med.dependencyRiskCategory !== 'low-risk') {
+        initializeDependencePrevention(med.id);
+      } else if (med.dependencePrevention) {
+        updateDependenceAssessment(med.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMedications.length, logs.length]);
 
 
   const stats = [
@@ -293,6 +336,25 @@ export function Dashboard() {
       description: 'Psychological safety alerts'
     },
   ];
+
+  // Dependency Protection summary
+  const medsWithPrevention = activeMedications.filter(m => m.dependencePrevention);
+  const now = new Date();
+  const unacknowledgedDependenceAlerts = medsWithPrevention.flatMap(m =>
+    (m.dependencePrevention?.alerts || [])
+      .filter(a => !a.acknowledged)
+      .map(a => ({ alert: a, medication: m }))
+  );
+  const reviewDueMeds = medsWithPrevention.filter(m => {
+    const prev = m.dependencePrevention!;
+    const base = prev.lastUpdated ? new Date(prev.lastUpdated) : new Date(m.startDate);
+    const next = new Date(base);
+    next.setDate(next.getDate() + (prev.reviewFrequency || 7));
+    return next <= now;
+  });
+  const highRiskMeds = medsWithPrevention.filter(m =>
+    ['high','very-high'].includes(m.dependencePrevention!.riskLevel as any)
+  );
 
   const handleMedicationAction = (medicationId: string, action: 'taken' | 'missed') => {
     if (action === 'taken') {
@@ -566,6 +628,75 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dependency Protection Summary */}
+      {(unacknowledgedDependenceAlerts.length > 0 || reviewDueMeds.length > 0 || highRiskMeds.length > 0) && (
+        <div className="card">
+          <div className="card-header">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <Shield className="h-5 w-5 text-blue-600 mr-2" />
+                Dependency Protection
+              </h3>
+              <div className="flex items-center gap-2">
+                {unacknowledgedDependenceAlerts.length > 0 && (
+                  <span className="badge badge-danger">{unacknowledgedDependenceAlerts.length} alerts</span>
+                )}
+                {reviewDueMeds.length > 0 && (
+                  <span className="badge badge-warning">{reviewDueMeds.length} reviews due</span>
+                )}
+                {highRiskMeds.length > 0 && (
+                  <span className="badge badge-primary">{highRiskMeds.length} high risk</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="card-content">
+            <div className="space-y-3">
+              {unacknowledgedDependenceAlerts.slice(0, 3).map(({ alert, medication }, index) => (
+                <div key={`${alert.id}-${index}`} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="w-3 h-3 rounded-full mt-1.5" style={{ backgroundColor: medication.color }} />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{medication.name}</div>
+                        <div className="text-xs text-gray-600">{alert.type.replace('-', ' ')} • {alert.priority}</div>
+                        <div className="text-sm text-gray-700 mt-1">{alert.message}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => acknowledgeDependenceAlert(medication.id, alert.id, 'acknowledged')}
+                        className="text-xs px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                      >
+                        Acknowledge
+                      </button>
+                      <button
+                        onClick={() => handleOpenDependency(medication)}
+                        className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {unacknowledgedDependenceAlerts.length === 0 && (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                  No active dependency alerts.
+                </div>
+              )}
+
+              {reviewDueMeds.length > 0 && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                  {reviewDueMeds.length} medication{reviewDueMeds.length > 1 ? 's' : ''} due for review. Check timelines and consider updating assessments.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1052,6 +1183,25 @@ export function Dashboard() {
             onClose={() => setSelectedWithdrawalMedication(null)}
           />
         )}
+
+      {/* Dependency Prevention Modal */}
+      {dependencyMedication && (
+        <DependencyPreventionModal
+          isOpen={dependencyModalOpen}
+          onClose={handleCloseDependency}
+          medication={dependencyMedication}
+          onStartTaper={handleStartTaperFromDependency}
+        />
+      )}
+
+      {/* Tapering Plan Modal */}
+      {taperingMedication && (
+        <TaperingPlanModal
+          isOpen={taperingModalOpen}
+          onClose={() => { setTaperingModalOpen(false); setTaperingMedication(null); }}
+          medication={taperingMedication}
+        />
+      )}
       </div>
     </div>
   );

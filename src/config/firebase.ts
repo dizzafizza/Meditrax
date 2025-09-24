@@ -31,6 +31,7 @@ console.log('🔍 Firebase Environment Variables Debug:', {
 
 // VAPID key for web push notifications  
 export const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+// Using a single VAPID key for both FCM and standard Web Push
 
 // Initialize Firebase app (singleton pattern)
 let app: FirebaseApp;

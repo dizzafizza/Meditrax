@@ -799,6 +799,11 @@ export function Medications() {
             isOpen={dependencyModalOpen}
             onClose={handleCloseDependency}
             medication={dependencyMedication}
+            onStartTaper={(med) => {
+              setDependencyModalOpen(false);
+              setDependencyMedication(null);
+              handleOpenTaperingPlan(med);
+            }}
           />
         )}
       </div>

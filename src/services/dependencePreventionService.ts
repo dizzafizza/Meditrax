@@ -1,4 +1,5 @@
 import { Medication, DependencePrevention, UsagePattern, ToleranceIndicator, DependenceAlert, DependenceIntervention } from '@/types';
+import { generateIntelligentTaperingRecommendation } from '@/services/medicationDatabase';
 import { generateId } from '@/utils/helpers';
 
 /**
@@ -484,8 +485,44 @@ export class DependencePreventionService {
   } {
     const category = medication.dependencyRiskCategory;
     const currentDose = parseFloat(medication.dosage);
-    
-    // Don't recommend tapering for medications that typically don't require it
+
+    // Try to use up-to-date database-backed recommendation first
+    try {
+      const dbRec = generateIntelligentTaperingRecommendation(
+        medication.name,
+        isNaN(currentDose) ? 0 : currentDose,
+        medication.unit,
+        medication
+      );
+
+      if (dbRec && dbRec.adjustedPlan) {
+        // Build steps from adjusted plan
+        const totalWeeks = dbRec.adjustedPlan.durationWeeks;
+        const reductionPercent = dbRec.adjustedPlan.reductionPercent;
+        let dose = isNaN(currentDose) ? 0 : currentDose;
+        const steps: Array<{ week: number; dose: number; notes: string }> = [];
+        for (let week = 1; week <= totalWeeks; week++) {
+          dose = dose * (1 - reductionPercent / 100);
+          const rounded = Math.round(dose * 100) / 100;
+          steps.push({ week, dose: rounded, notes: `Reduce to ${rounded}${medication.unit}` });
+        }
+
+        return {
+          recommended: true,
+          schedule: {
+            totalDuration: totalWeeks,
+            reductionRate: reductionPercent,
+            steps
+          },
+          warnings: this.getTaperingWarnings(category),
+          monitoring: this.getTaperingMonitoring(category)
+        };
+      }
+    } catch {
+      // Fall through to category-based plan
+    }
+
+    // Category defaults fallback
     if (category === 'low-risk' || !this.requiresTapering(category)) {
       return {
         recommended: false,
@@ -494,9 +531,7 @@ export class DependencePreventionService {
       };
     }
 
-    // Generate category-specific tapering schedule
     const schedule = this.generateTaperingSchedule(category, currentDose, medication.unit);
-    
     return {
       recommended: true,
       schedule,

@@ -236,7 +236,7 @@ export function WithdrawalSymptomTracker({ medication, isOpen, onClose }: Withdr
   if (!isOpen || !activeWithdrawal) return null;
 
   return (
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 glass-overlay flex items-center justify-center p-4 z-[80]">
       <div className="glass-panel rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         
         {/* Header */}

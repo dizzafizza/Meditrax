@@ -175,6 +175,46 @@ class BackendSyncService {
     return `fallback_${Math.abs(hash).toString(36)}_${Date.now().toString(36)}`;
   }
 
+  // Ensure PushSubscription is JSON-serializable with endpoint and base64 keys
+  private serializePushSubscription(subscription: PushSubscription): { endpoint: string; keys: { p256dh: string; auth: string } } {
+    try {
+      const maybeJson = (subscription as any)?.toJSON ? (subscription as any).toJSON() : null;
+      const endpoint: string = maybeJson?.endpoint || subscription.endpoint;
+
+      let p256dh: string | null = maybeJson?.keys?.p256dh || null;
+      let auth: string | null = maybeJson?.keys?.auth || null;
+
+      // Fallback: derive keys from getKey()
+      if ((!p256dh || !auth) && typeof subscription.getKey === 'function') {
+        const p256dhBuf = subscription.getKey('p256dh');
+        const authBuf = subscription.getKey('auth');
+        if (p256dhBuf) p256dh = this.arrayBufferToBase64(p256dhBuf);
+        if (authBuf) auth = this.arrayBufferToBase64(authBuf);
+      }
+
+      if (!endpoint || !p256dh || !auth) {
+        throw new Error('Invalid PushSubscription: missing endpoint or keys');
+      }
+
+      return {
+        endpoint,
+        keys: { p256dh, auth }
+      };
+    } catch (e) {
+      console.warn('Failed to serialize PushSubscription:', e instanceof Error ? e.message : e);
+      throw e;
+    }
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
   /**
    * Register a Web Push subscription in the backend for this user
    */
@@ -189,9 +229,10 @@ class BackendSyncService {
       }
 
       const registerFn = httpsCallable(this.functions, 'registerWebPushSubscription');
+      const serialized = this.serializePushSubscription(subscription);
       const result = await registerFn({
         userId: this.user?.uid,
-        subscription,
+        subscription: serialized,
         userAgent: navigator.userAgent
       });
       console.log('✅ Web Push subscription registered:', result.data);
