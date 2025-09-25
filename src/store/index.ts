@@ -1414,14 +1414,51 @@ export const useMedicationStore = create<MedicationStore>()(
       // Advanced features actions implementation
       // Smart messaging
       addSmartMessage: (messageData) => {
-        const message: SmartMessage = {
-          ...messageData,
-          id: generateId(),
-        };
-        
-        set((state) => ({
-          smartMessages: [...state.smartMessages, message],
-        }));
+        const now = new Date();
+        const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+
+        set((state) => {
+          // Drop expired messages first
+          const existing = state.smartMessages.filter(
+            (msg) => !msg.expiresAt || new Date(msg.expiresAt).getTime() > now.getTime()
+          );
+
+          // Dedupe: if a message of same type for the same medication was created in last 12h, skip
+          const duplicate = existing.find(
+            (msg) =>
+              msg.type === messageData.type &&
+              msg.medicationId === messageData.medicationId &&
+              (!!msg.scheduledTime
+                ? now.getTime() - new Date(msg.scheduledTime).getTime() < TWELVE_HOURS
+                : true)
+          );
+          if (duplicate) {
+            return { smartMessages: existing };
+          }
+
+          // Rate limit: max 3 messages per medication per 24h
+          const recentForMed = existing.filter(
+            (msg) =>
+              msg.medicationId === messageData.medicationId &&
+              !!msg.scheduledTime &&
+              now.getTime() - new Date(msg.scheduledTime).getTime() < ONE_DAY
+          );
+          if (recentForMed.length >= 3) {
+            return { smartMessages: existing };
+          }
+
+          const message: SmartMessage = {
+            ...messageData,
+            id: generateId(),
+            scheduledTime: messageData.scheduledTime || now,
+            expiresAt: messageData.expiresAt || new Date(now.getTime() + ONE_DAY),
+          };
+
+          return {
+            smartMessages: [...existing, message],
+          };
+        });
       },
 
       markMessageAsRead: (messageId) => {

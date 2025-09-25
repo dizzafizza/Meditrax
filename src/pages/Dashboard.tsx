@@ -87,7 +87,7 @@ export function Dashboard() {
   React.useEffect(() => {
     // Regenerate alerts when medications or logs change
     generatePsychologicalSafetyAlerts();
-  }, [medications, logs, generatePsychologicalSafetyAlerts]);
+  }, [medications, logs]);
 
   // Enhanced dose deviation warnings with improved accuracy
   const getDoseDeviationWarnings = () => {
@@ -268,13 +268,7 @@ export function Dashboard() {
     setTaperingModalOpen(true);
   };
 
-  // Enhanced Psychological Safety Alerts (with 7-day minimum requirement)
-  React.useEffect(() => {
-    // Regenerate alerts when medications or logs change
-    if (medications.length > 0) {
-      generatePsychologicalSafetyAlerts();
-    }
-  }, [medications, logs]); // Remove generatePsychologicalSafetyAlerts from deps to prevent infinite loop
+  // (deduped) Psychological Safety Alerts generator lives in the effect above
 
   // Ensure Dependence Prevention is initialized and assessed for high-risk meds
   React.useEffect(() => {

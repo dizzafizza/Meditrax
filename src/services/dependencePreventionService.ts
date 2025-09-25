@@ -9,6 +9,12 @@ import { generateId } from '@/utils/helpers';
 export class DependencePreventionService {
   
   /**
+   * Cooldown windows to prevent alert spam
+   */
+  private static readonly URGENT_ALERT_COOLDOWN_DAYS = 7; // only one urgent alert per week
+  private static readonly PATTERN_ALERT_COOLDOWN_DAYS = 3; // pattern alerts at most every 3 days
+  
+  /**
    * Risk assessment timelines based on medication class and medical literature
    */
   private static readonly RISK_TIMELINES = {
@@ -103,9 +109,9 @@ export class DependencePreventionService {
     prevention.taperingRecommended = taperingAssessment.recommended;
     prevention.taperingUrgency = taperingAssessment.urgency;
 
-    // Generate alerts based on risk factors
+    // Generate alerts based on risk factors and merge with anti-spam safeguards
     const newAlerts = this.generateRiskAlerts(medication, usagePatterns, currentDuration);
-    prevention.alerts = [...prevention.alerts, ...newAlerts];
+    prevention.alerts = this.mergeAlerts(prevention.alerts, newAlerts);
 
     // Check if doctor review is needed
     prevention.doctorReviewRequired = this.shouldReviewWithDoctor(medication, usagePatterns, currentDuration);
@@ -387,6 +393,90 @@ export class DependencePreventionService {
     }
 
     return alerts;
+  }
+
+  /**
+   * Merge new alerts with existing ones while preventing duplicates and throttling
+   */
+  private static mergeAlerts(
+    existingAlerts: DependenceAlert[],
+    incomingAlerts: DependenceAlert[]
+  ): DependenceAlert[] {
+    // Start with existing alerts and collapse any prior duplicates by keeping the most recent
+    const initial: DependenceAlert[] = [...(existingAlerts || [])];
+    const byKey = new Map<string, DependenceAlert>();
+    for (const a of initial) {
+      const key = `${a.type}|${a.trigger}|${a.message}`;
+      const current = byKey.get(key);
+      if (!current || new Date(a.timestamp).getTime() > new Date(current.timestamp).getTime()) {
+        byKey.set(key, a);
+      }
+    }
+    const merged: DependenceAlert[] = Array.from(byKey.values());
+    const now = new Date();
+
+    const msInDay = 24 * 60 * 60 * 1000;
+    const withinDays = (a: Date, b: Date, days: number) =>
+      Math.abs(new Date(a).getTime() - new Date(b).getTime()) < days * msInDay;
+
+    for (const alert of incomingAlerts) {
+      const sameTypeAndTrigger = merged.filter(
+        (a) => a.type === alert.type && a.trigger === alert.trigger
+      );
+
+      // 1) Exact same message already exists -> skip
+      const sameMessage = sameTypeAndTrigger.find((a) => a.message === alert.message);
+      if (sameMessage) {
+        continue;
+      }
+
+      // 2) Urgent alerts: allow only one per cooldown window; replace older to keep latest
+      if (alert.type === 'urgent-medical') {
+        const lastUrgent = sameTypeAndTrigger.sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )[0];
+
+        if (lastUrgent && !lastUrgent.acknowledged && withinDays(lastUrgent.timestamp, alert.timestamp, this.URGENT_ALERT_COOLDOWN_DAYS)) {
+          // Still within cooldown and not acknowledged; do not add a new one
+          continue;
+        }
+
+        // Remove previous urgents of same trigger to avoid stacking
+        for (let i = merged.length - 1; i >= 0; i--) {
+          const a = merged[i];
+          if (a.type === 'urgent-medical' && a.trigger === alert.trigger) {
+            merged.splice(i, 1);
+          }
+        }
+
+        merged.push(alert);
+        continue;
+      }
+
+      // 3) Pattern alerts: throttle to once every PATTERN_ALERT_COOLDOWN_DAYS if an unacknowledged one exists
+      if (['dose-escalation', 'high-cravings'].includes(alert.trigger)) {
+        const recentUnacked = sameTypeAndTrigger.find(
+          (a) => !a.acknowledged && withinDays(a.timestamp, alert.timestamp, this.PATTERN_ALERT_COOLDOWN_DAYS)
+        );
+        if (recentUnacked) {
+          continue;
+        }
+      }
+
+      // 4) Duration milestone alerts: allow only one per milestone (type+trigger)
+      if (['duration-milestone', 'extended-duration'].includes(alert.trigger)) {
+        const already = sameTypeAndTrigger.find((a) => a.type === alert.type && a.trigger === alert.trigger);
+        if (already) {
+          continue;
+        }
+      }
+
+      merged.push(alert);
+    }
+
+    // Sort newest first and cap to last 50 alerts to prevent unbounded growth
+    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return merged.slice(0, 50);
   }
 
   /**

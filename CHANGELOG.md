@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.1] - 2025-09-19
 
+## [1.2.2] - 2025-09-25
+
+### Fixed
+- Dependency Prevention alerts no longer duplicate on each assessment; added merge-and-deduplicate logic with cooldowns (weekly for urgent, 3-day for pattern alerts)
+- Resolved duplicate generation of Psychological Safety alerts on the dashboard by consolidating effect logic
+
+### Improved
+- Smart Messages are now rate-limited (max 3 per medication per 24h) and deduplicated within 12h to prevent spam
+- Existing duplicate dependency alerts are collapsed on next assessment and alert history capped to last 50 items
+
 ### Added
 - iOS PWA Web Push compatibility hardening: ensure VAPID subscription alongside FCM for Safari PWAs; weekly Web Push subscription health check (lightweight, non‑spamming)
 - Service Worker message handlers: `STORE_REMINDER_PATTERN`, `DEACTIVATE_REMINDER_PATTERN`, `CANCEL_REMINDER_NOTIFICATIONS`, and `APP_VISIBILITY_CHANGED` to improve closed‑app delivery and reconciliation
