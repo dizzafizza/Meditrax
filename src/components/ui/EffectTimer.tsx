@@ -126,7 +126,7 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
 
       {/* Timeline */}
       <div className="space-y-2">
-        <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-visible pb-4">
+        <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-visible pb-6">
           <div className="absolute left-0 top-0 h-2 bg-blue-200" style={{ width: `${segmentPct.pre}%` }} />
           <div className="absolute top-0 h-2 bg-green-400" style={{ left: `${segmentPct.pre}%`, width: `${segmentPct.kick}%` }} />
           <div className="absolute top-0 h-2 bg-indigo-500" style={{ left: `${segmentPct.pre + segmentPct.kick}%`, width: `${segmentPct.peak}%` }} />
@@ -157,8 +157,8 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
               </span>
             </div>
           )}
-          {/* Labels */}
-          <div className="absolute -top-4 left-0 right-0 flex justify-between text-[10px] text-gray-600">
+          {/* Phase labels (hidden on mobile to avoid crowding) */}
+          <div className="absolute -top-4 left-0 right-0 hidden sm:flex justify-between text-[10px] text-gray-600">
             <span className="translate-x-0">Onset</span>
             <span style={{ transform: `translateX(-50%)`, left: `${((onset + peak) / 2 / total) * 100}%` }} className="absolute">Kicking in</span>
             <span style={{ transform: `translateX(-50%)`, left: `${((peak + wear) / 2 / total) * 100}%` }} className="absolute">Peaking</span>

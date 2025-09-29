@@ -8,52 +8,51 @@ import './index.css'
 // Enable global glass theme
 document.body.classList.add('glass-theme')
 
-// Service Worker Registration with Update Detection
+// Service Worker Registration with Update Detection (register as early as possible)
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then((registration) => {
-        console.log('✅ Service Worker registered successfully:', registration);
-        
-        // Listen for service worker updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            console.log('🔄 New service worker found, installing...');
-            
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New service worker installed, show update notification
-                console.log('📋 New service worker installed, prompting user to update');
-                showUpdateAvailableNotification();
-              } else if (newWorker.state === 'activated') {
-                console.log('✅ New service worker activated');
-                newWorker.postMessage({ type: 'SW_ACTIVATED' });
-                
-                // Refresh the page to get latest content
-                if (!navigator.serviceWorker.controller) {
-                  window.location.reload();
-                }
-              }
-            });
-          }
-        });
+  navigator.serviceWorker
+    .register('/sw.js', { scope: '/' })
+    .then((registration) => {
+      console.log('✅ Service Worker registered successfully:', registration);
 
-        // Handle controlling service worker change
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          console.log('🔄 Service worker controller changed, reloading...');
-          window.location.reload();
-        });
-        
-        // Notify active service worker
-        if (registration.active) {
-          registration.active.postMessage({ type: 'SW_ACTIVATED' });
+      // Listen for service worker updates
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          console.log('🔄 New service worker found, installing...');
+
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New service worker installed, show update notification
+              console.log('📋 New service worker installed, prompting user to update');
+              showUpdateAvailableNotification();
+            } else if (newWorker.state === 'activated') {
+              console.log('✅ New service worker activated');
+              newWorker.postMessage({ type: 'SW_ACTIVATED' });
+
+              // Refresh the page to get latest content
+              if (!navigator.serviceWorker.controller) {
+                window.location.reload();
+              }
+            }
+          });
         }
-      })
-      .catch((error) => {
-        console.error('❌ Service Worker registration failed:', error);
       });
-  });
+
+      // Handle controlling service worker change
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('🔄 Service worker controller changed, reloading...');
+        window.location.reload();
+      });
+
+      // Notify active service worker
+      if (registration.active) {
+        registration.active.postMessage({ type: 'SW_ACTIVATED' });
+      }
+    })
+    .catch((error) => {
+      console.error('❌ Service Worker registration failed:', error);
+    });
 
   // Listen for messages from service worker
   navigator.serviceWorker.addEventListener('message', (event) => {
