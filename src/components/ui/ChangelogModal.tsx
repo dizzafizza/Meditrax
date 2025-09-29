@@ -59,6 +59,13 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
         title: "State Persistence",
         description: "Added safe deserialization for new effect sessions, events, and profiles, including category‑level profiles."
       }
+      ,
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Category Defaults & Sanity Checks",
+        description: "Added full default timings for all categories (including opioid/kratom) and guards against unrealistic parsed durations, falling back to category defaults when needed."
+      }
     ]
   },
   {

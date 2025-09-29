@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 - State persistence: Added safe deserialization for new effect sessions and profiles
+ - Category defaults: Added complete default timings for all categories (opioid/kratom, benzodiazepine, stimulant, dissociative, alcohol, sleep-aid, muscle-relaxant, antidepressant, anticonvulsant, antipsychotic, low-risk, and medication categories like supplement/herbal)
+ - Database sanity checks: Guard against unrealistic parsed durations (e.g., onset > total) and fall back to category defaults automatically
 
 
 ### Fixed

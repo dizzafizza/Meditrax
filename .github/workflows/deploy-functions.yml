@@ -29,34 +29,23 @@ jobs:
         working-directory: functions
         run: npm run build
 
-      - name: Write service account key
-        run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > $GITHUB_WORKSPACE/gcp_sa.json
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools
 
       - name: Set functions config (webpush)
-        uses: w9jds/firebase-action@v13.22.0
-        with:
-          args: >-
-            functions:config:set
-            webpush.vapid_public_key="${{ env.WEB_PUSH_VAPID_PUBLIC_KEY }}"
-            webpush.vapid_private_key="${{ env.WEB_PUSH_VAPID_PRIVATE_KEY }}"
-            webpush.contact_email="${{ env.WEB_PUSH_CONTACT_EMAIL }}"
-        env:
-          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          WEB_PUSH_VAPID_PUBLIC_KEY: ${{ secrets.WEB_PUSH_VAPID_PUBLIC_KEY }}
-          WEB_PUSH_VAPID_PRIVATE_KEY: ${{ secrets.WEB_PUSH_VAPID_PRIVATE_KEY }}
-          WEB_PUSH_CONTACT_EMAIL: ${{ secrets.WEB_PUSH_CONTACT_EMAIL }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp_sa.json
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          firebase functions:config:set \
+            webpush.vapid_public_key="${{ secrets.WEB_PUSH_VAPID_PUBLIC_KEY }}" \
+            webpush.vapid_private_key="${{ secrets.WEB_PUSH_VAPID_PRIVATE_KEY }}" \
+            webpush.contact_email="${{ secrets.WEB_PUSH_CONTACT_EMAIL }}" \
+            --project "${{ vars.FIREBASE_PROJECT_ID }}"
 
       - name: Deploy functions
-        uses: w9jds/firebase-action@v13.22.0
-        with:
-          args: deploy --only functions
-        env:
-          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp_sa.json
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          firebase deploy --only functions --project "${{ vars.FIREBASE_PROJECT_ID }}"
 

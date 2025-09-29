@@ -7,6 +7,31 @@ import { MEDICATION_DATABASE, MedicationDatabaseEntry } from '@/services/medicat
  * - Learns per-user metabolism from feedback events and updates the profile
  */
 export class EffectLearningService {
+  // Default category timings (minutes). Conservative baselines used when no per-drug data or learned category profile exists.
+  private static CATEGORY_DEFAULTS: Record<string, { onset: number; duration: number }> = {
+    opioid: { onset: 20, duration: 300 },
+    benzodiazepine: { onset: 30, duration: 480 },
+    stimulant: { onset: 30, duration: 300 },
+    dissociative: { onset: 10, duration: 90 },
+    alcohol: { onset: 10, duration: 120 },
+    'sleep-aid': { onset: 30, duration: 480 },
+    'muscle-relaxant': { onset: 30, duration: 360 },
+    antidepressant: { onset: 60, duration: 480 },
+    anticonvulsant: { onset: 60, duration: 600 },
+    antipsychotic: { onset: 60, duration: 600 },
+    'low-risk': { onset: 30, duration: 240 },
+
+    // Medication category fallbacks
+    supplement: { onset: 30, duration: 240 },
+    vitamin: { onset: 30, duration: 240 },
+    herbal: { onset: 30, duration: 300 },
+    prescription: { onset: 30, duration: 360 },
+    'over-the-counter': { onset: 30, duration: 240 },
+    injection: { onset: 5, duration: 180 },
+    topical: { onset: 30, duration: 240 },
+    emergency: { onset: 5, duration: 120 },
+    recreational: { onset: 15, duration: 180 },
+  };
   /**
    * Build default profile using (priority):
    * 1) Local database (Psychonaut Wiki-derived) durations
@@ -26,23 +51,11 @@ export class EffectLearningService {
   }
 
   static getCategoryFallbackProfile(medication: Medication): EffectProfile {
-    const category = (medication.dependencyRiskCategory || 'low-risk').toLowerCase();
-
-    let onset = 30; // minutes
-    let duration = 480;
-
-    if (category.includes('stimulant')) {
-      onset = 20; duration = 360;
-    } else if (category.includes('opioid')) {
-      onset = 30; duration = 480;
-    } else if (category.includes('benzodiazepine')) {
-      onset = 30; duration = 720;
-    } else if (category.includes('sleep-aid') || category.includes('muscle-relaxant')) {
-      onset = 30; duration = 600;
-    } else if (medication.category === 'supplement' || medication.category === 'vitamin' || medication.category === 'herbal') {
-      onset = 30; duration = 360;
-    }
-
+    const depCat = (medication.dependencyRiskCategory || '').toLowerCase();
+    const medCat = (medication.category || '').toLowerCase();
+    const defaults = this.CATEGORY_DEFAULTS[depCat] || this.CATEGORY_DEFAULTS[medCat] || this.CATEGORY_DEFAULTS['low-risk'];
+    const onset = defaults.onset;
+    const duration = defaults.duration;
     const peak = Math.round(onset + (duration - onset) * 0.33);
     const wearOffStart = Math.round(onset + (duration - onset) * 0.75);
 
@@ -52,7 +65,7 @@ export class EffectLearningService {
       peakMinutes: peak,
       wearOffStartMinutes: wearOffStart,
       durationMinutes: duration,
-      confidence: 0.2,
+      confidence: 0.25,
       samples: 0,
       lastUpdated: new Date(),
     };
@@ -67,9 +80,21 @@ export class EffectLearningService {
     const parsed = this.extractDurationsFromText(entry.description);
     if (!parsed) return null;
 
-    const { onsetAvgMin, totalAvgMin } = parsed;
-    const onset = Math.max(0, Math.round(onsetAvgMin));
-    const duration = Math.max(1, Math.round(totalAvgMin));
+    let { onsetAvgMin, totalAvgMin } = parsed;
+    let onset = Math.max(0, Math.round(onsetAvgMin));
+    let duration = Math.max(1, Math.round(totalAvgMin));
+
+    // Sanity checks; fall back to category defaults if unrealistic
+    const fallback = this.CATEGORY_DEFAULTS[(medication.dependencyRiskCategory || '').toLowerCase()] ||
+                     this.CATEGORY_DEFAULTS[(medication.category || '').toLowerCase()] ||
+                     this.CATEGORY_DEFAULTS['low-risk'];
+    const violatesOrdering = duration <= onset + 15;
+    const onsetTooHigh = onset > Math.max(120, duration * 0.8);
+    const durationTooShort = duration < 30;
+    if (violatesOrdering || onsetTooHigh || durationTooShort) {
+      onset = fallback.onset;
+      duration = fallback.duration;
+    }
     const peak = Math.round(onset + (duration - onset) * 0.33);
     const wearOffStart = Math.round(onset + (duration - onset) * 0.75);
 
@@ -79,7 +104,7 @@ export class EffectLearningService {
       peakMinutes: peak,
       wearOffStartMinutes: wearOffStart,
       durationMinutes: duration,
-      confidence: 0.35,
+      confidence: 0.4,
       samples: 0,
       lastUpdated: new Date(),
     };
