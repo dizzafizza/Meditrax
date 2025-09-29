@@ -26,8 +26,14 @@ export function generateFirebaseServiceWorkerContent() {
  */
 
 // Import Firebase scripts for service worker
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+// Wrap remote imports to avoid breaking offline startup
+try {
+  importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+} catch (e) {
+  // If offline or blocked, continue without Firebase; app will fallback gracefully
+  console.warn('Firebase libraries unavailable in service worker startup (offline or blocked). FCM disabled until connectivity is restored.');
+}
 
 // Global flag to prevent multiple config requests
 let configRequestInProgress = false;
@@ -143,7 +149,7 @@ async function initializeFirebaseMessaging() {
     // Get Firebase config from main app
     firebaseConfig = await getFirebaseConfig();
     
-    if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
+    if (typeof firebase !== 'undefined' && firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
       // Initialize Firebase with runtime configuration
       firebase.initializeApp(firebaseConfig);
       messaging = firebase.messaging();

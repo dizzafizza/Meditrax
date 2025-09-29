@@ -7,7 +7,7 @@ A modern, responsive web application built with React and TypeScript for trackin
 ## 🐞🔧 Known Notes:
 - **Tapering System:** Sometimes you may get an incorrect dosage. *WIP*
 - **iOS PWA Push Notifications:** Fully supported via Web Push (VAPID) and/or FCM once environment variables are configured. See "Web Push (iOS/ Safari) and FCM Setup" below. If env keys are missing, the app falls back to local SW scheduling with missed‑dose recovery.
-- **App Doesn't Update Properly:** Previous versions may be loaded from cache; refresh or clear cache to update to the latest version.
+- **App Updates Automatically:** The app now auto-detects new versions and prompts to reload. If you still see stale content, perform a hard refresh once.
 
 ## ✨ Features
 
@@ -111,6 +111,12 @@ Meditrax can be installed as a Progressive Web App for the best mobile experienc
 - After that, you can launch the app from the Home Screen with no connectivity.
 - If you see a blank page when completely offline, force close and relaunch; iOS can be aggressive about suspending service workers.
 - The app now avoids loading optional scripts during service worker startup to ensure offline launch reliability on iOS.
+
+#### Offline & Update Behavior
+- On first visit while online, the service worker installs and caches the app shell for offline use.
+- Subsequent launches work fully offline. If the network is unavailable, cached assets load immediately.
+- When a new deployment is available, you'll be prompted to update. Accepting will activate the new version and reload the app.
+- The service worker uses a network-first strategy for HTML/JS/CSS to get fresh content when online, with fast fallback to cache when offline.
 
 ### Quick Start
 For first-time users:
