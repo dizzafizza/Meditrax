@@ -24,7 +24,9 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
   const [tick, setTick] = React.useState(0);
   const [customize, setCustomize] = React.useState(false);
   const [applyToCategory, setApplyToCategory] = React.useState(true);
-  const [showRemaining, setShowRemaining] = React.useState(false);
+  type TimerMode = 'elapsed' | 'remaining' | 'next';
+  const [timerMode, setTimerMode] = React.useState<TimerMode>('elapsed');
+  const [autoStop, setAutoStop] = React.useState(false);
 
   const [onsetIn, setOnsetIn] = React.useState<number | null>(null);
   const [peakIn, setPeakIn] = React.useState<number | null>(null);
@@ -54,6 +56,7 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
       setPeakIn(profile.peakMinutes);
       setWearIn(profile.wearOffStartMinutes);
       setDurationIn(profile.durationMinutes);
+      setAutoStop(!!profile.autoStopOnWearOff);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.onsetMinutes, profile?.peakMinutes, profile?.wearOffStartMinutes, profile?.durationMinutes]);
@@ -83,6 +86,36 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
     const mm = m % 60;
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
   };
+
+  const getNextPhaseInfo = (): { minutes: number; label: string } => {
+    if (!profile || !prediction) return { minutes: 0, label: '' };
+    let target = profile.durationMinutes;
+    let label = 'Worn off';
+    switch (prediction.status) {
+      case 'pre_onset':
+        target = profile.onsetMinutes; label = 'Kicking in'; break;
+      case 'kicking_in':
+        target = profile.peakMinutes; label = 'Peaking'; break;
+      case 'peaking':
+        target = profile.wearOffStartMinutes; label = 'Wearing off'; break;
+      case 'wearing_off':
+        target = profile.durationMinutes; label = 'Worn off'; break;
+      case 'worn_off':
+        target = profile.durationMinutes; label = 'Worn off'; break;
+    }
+    const minutes = Math.max(0, Math.round(target - nowMinutes));
+    return { minutes, label };
+  };
+
+  // Auto-stop when worn off if enabled
+  React.useEffect(() => {
+    if (!activeSession || !profile || !prediction) return;
+    if (!profile.autoStopOnWearOff) return;
+    if (prediction.status === 'worn_off') {
+      endEffectSession(activeSession.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession?.id, profile?.autoStopOnWearOff, prediction?.status]);
 
   const segmentPct = {
     pre: (onset / total) * 100,
@@ -148,12 +181,14 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
               <span
                 role="button"
                 tabIndex={0}
-                title="Click to toggle elapsed/remaining"
-                onClick={() => setShowRemaining(v => !v)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowRemaining(v => !v); } }}
+                title="Tap to toggle elapsed / remaining / until next phase"
+                onClick={() => setTimerMode(m => (m === 'elapsed' ? 'remaining' : m === 'remaining' ? 'next' : 'elapsed'))}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTimerMode(m => (m === 'elapsed' ? 'remaining' : m === 'remaining' ? 'next' : 'elapsed')); } }}
                 className="px-1.5 py-0.5 bg-white border border-gray-200 rounded shadow-sm cursor-pointer select-none"
               >
-                {showRemaining ? `${formatDuration(Math.max(0, total - nowMinutes))} left` : `${formatDuration(nowMinutes)}`}
+                {timerMode === 'elapsed' && `${formatDuration(nowMinutes)}`}
+                {timerMode === 'remaining' && `${formatDuration(Math.max(0, total - nowMinutes))} left`}
+                {timerMode === 'next' && (() => { const n = getNextPhaseInfo(); return `${formatDuration(n.minutes)} to ${n.label}`; })()}
               </span>
             </div>
           )}
@@ -227,6 +262,11 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
               </div>
 
               <div className="col-span-2 flex items-center gap-2">
+                <input id={`auto-stop-${medicationId}`} type="checkbox" checked={autoStop} onChange={e => setAutoStop(e.target.checked)} />
+                <label htmlFor={`auto-stop-${medicationId}`} className="text-gray-700">Auto-stop session when worn off</label>
+              </div>
+
+              <div className="col-span-2 flex items-center gap-2">
                 <button
                   onClick={() => {
                     const o = Math.max(0, Number(onsetIn ?? 0));
@@ -238,6 +278,7 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
                       peakMinutes: p,
                       wearOffStartMinutes: w,
                       durationMinutes: d,
+                      autoStopOnWearOff: autoStop,
                     }, applyToCategory);
                     setCustomize(false);
                   }}

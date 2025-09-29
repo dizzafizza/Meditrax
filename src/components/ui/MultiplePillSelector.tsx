@@ -113,11 +113,33 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
   };
 
   const handleSave = () => {
-    // Create new pill configurations with IDs
-    const newPillConfigs = pillConfigs.map(config => ({
-      ...config,
-      id: generateId()
-    }));
+    // Create new pill configurations preserving existing IDs when possible
+    const existingConfigs = medication.pillConfigurations || [];
+    const usedExistingIds = new Set<string>();
+
+    const findMatchBySignature = (cfg: Omit<PillConfiguration, 'id'>) => {
+      return existingConfigs.find(ec =>
+        !usedExistingIds.has(ec.id) &&
+        ec.strength === cfg.strength &&
+        ec.unit === cfg.unit &&
+        (ec.color || 'white') === (cfg.color || 'white') &&
+        (ec.shape || 'round') === (cfg.shape || 'round') &&
+        (ec.isActive !== false) === (cfg.isActive !== false)
+      );
+    };
+
+    const newPillConfigs = pillConfigs.map((config, index) => {
+      // Prefer preserving by index to keep stable references
+      const indexMatch = existingConfigs[index] && !usedExistingIds.has(existingConfigs[index].id)
+        ? existingConfigs[index]
+        : undefined;
+      // If index changed, try to match by signature (strength/unit/color/shape)
+      const signatureMatch = indexMatch ? undefined : findMatchBySignature(config);
+      const preserved = indexMatch || signatureMatch;
+      const id = preserved ? preserved.id : generateId();
+      if (preserved) usedExistingIds.add(preserved.id);
+      return { ...config, id } as PillConfiguration;
+    });
 
     // Create dose configuration with proper pill component links
     const doseConfig: DoseConfiguration = {
@@ -133,20 +155,14 @@ export function MultiplePillSelector({ medicationId, onClose }: MultiplePillSele
       isDefault: true,
     };
 
-    // Create or preserve pill inventory
-    const pillInventory = newPillConfigs.map((config, index) => {
-      // Try to find existing inventory for this pill configuration
-      const existingInventory = medication.pillInventory?.find(inv => {
-        // Match by index for existing configurations
-        const existingConfig = medication.pillConfigurations?.[index];
-        return existingConfig && inv.pillConfigurationId === existingConfig.id;
-      });
-      
+    // Create or preserve pill inventory (match by preserved IDs)
+    const pillInventory = newPillConfigs.map((config) => {
+      const existingInventory = medication.pillInventory?.find(inv => inv.pillConfigurationId === config.id);
+
       return {
         pillConfigurationId: config.id,
         currentCount: existingInventory?.currentCount ?? medication.pillsRemaining ?? 30,
         lastUpdated: new Date(),
-        // Preserve other inventory properties if they exist
         ...(existingInventory ? {
           expirationDate: existingInventory.expirationDate,
           batchNumber: existingInventory.batchNumber,

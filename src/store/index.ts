@@ -2523,9 +2523,21 @@ export const useMedicationStore = create<MedicationStore>()(
         const medication = get().medications.find((med) => med.id === medicationId);
         if (!medication) return;
 
+        // Enrich pill logs with snapshot of strength/unit at log time
+        const enrichedPillLogs: PillLogEntry[] = pillLogs.map((pillLog) => {
+          const pillConfig = medication.pillConfigurations?.find(
+            (config) => config.id === pillLog.pillConfigurationId
+          );
+          return {
+            ...pillLog,
+            strengthAtLog: pillConfig?.strength,
+            unitAtLog: pillConfig?.unit,
+          } as PillLogEntry;
+        });
+
         // Calculate adherence details
-        const totalExpected = pillLogs.reduce((sum, log) => sum + log.quantityExpected, 0);
-        const totalTaken = pillLogs.reduce((sum, log) => sum + log.quantityTaken, 0);
+        const totalExpected = enrichedPillLogs.reduce((sum, log) => sum + log.quantityExpected, 0);
+        const totalTaken = enrichedPillLogs.reduce((sum, log) => sum + log.quantityTaken, 0);
         const adherencePercentage = totalExpected > 0 ? (totalTaken / totalExpected) * 100 : 0;
         const partialDose = adherencePercentage > 0 && adherencePercentage < 100;
 
@@ -2547,11 +2559,11 @@ export const useMedicationStore = create<MedicationStore>()(
         }
 
         // Calculate total dose for safety checking
-        const totalDoseAmount = pillLogs.reduce((sum, pillLog) => {
-          const pillConfig = medication.pillConfigurations?.find(
-            config => config.id === pillLog.pillConfigurationId
-          );
-          return sum + (pillConfig ? pillConfig.strength * pillLog.quantityTaken : 0);
+        const totalDoseAmount = enrichedPillLogs.reduce((sum, pillLog) => {
+          const strength = typeof pillLog.strengthAtLog === 'number' 
+            ? pillLog.strengthAtLog 
+            : medication.pillConfigurations?.find(c => c.id === pillLog.pillConfigurationId)?.strength;
+          return sum + ((strength || 0) * pillLog.quantityTaken);
         }, 0);
 
         // Generate dose safety message for multiple pills
@@ -2581,7 +2593,7 @@ export const useMedicationStore = create<MedicationStore>()(
           sideEffectsReported: sideEffects,
           adherence: adherenceStatus,
           createdAt: new Date(),
-          pillsLogged: pillLogs,
+          pillsLogged: enrichedPillLogs,
           adherenceDetails,
           useMultiplePills: true,
         };

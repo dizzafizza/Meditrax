@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Dependency Prevention alerts no longer duplicate on each assessment; added merge-and-deduplicate logic with cooldowns (weekly for urgent, 3-day for pattern alerts)
 - Resolved duplicate generation of Psychological Safety alerts on the dashboard by consolidating effect logic
+- Calendar: Fixed "?" dose display after editing Multiple Pills configuration by preserving pill configuration IDs, and added log-time snapshots of pill strength/unit to keep historical entries accurate
 
 ### Improved
 - Smart Messages are now rate-limited (max 3 per medication per 24h) and deduplicated within 12h to prevent spam

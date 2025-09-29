@@ -68,6 +68,7 @@ export class EffectLearningService {
       confidence: 0.25,
       samples: 0,
       lastUpdated: new Date(),
+      autoStopOnWearOff: false,
     };
   }
 
@@ -107,6 +108,7 @@ export class EffectLearningService {
       confidence: 0.4,
       samples: 0,
       lastUpdated: new Date(),
+      autoStopOnWearOff: false,
     };
   }
 

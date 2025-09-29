@@ -191,15 +191,17 @@ export function Calendar() {
       if (medication.useMultiplePills && log.pillsLogged?.length) {
         const pillDetails = log.pillsLogged.map(pill => {
           const config = medication.pillConfigurations?.find(c => c.id === pill.pillConfigurationId);
-          return `${pill.quantityTaken}×${config?.strength || '?'}${config?.unit || 'mg'}`;
+          const strength = (config?.strength ?? pill.strengthAtLog);
+          const unit = (config?.unit ?? pill.unitAtLog ?? medication.unit);
+          return `${pill.quantityTaken}×${typeof strength === 'number' ? strength : '?' }${unit || 'mg'}`;
         }).join(' + ');
-        
+
         const totalDose = log.pillsLogged.reduce((sum, pill) => {
           const config = medication.pillConfigurations?.find(c => c.id === pill.pillConfigurationId);
-          const strength = parseFloat(config?.strength?.toString() || '0');
+          const strength = (config?.strength ?? pill.strengthAtLog ?? 0);
           return sum + (pill.quantityTaken * strength);
         }, 0);
-        
+
         dosageInfo = `${pillDetails} = ${totalDose}${medication.unit}`;
       } else if (medication.useMultiplePills) {
         dosageInfo = formatPillDisplayShort(medication);

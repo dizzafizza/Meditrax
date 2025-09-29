@@ -95,6 +95,9 @@ export interface PillLogEntry {
   quantityExpected: number;
   timeTaken?: Date;
   notes?: string;
+  // Snapshot of pill configuration at logging time to make historical logs robust
+  strengthAtLog?: number;
+  unitAtLog?: MedicationUnit;
 }
 
 export interface AdherenceDetails {
@@ -872,6 +875,7 @@ export interface EffectProfile {
   confidence: number;              // 0-1 aggregate confidence
   samples: number;                 // number of feedback samples incorporated
   lastUpdated?: Date;
+  autoStopOnWearOff?: boolean;     // auto end session at worn off
 }
 
 export interface EffectEvent {
