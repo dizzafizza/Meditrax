@@ -22,6 +22,7 @@ import { generateListItemKey } from '@/utils/reactKeyHelper';
 import { TodaysMedications } from '@/components/ui/TodaysMedications';
 import '@/utils/fixKratomData'; // Import the fix utility
 import { WithdrawalSymptomTracker } from '@/components/ui/WithdrawalSymptomTracker';
+import { EffectTimer } from '@/components/ui/EffectTimer';
 import { DependencyPreventionModal } from '@/components/modals/DependencyPreventionModal';
 import { TaperingPlanModal } from '@/components/modals/TaperingPlanModal';
 import { Medication } from '@/types';
@@ -29,6 +30,7 @@ import { Medication } from '@/types';
 export function Dashboard() {
   const medications = useMedicationStore(s => s.medications);
   const logs = useMedicationStore(s => s.logs);
+  const effectSessions = useMedicationStore(s => s.effectSessions);
   const {
     getTodaysReminders,
     getTodaysLogs,
@@ -74,6 +76,7 @@ export function Dashboard() {
   const activeMedications = medications.filter(med => med.isActive);
   const smartInsights = getSmartInsights();
   const priorityMessages = smartMessages.filter(msg => msg.priority === 'high' || msg.priority === 'urgent');
+  const activeEffectSessions = React.useMemo(() => effectSessions.filter(s => !s.endTime), [effectSessions]);
 
   // Enhanced dashboard data
   const taperingMedications = activeMedications.filter(med => med.tapering?.isActive);
@@ -416,6 +419,35 @@ export function Dashboard() {
             </div>
           </Link>
         ))}
+      </div>
+
+      {/* Effect Tracking Overview */}
+      <div className="card">
+        <div className="card-header">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900 flex items-center">
+              <Brain className="h-5 w-5 text-purple-600 mr-2" /> Effect Tracking
+            </h3>
+            {activeEffectSessions.length > 0 ? (
+              <span className="badge badge-primary">{activeEffectSessions.length} active</span>
+            ) : (
+              <Link to="/effects" className="text-sm text-primary-600 hover:text-primary-700">Open tracker</Link>
+            )}
+          </div>
+        </div>
+        <div className="card-content">
+          {activeEffectSessions.length === 0 ? (
+            <div className="p-3 bg-purple-50 border border-purple-200 rounded text-sm text-purple-800">
+              Start tracking a dose to learn your onset, peak, and wear-off times. The model calibrates to your feedback.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {activeEffectSessions.slice(0, 2).map(session => (
+                <EffectTimer key={session.id} medicationId={session.medicationId} compact />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Smart Messages Section */}

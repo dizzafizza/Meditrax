@@ -11,7 +11,8 @@ import {
   FileText,
   Package,
   Book,
-  Activity
+  Activity,
+  Brain
 } from 'lucide-react';
 import { cn } from '@/utils/helpers';
 
@@ -31,6 +32,7 @@ const navigation = [
 
 const secondaryNavigation = [
   { name: 'Advanced Schedules', href: '/cyclic-dosing', icon: Activity },
+  { name: 'Effects Tracker', href: '/effects', icon: Brain },
   { name: 'Wiki', href: '/wiki', icon: Book },
   { name: 'Reminders', href: '/reminders', icon: Bell },
   { name: 'Reports', href: '/reports', icon: FileText },

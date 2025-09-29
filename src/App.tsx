@@ -12,6 +12,7 @@ const Reports = React.lazy(() => import('@/pages/Reports').then(m => ({ default:
 const HealthProfile = React.lazy(() => import('@/pages/HealthProfile').then(m => ({ default: m.HealthProfile })));
 const Wiki = React.lazy(() => import('@/pages/Wiki').then(m => ({ default: m.Wiki })));
 const CyclicDosing = React.lazy(() => import('@/pages/CyclicDosing').then(m => ({ default: m.CyclicDosing })));
+const EffectsTracker = React.lazy(() => import('@/pages/EffectsTracker').then(m => ({ default: m.EffectsTracker })));
 import { ChangelogModal } from '@/components/ui/ChangelogModal';
 import { UpdateNotification, useUpdateNotification } from '@/components/ui/UpdateNotification';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
@@ -181,6 +182,7 @@ function App() {
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/effects" element={<EffectsTracker />} />
           <Route path="/reminders" element={<Reminders />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/profile" element={<HealthProfile />} />

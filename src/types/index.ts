@@ -180,6 +180,14 @@ export interface UserPreferences {
     dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
     defaultView: 'dashboard' | 'medications' | 'calendar';
   };
+  effects?: EffectsPreferences;
+}
+
+export interface EffectsPreferences {
+  defaultUnit?: 'minutes' | 'hours';
+  showLabels?: boolean;
+  showNowMarker?: boolean;
+  allowManualAdjust?: boolean;
 }
 
 // Enums and unions
@@ -851,3 +859,33 @@ export interface PrivacyAuditLog {
 
 // Re-export enhanced inventory types
 export * from './enhanced-inventory';
+
+// Effects tracking and learning types
+export type EffectStatus = 'pre_onset' | 'kicking_in' | 'peaking' | 'wearing_off' | 'worn_off';
+
+export interface EffectProfile {
+  medicationId: string;
+  onsetMinutes: number;            // minutes after dose when effects begin
+  peakMinutes: number;             // minutes after dose when peak typically occurs
+  wearOffStartMinutes: number;     // minutes after dose when effects begin to decline
+  durationMinutes: number;         // total duration until effects are worn off
+  confidence: number;              // 0-1 aggregate confidence
+  samples: number;                 // number of feedback samples incorporated
+  lastUpdated?: Date;
+}
+
+export interface EffectEvent {
+  timestamp: Date;                 // absolute timestamp when user provided feedback
+  offsetMinutes: number;           // minutes since session start at event time
+  status: Exclude<EffectStatus, 'pre_onset'>;
+}
+
+export interface EffectSession {
+  id: string;
+  medicationId: string;
+  startTime: Date;
+  endTime?: Date;
+  events: EffectEvent[];
+  createdAt: Date;
+  updatedAt: Date;
+}

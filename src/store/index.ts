@@ -26,6 +26,7 @@ import {
   DependenceAlert,
   DependenceIntervention
 } from '@/types';
+import { EffectProfile, EffectSession, EffectStatus } from '@/types';
 import { 
   generateId, 
   isToday, 
@@ -52,6 +53,7 @@ import { suggestPauseDuration } from '@/services/medicationDatabase';
 import { PsychologicalSafetyService } from '@/services/psychologicalSafetyService';
 import { notificationService } from '@/services/notificationService';
 import { backendSyncService } from '@/services/backendSyncService';
+import { EffectLearningService } from '@/services/effectLearningService';
 
 interface MedicationStore {
   // State
@@ -70,6 +72,12 @@ interface MedicationStore {
   adherencePatterns: AdherencePattern[];
   dependencyRiskAssessments: DependencyRiskAssessment[];
   psychologicalSafetyAlerts: PsychologicalSafetyAlert[];
+
+  // Effects tracking state
+  effectProfiles: Record<string, EffectProfile>;
+  effectSessions: EffectSession[];
+  activeEffectSessionId: string | null;
+  categoryEffectProfiles: Record<string, EffectProfile>;
 
   // Medication actions
   addMedication: (medication: Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>) => void;
@@ -175,6 +183,18 @@ interface MedicationStore {
   getCurrentStreak: (medicationId: string) => number;
   getOverallStreak: () => number;
   areAllScheduledMedicationsComplete: () => boolean;
+
+  // Effects tracking actions & selectors
+  getEffectProfile: (medicationId: string) => EffectProfile | null;
+  getCategoryEffectProfile: (category: string) => EffectProfile | null;
+  startEffectSession: (medicationId: string, startTime?: Date) => string | null;
+  recordEffectFeedback: (sessionId: string, status: Exclude<EffectStatus, 'pre_onset'>) => void;
+  endEffectSession: (sessionId: string) => void;
+  getActiveEffectSessionForMedication: (medicationId: string) => EffectSession | null;
+  getEffectPrediction: (medicationId: string) => { status: EffectStatus; phaseProgress: number; minutesSinceDose: number } | null;
+  updateEffectProfile: (medicationId: string, updates: Partial<EffectProfile>, applyToCategory?: boolean) => void;
+  updateCategoryEffectProfile: (category: string, updates: Partial<EffectProfile>) => void;
+  resetEffectProfileToDefault: (medicationId: string) => void;
 }
 
 const initialUserProfile: UserProfile = {
@@ -278,6 +298,12 @@ export const useMedicationStore = create<MedicationStore>()(
       dependencyRiskAssessments: [],
       psychologicalSafetyAlerts: [],
 
+      // Effects tracking initial state
+      effectProfiles: {},
+      effectSessions: [],
+      activeEffectSessionId: null,
+      categoryEffectProfiles: {},
+
       // Medication actions
       addMedication: (medicationData) => {
         const dependencyRiskCategory = getDependencyRiskCategory(medicationData.name) as DependencyRiskCategory;
@@ -326,6 +352,169 @@ export const useMedicationStore = create<MedicationStore>()(
             med.id === id ? { ...med, isActive: !med.isActive, updatedAt: new Date() } : med
           ),
         }));
+      },
+
+      // Effects tracking actions
+      getEffectProfile: (medicationId) => {
+        const state = get();
+        const existing = state.effectProfiles[medicationId];
+        if (existing) return existing;
+        const med = state.medications.find(m => m.id === medicationId);
+        if (!med) return null;
+        const categoryLearned = state.categoryEffectProfiles[med.dependencyRiskCategory] || null;
+        const profile = EffectLearningService.getDefaultProfile(med, categoryLearned);
+        set((s) => ({ effectProfiles: { ...s.effectProfiles, [medicationId]: profile } }));
+        return profile;
+      },
+
+      getCategoryEffectProfile: (category) => {
+        const p = get().categoryEffectProfiles[category];
+        return p || null;
+      },
+
+      startEffectSession: (medicationId, startTime) => {
+        const state = get();
+        const medication = state.medications.find(m => m.id === medicationId);
+        if (!medication) return null;
+
+        // Ensure profile exists
+        if (!state.effectProfiles[medicationId]) {
+          const profile = EffectLearningService.getDefaultProfile(medication);
+          set((s) => ({ effectProfiles: { ...s.effectProfiles, [medicationId]: profile } }));
+        }
+
+        // Check for existing active session for this medication
+        const existing = state.effectSessions.find(s => s.medicationId === medicationId && !s.endTime);
+        if (existing) {
+          set({ activeEffectSessionId: existing.id });
+          return existing.id;
+        }
+
+        const session: EffectSession = {
+          id: generateId(),
+          medicationId,
+          startTime: startTime || new Date(),
+          events: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        set((s) => ({ effectSessions: [...s.effectSessions, session], activeEffectSessionId: session.id }));
+        return session.id;
+      },
+
+      recordEffectFeedback: (sessionId, status) => {
+        const state = get();
+        const sessionIndex = state.effectSessions.findIndex(s => s.id === sessionId);
+        if (sessionIndex === -1) return;
+        const session = state.effectSessions[sessionIndex];
+        const now = new Date();
+        const offsetMinutes = Math.max(0, Math.round((now.getTime() - new Date(session.startTime).getTime()) / 60000));
+        const event = { timestamp: now, offsetMinutes, status } as const;
+
+        // Update session
+        const updatedSession: EffectSession = {
+          ...session,
+          events: [...session.events, event],
+          updatedAt: now,
+        };
+
+        // Update profile
+        const currentProfile = state.effectProfiles[session.medicationId] || get().getEffectProfile(session.medicationId);
+        const medication = state.medications.find(m => m.id === session.medicationId);
+        const categoryKey = medication?.dependencyRiskCategory || 'low-risk';
+        const currentCategoryProfile = state.categoryEffectProfiles[categoryKey] || (medication ? EffectLearningService.getCategoryFallbackProfile(medication) : null);
+        if (currentProfile) {
+          const updatedProfile = EffectLearningService.updateProfileFromEvent(currentProfile, event);
+          // Update category learned profile as well
+          let nextCategoryProfiles = { ...state.categoryEffectProfiles };
+          if (currentCategoryProfile) {
+            const updatedCategory = EffectLearningService.updateProfileFromEvent(currentCategoryProfile, event);
+            nextCategoryProfiles = { ...nextCategoryProfiles, [categoryKey]: { ...updatedCategory, medicationId: `__category__:${categoryKey}` } };
+          }
+          set((s) => ({
+            effectSessions: s.effectSessions.map((x, i) => (i === sessionIndex ? updatedSession : x)),
+            effectProfiles: { ...s.effectProfiles, [session.medicationId]: updatedProfile },
+            categoryEffectProfiles: nextCategoryProfiles,
+          }));
+        } else {
+          set((s) => ({
+            effectSessions: s.effectSessions.map((x, i) => (i === sessionIndex ? updatedSession : x)),
+          }));
+        }
+      },
+
+      endEffectSession: (sessionId) => {
+        const state = get();
+        const sessionIndex = state.effectSessions.findIndex(s => s.id === sessionId);
+        if (sessionIndex === -1) return;
+        const session = state.effectSessions[sessionIndex];
+        const ended = { ...session, endTime: new Date(), updatedAt: new Date() };
+        set((s) => ({
+          effectSessions: s.effectSessions.map((x, i) => (i === sessionIndex ? ended : x)),
+          activeEffectSessionId: s.activeEffectSessionId === sessionId ? null : s.activeEffectSessionId,
+        }));
+      },
+
+      getActiveEffectSessionForMedication: (medicationId) => {
+        const state = get();
+        return state.effectSessions.find(s => s.medicationId === medicationId && !s.endTime) || null;
+      },
+
+      getEffectPrediction: (medicationId) => {
+        const state = get();
+        const session = state.effectSessions.find(s => s.medicationId === medicationId && !s.endTime);
+        if (!session) return null;
+        const profile = state.effectProfiles[medicationId] || get().getEffectProfile(medicationId);
+        if (!profile) return null;
+        const minutesSinceDose = Math.max(0, Math.round((Date.now() - new Date(session.startTime).getTime()) / 60000));
+        const { status, phaseProgress } = EffectLearningService.predictStatus(profile, minutesSinceDose);
+        return { status, phaseProgress, minutesSinceDose };
+      },
+
+      updateEffectProfile: (medicationId, updates, applyToCategory) => {
+        const state = get();
+        const existing = state.effectProfiles[medicationId] || get().getEffectProfile(medicationId);
+        if (!existing) return;
+        const merged: EffectProfile = {
+          ...existing,
+          ...updates,
+          lastUpdated: new Date(),
+        } as EffectProfile;
+        const medication = state.medications.find(m => m.id === medicationId);
+        set((s) => ({ effectProfiles: { ...s.effectProfiles, [medicationId]: merged } }));
+        if (applyToCategory && medication) {
+          const catKey = medication.dependencyRiskCategory;
+          const catExisting = state.categoryEffectProfiles[catKey] || { ...merged, medicationId: `__category__:${catKey}` };
+          const catMerged: EffectProfile = { ...catExisting, ...updates, medicationId: `__category__:${catKey}`, lastUpdated: new Date() };
+          set((s) => ({ categoryEffectProfiles: { ...s.categoryEffectProfiles, [catKey]: catMerged } }));
+        }
+      },
+
+      updateCategoryEffectProfile: (category, updates) => {
+        const existing = get().categoryEffectProfiles[category] || null;
+        const merged: EffectProfile = {
+          medicationId: `__category__:${category}`,
+          onsetMinutes: 30,
+          peakMinutes: 90,
+          wearOffStartMinutes: 240,
+          durationMinutes: 480,
+          confidence: 0.2,
+          samples: 0,
+          lastUpdated: new Date(),
+          ...existing,
+          ...updates,
+        };
+        set((s) => ({ categoryEffectProfiles: { ...s.categoryEffectProfiles, [category]: merged } }));
+      },
+
+      resetEffectProfileToDefault: (medicationId) => {
+        const state = get();
+        const med = state.medications.find(m => m.id === medicationId);
+        if (!med) return;
+        const categoryLearned = state.categoryEffectProfiles[med.dependencyRiskCategory] || null;
+        const profile = EffectLearningService.getDefaultProfile(med, categoryLearned);
+        set((s) => ({ effectProfiles: { ...s.effectProfiles, [medicationId]: profile } }));
       },
 
       // Log actions
@@ -2845,6 +3034,37 @@ export const useMedicationStore = create<MedicationStore>()(
             createdAt: typeof state.userProfile.createdAt === 'string' ? new Date(state.userProfile.createdAt) : state.userProfile.createdAt,
             updatedAt: typeof state.userProfile.updatedAt === 'string' ? new Date(state.userProfile.updatedAt) : state.userProfile.updatedAt
           };
+        }
+
+        // Deserialize effects tracking data
+        if (state?.effectSessions) {
+          state.effectSessions = state.effectSessions.map((s: any) => ({
+            ...s,
+            startTime: typeof s.startTime === 'string' ? new Date(s.startTime) : s.startTime,
+            endTime: s.endTime && typeof s.endTime === 'string' ? new Date(s.endTime) : s.endTime,
+            createdAt: typeof s.createdAt === 'string' ? new Date(s.createdAt) : s.createdAt,
+            updatedAt: typeof s.updatedAt === 'string' ? new Date(s.updatedAt) : s.updatedAt,
+            events: Array.isArray(s.events) ? s.events.map((e: any) => ({
+              ...e,
+              timestamp: typeof e.timestamp === 'string' ? new Date(e.timestamp) : e.timestamp,
+            })) : [],
+          }));
+        }
+        if (state?.effectProfiles) {
+          Object.keys(state.effectProfiles).forEach((key: string) => {
+            const p: any = (state as any).effectProfiles[key];
+            if (p && typeof p.lastUpdated === 'string') {
+              p.lastUpdated = new Date(p.lastUpdated);
+            }
+          });
+        }
+        if ((state as any)?.categoryEffectProfiles) {
+          Object.keys((state as any).categoryEffectProfiles).forEach((key: string) => {
+            const p: any = (state as any).categoryEffectProfiles[key];
+            if (p && typeof p.lastUpdated === 'string') {
+              p.lastUpdated = new Date(p.lastUpdated);
+            }
+          });
         }
       }
     }

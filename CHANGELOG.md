@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.2] - 2025-09-25
 
+## [1.3.0] - 2025-09-29
+
+### Added
+- Effects Tracker: New dedicated page to track onset, peak, and wear-off of medications and supplements with an interactive, accessible timeline UI
+- Intelligent learning algorithm that calibrates per-medication effect profiles from user feedback ("kicking in", "peaking", "wearing off", "worn off")
+- Dashboard integration: compact Effect Tracking card showing active sessions and real-time progress
+ - Default effect durations seeded from our medications database (PsychonautWiki-derived descriptions) with parsing of onset and total duration; falls back to category heuristics
+ - Category learning: learned effect timing is promoted to category-level defaults and used for new drugs within that category
+ - Customization: Users can manually adjust onset/peak/wear-off/duration and save as category default; labels added to the timer
+
+### Improved
+- State persistence: Added safe deserialization for new effect sessions and profiles
+
+
 ### Fixed
 - Dependency Prevention alerts no longer duplicate on each assessment; added merge-and-deduplicate logic with cooldowns (weekly for urgent, 3-day for pattern alerts)
 - Resolved duplicate generation of Psychological Safety alerts on the dashboard by consolidating effect logic

@@ -20,6 +20,48 @@ interface ChangelogEntry {
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "1.3.0",
+    date: "2025-9-29",
+    changes: [
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "Effects Tracker (Onset/Peak/Wear‑off)",
+        description: "New page and interactive timeline UI to track drug effects with labeled segments and a live progress marker."
+      },
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "Intelligent Learning (Per‑Med & Category)",
+        description: "Learns your metabolism from feedback and promotes learned timings to category defaults for new drugs in the same category."
+      },
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "Defaults from Database (PsychonautWiki‑derived)",
+        description: "Seeds onset and total duration from our medication database descriptions, with safe fallbacks when values are missing."
+      },
+      {
+        type: 'new',
+        icon: <Star className="h-4 w-4" />,
+        title: "Customization Controls",
+        description: "Manually adjust onset/peak/wear‑off/total duration and optionally save as the default for the entire category."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "Dashboard Integration",
+        description: "Compact Effect Tracking card shows active sessions and real‑time progress; added Effects Tracker to sidebar."
+      },
+      {
+        type: 'improved',
+        icon: <Zap className="h-4 w-4" />,
+        title: "State Persistence",
+        description: "Added safe deserialization for new effect sessions, events, and profiles, including category‑level profiles."
+      }
+    ]
+  },
+  {
     version: "1.2.1",
     date: "2025-9-19",
     changes: [
