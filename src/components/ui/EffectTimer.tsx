@@ -24,6 +24,7 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
   const [tick, setTick] = React.useState(0);
   const [customize, setCustomize] = React.useState(false);
   const [applyToCategory, setApplyToCategory] = React.useState(true);
+  const [showRemaining, setShowRemaining] = React.useState(false);
 
   const [onsetIn, setOnsetIn] = React.useState<number | null>(null);
   const [peakIn, setPeakIn] = React.useState<number | null>(null);
@@ -76,6 +77,13 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
   const nowMinutes = prediction?.minutesSinceDose ?? 0; // re-computed via tick
   const nowPct = Math.min(100, Math.max(0, (nowMinutes / total) * 100));
 
+  const formatDuration = (mins: number): string => {
+    const m = Math.max(0, Math.round(mins));
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+  };
+
   const segmentPct = {
     pre: (onset / total) * 100,
     kick: ((peak - onset) / total) * 100,
@@ -118,7 +126,7 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
 
       {/* Timeline */}
       <div className="space-y-2">
-        <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-hidden">
+        <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-visible pb-4">
           <div className="absolute left-0 top-0 h-2 bg-blue-200" style={{ width: `${segmentPct.pre}%` }} />
           <div className="absolute top-0 h-2 bg-green-400" style={{ left: `${segmentPct.pre}%`, width: `${segmentPct.kick}%` }} />
           <div className="absolute top-0 h-2 bg-indigo-500" style={{ left: `${segmentPct.pre + segmentPct.kick}%`, width: `${segmentPct.peak}%` }} />
@@ -127,6 +135,28 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
           {activeSession && (
             <div className="absolute -top-1 h-4 w-0.5 bg-black/70" style={{ left: `calc(${nowPct}% - 1px)` }} />
           )}
+          {/* Time-of-day label under current marker */}
+          {activeSession && (
+            <div
+              className="absolute text-[10px] text-gray-700"
+              style={{
+                left: `${Math.min(97, Math.max(3, nowPct))}%`,
+                transform: 'translateX(-50%)',
+                top: '12px'
+              }}
+            >
+              <span
+                role="button"
+                tabIndex={0}
+                title="Click to toggle elapsed/remaining"
+                onClick={() => setShowRemaining(v => !v)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowRemaining(v => !v); } }}
+                className="px-1.5 py-0.5 bg-white border border-gray-200 rounded shadow-sm cursor-pointer select-none"
+              >
+                {showRemaining ? `${formatDuration(Math.max(0, total - nowMinutes))} left` : `${formatDuration(nowMinutes)}`}
+              </span>
+            </div>
+          )}
           {/* Labels */}
           <div className="absolute -top-4 left-0 right-0 flex justify-between text-[10px] text-gray-600">
             <span className="translate-x-0">Onset</span>
@@ -134,14 +164,6 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
             <span style={{ transform: `translateX(-50%)`, left: `${((peak + wear) / 2 / total) * 100}%` }} className="absolute">Peaking</span>
             <span className="-translate-x-full">Wearing off</span>
           </div>
-        </div>
-
-        <div className="flex justify-between text-[10px] text-gray-500">
-          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> 0m</span>
-          <span>{onset}m</span>
-          <span>{peak}m</span>
-          <span>{wear}m</span>
-          <span>{total}m</span>
         </div>
       </div>
 
