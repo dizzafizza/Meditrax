@@ -876,6 +876,17 @@ export interface EffectProfile {
   samples: number;                 // number of feedback samples incorporated
   lastUpdated?: Date;
   autoStopOnWearOff?: boolean;     // auto end session at worn off
+  // Advanced calibration metadata (optional)
+  sigmaOnset?: number;             // running std dev estimate (minutes)
+  sigmaPeak?: number;
+  sigmaWear?: number;
+  sigmaDuration?: number;
+  timeOfDayBiasMinutes?: {         // coarse bias adjustment by time of day
+    morning: number;               // 06-12
+    afternoon: number;             // 12-18
+    evening: number;               // 18-24
+    night: number;                 // 00-06
+  };
 }
 
 export interface EffectEvent {

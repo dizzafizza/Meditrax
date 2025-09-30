@@ -69,6 +69,11 @@ export class EffectLearningService {
       samples: 0,
       lastUpdated: new Date(),
       autoStopOnWearOff: false,
+      sigmaOnset: 10,
+      sigmaPeak: 15,
+      sigmaWear: 20,
+      sigmaDuration: 25,
+      timeOfDayBiasMinutes: { morning: 0, afternoon: 0, evening: 0, night: 0 },
     };
   }
 
@@ -109,6 +114,11 @@ export class EffectLearningService {
       samples: 0,
       lastUpdated: new Date(),
       autoStopOnWearOff: false,
+      sigmaOnset: 10,
+      sigmaPeak: 15,
+      sigmaWear: 20,
+      sigmaDuration: 25,
+      timeOfDayBiasMinutes: { morning: 0, afternoon: 0, evening: 0, night: 0 },
     };
   }
 
@@ -186,7 +196,16 @@ export class EffectLearningService {
    * Predict current phase and progress given minutes since dose
    */
   static predictStatus(profile: EffectProfile, minutesSinceDose: number): { status: EffectStatus; phaseProgress: number } {
-    const { onsetMinutes, peakMinutes, wearOffStartMinutes, durationMinutes } = profile;
+    let { onsetMinutes, peakMinutes, wearOffStartMinutes, durationMinutes } = profile;
+    // Apply time-of-day bias as a gentle shift across phases
+    const bias = this.getTimeOfDayBias(profile);
+    if (bias !== 0) {
+      const shift = bias;
+      onsetMinutes = Math.max(0, onsetMinutes + shift);
+      peakMinutes = Math.max(onsetMinutes + 1, peakMinutes + shift);
+      wearOffStartMinutes = Math.max(peakMinutes + 1, wearOffStartMinutes + shift);
+      durationMinutes = Math.max(wearOffStartMinutes + 1, durationMinutes + shift);
+    }
     let status: EffectStatus = 'pre_onset';
     if (minutesSinceDose < 0) minutesSinceDose = 0;
 
@@ -206,54 +225,136 @@ export class EffectLearningService {
     return { status, phaseProgress };
   }
 
+  private static getTimeOfDayBias(profile: EffectProfile): number {
+    const map = profile.timeOfDayBiasMinutes;
+    if (!map) return 0;
+    const h = new Date().getHours();
+    if (h >= 6 && h < 12) return map.morning || 0;
+    if (h >= 12 && h < 18) return map.afternoon || 0;
+    if (h >= 18 && h < 24) return map.evening || 0;
+    return map.night || 0;
+  }
+
   /**
    * Update profile from a single feedback event using adaptive EMA
    */
   static updateProfileFromEvent(profile: EffectProfile, event: EffectEvent): EffectProfile {
-    const alpha = Math.max(0.1, 0.6 / (profile.samples + 1));
-
+    const alphaBase = Math.max(0.08, 0.6 / (profile.samples + 1)); // decays with samples
     const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
     const safe = (n: number) => (isFinite(n) && !isNaN(n) ? n : 0);
 
+    // Advanced anchors expressed as fraction of total duration
+    const anchors = { onset: 0.15, peak: 0.33, wear: 0.75 } as const;
+
+    // Local copies
     let { onsetMinutes, peakMinutes, wearOffStartMinutes, durationMinutes } = profile;
+
+    // Time-of-day bias correction for observation
+    const bias = this.getTimeOfDayBias(profile);
+    const observed = Math.max(0, safe(event.offsetMinutes) - bias);
+
+    // Helper to blend toward anchored estimate with a gentle factor
+    const blend = (current: number, target: number, factor: number) => current * (1 - factor) + target * factor;
+
+    // Update the directly observed boundary first with event-weighted alpha
+    const eventAlphaMap: Record<Exclude<EffectStatus, 'pre_onset'>, number> = {
+      kicking_in: alphaBase * 1.1,
+      peaking: alphaBase * 0.9,
+      wearing_off: alphaBase * 0.9,
+      worn_off: alphaBase * 1.2,
+    } as any;
+    const evtAlpha = (eventAlphaMap as any)[event.status] ?? alphaBase;
 
     switch (event.status) {
       case 'kicking_in':
-        onsetMinutes = (1 - alpha) * onsetMinutes + alpha * safe(event.offsetMinutes);
+        onsetMinutes = blend(onsetMinutes, observed, evtAlpha);
         break;
       case 'peaking':
-        peakMinutes = (1 - alpha) * peakMinutes + alpha * safe(event.offsetMinutes);
+        peakMinutes = blend(peakMinutes, observed, evtAlpha);
         break;
       case 'wearing_off':
-        wearOffStartMinutes = (1 - alpha) * wearOffStartMinutes + alpha * safe(event.offsetMinutes);
+        wearOffStartMinutes = blend(wearOffStartMinutes, observed, evtAlpha);
         break;
       case 'worn_off':
-        durationMinutes = (1 - alpha) * durationMinutes + alpha * safe(event.offsetMinutes);
+        durationMinutes = blend(durationMinutes, observed, evtAlpha);
         break;
     }
 
-    // Enforce ordering constraints: onset < peak < wearOffStart < duration
-    onsetMinutes = clamp(onsetMinutes, 1, 24 * 60);
-    peakMinutes = Math.max( onsetsMargin(onsetMinutes), peakMinutes );
-    wearOffStartMinutes = Math.max( peakMargin(peakMinutes), wearOffStartMinutes );
-    durationMinutes = Math.max( wearOffMargin(wearOffStartMinutes), durationMinutes );
+    // Infer total duration candidates from internal ratios when we get intermediate events
+    const inferDurationFrom = (observed: number, ratio: number) => observed > 0 && ratio > 0 ? observed / ratio : durationMinutes;
+    const remainingFrom = (total: number, start: number) => Math.max(1, total - start);
 
-    function onsetsMargin(onset: number) { return onset + 10; }
-    function peakMargin(peak: number) { return peak + 10; }
-    function wearOffMargin(wear: number) { return wear + 10; }
+    // Derive candidates based on which event we received
+    if (event.status === 'kicking_in') {
+      const dFromOnset = inferDurationFrom(onsetMinutes, anchors.onset);
+      durationMinutes = blend(durationMinutes, dFromOnset, alphaBase * 0.5);
+    } else if (event.status === 'peaking') {
+      // Use anchor ratio to infer total if peak observed
+      const dFromPeak = onsetMinutes + (peakMinutes - onsetMinutes) / Math.max(0.05, anchors.peak);
+      durationMinutes = blend(durationMinutes, dFromPeak, alphaBase * 0.5);
+    } else if (event.status === 'wearing_off') {
+      const dFromWear = onsetMinutes + (wearOffStartMinutes - onsetMinutes) / Math.max(0.1, anchors.wear);
+      durationMinutes = blend(durationMinutes, dFromWear, alphaBase * 0.6);
+    }
+
+    // After total duration estimation, softly harmonize adjacent boundaries toward anchored positions
+    const harmonizeFactor = Math.max(0.06, 0.45 / (profile.samples + 1));
+    const anchoredPeak = onsetMinutes + (remainingFrom(durationMinutes, onsetMinutes)) * anchors.peak;
+    const anchoredWear = onsetMinutes + (remainingFrom(durationMinutes, onsetMinutes)) * anchors.wear;
+    if (event.status !== 'peaking') {
+      peakMinutes = blend(peakMinutes, anchoredPeak, harmonizeFactor);
+    }
+    if (event.status !== 'wearing_off') {
+      wearOffStartMinutes = blend(wearOffStartMinutes, anchoredWear, harmonizeFactor);
+    }
+    if (event.status !== 'worn_off') {
+      // Ensure duration respects a minimal tail after wear-off start
+      const minTail = 10;
+      const anchoredDuration = Math.max(wearOffStartMinutes + minTail, durationMinutes);
+      durationMinutes = blend(durationMinutes, anchoredDuration, harmonizeFactor * 0.5);
+    }
+
+    // Enforce ordering constraints with minimal margins
+    const margin = 5;
+    onsetMinutes = clamp(onsetMinutes, 1, 24 * 60);
+    peakMinutes = Math.max(onsetMinutes + margin, peakMinutes);
+    wearOffStartMinutes = Math.max(peakMinutes + margin, wearOffStartMinutes);
+    durationMinutes = Math.max(wearOffStartMinutes + margin, durationMinutes);
+
+    // Outlier-aware sigma update for the observed boundary
+    const err = (type: EffectStatus) => {
+      if (type === 'kicking_in') return observed - onsetMinutes;
+      if (type === 'peaking') return observed - peakMinutes;
+      if (type === 'wearing_off') return observed - wearOffStartMinutes;
+      if (type === 'worn_off') return observed - durationMinutes;
+      return 0;
+    };
+    const beta = Math.max(0.05, 0.4 / (profile.samples + 1));
+    let { sigmaOnset = 10, sigmaPeak = 15, sigmaWear = 20, sigmaDuration = 25 } = profile;
+    const updateSigma = (sigma: number, e: number) => Math.sqrt((1 - beta) * sigma * sigma + beta * e * e);
+    if (event.status === 'kicking_in') sigmaOnset = updateSigma(sigmaOnset, err('kicking_in'));
+    if (event.status === 'peaking') sigmaPeak = updateSigma(sigmaPeak, err('peaking'));
+    if (event.status === 'wearing_off') sigmaWear = updateSigma(sigmaWear, err('wearing_off'));
+    if (event.status === 'worn_off') sigmaDuration = updateSigma(sigmaDuration, err('worn_off'));
 
     const samples = profile.samples + 1;
-    const confidence = Math.min(1, 0.2 + samples / 10);
+    // Confidence incorporates both sample count and accumulated variability
+    const varPenalty = Math.min(1, (sigmaOnset + sigmaPeak + sigmaWear + sigmaDuration) / 400);
+    const confidence = Math.min(1, (0.2 + samples / 10) * (1 - 0.5 * varPenalty));
 
     return {
       ...profile,
       onsetMinutes: Math.round(onsetMinutes),
-      peakMinutes: Math.round(Math.max(onsetMinutes + 5, peakMinutes)),
-      wearOffStartMinutes: Math.round(Math.max(peakMinutes + 5, wearOffStartMinutes)),
-      durationMinutes: Math.round(Math.max(wearOffStartMinutes + 5, durationMinutes)),
+      peakMinutes: Math.round(peakMinutes),
+      wearOffStartMinutes: Math.round(wearOffStartMinutes),
+      durationMinutes: Math.round(durationMinutes),
       samples,
       confidence,
       lastUpdated: new Date(),
+      sigmaOnset,
+      sigmaPeak,
+      sigmaWear,
+      sigmaDuration,
     };
   }
 
