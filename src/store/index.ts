@@ -24,7 +24,9 @@ import {
   DependencePrevention,
   UsagePattern,
   DependenceAlert,
-  DependenceIntervention
+  DependenceIntervention,
+  PsychologicalSafetyAlert,
+  PsychologicalAlertFeedback
 } from '@/types';
 import { EffectProfile, EffectSession, EffectStatus } from '@/types';
 import { 
@@ -72,6 +74,7 @@ interface MedicationStore {
   adherencePatterns: AdherencePattern[];
   dependencyRiskAssessments: DependencyRiskAssessment[];
   psychologicalSafetyAlerts: PsychologicalSafetyAlert[];
+  psychologicalAlertFeedback: Record<string, PsychologicalAlertFeedback>;
 
   // Effects tracking state
   effectProfiles: Record<string, EffectProfile>;
@@ -297,6 +300,7 @@ export const useMedicationStore = create<MedicationStore>()(
       adherencePatterns: [],
       dependencyRiskAssessments: [],
       psychologicalSafetyAlerts: [],
+      psychologicalAlertFeedback: {},
 
       // Effects tracking initial state
       effectProfiles: {},
@@ -2120,7 +2124,7 @@ export const useMedicationStore = create<MedicationStore>()(
 
       // Enhanced Psychological Safety Alerts
       generatePsychologicalSafetyAlerts: (medicationId?: string) => {
-        const { medications, logs } = get();
+        const { medications, logs, psychologicalAlertFeedback } = get();
         const targetMedications = medicationId 
           ? medications.filter(med => med.id === medicationId)
           : medications.filter(med => med.isActive);
@@ -2149,31 +2153,154 @@ export const useMedicationStore = create<MedicationStore>()(
           arr.findIndex(a => a.medicationId === alert.medicationId && a.type === alert.type) === index
         );
 
-        set((state) => ({
-          psychologicalSafetyAlerts: uniqueAlerts
+        const now = new Date();
+
+        const getKey = (a: PsychologicalSafetyAlert) => `${a.medicationId}:${a.type}`;
+        const getHelpfulnessScore = (key: string) => {
+          const fb = psychologicalAlertFeedback[key];
+          const helpful = fb?.helpful || 0;
+          const notHelpful = fb?.notHelpful || 0;
+          // Beta(1,1) prior smoothing
+          return (helpful + 1) / (helpful + notHelpful + 2);
+        };
+
+        // Suppress alerts under cooldown or with low recent helpfulness
+        const filteredAlerts = uniqueAlerts.filter((alert) => {
+          const key = getKey(alert);
+          const fb = psychologicalAlertFeedback[key];
+          if (fb?.dismissedUntil && new Date(fb.dismissedUntil) > now) return false;
+          // If recently marked not-helpful and predicted helpfulness is low, suppress for 7 days from lastUpdated
+          if (fb?.lastResponse === 'not-helpful' && fb?.lastUpdated) {
+            const last = new Date(fb.lastUpdated);
+            const sevenDaysLater = new Date(last.getTime() + 7 * 24 * 60 * 60 * 1000);
+            if (sevenDaysLater > now && getHelpfulnessScore(key) < 0.35) return false;
+          }
+          return true;
+        });
+
+        // Sort by predicted helpfulness (desc) then by priority (urgent>high>medium>low)
+        const priorityScore: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+        const sortedAlerts = filteredAlerts.sort((a, b) => {
+          const sa = getHelpfulnessScore(getKey(a));
+          const sb = getHelpfulnessScore(getKey(b));
+          if (sb !== sa) return sb - sa;
+          return (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0);
+        });
+
+        set(() => ({
+          psychologicalSafetyAlerts: sortedAlerts.map(a => ({ ...a, acknowledged: false }))
         }));
 
-        return allAlerts;
+        return sortedAlerts;
       },
 
       acknowledgePsychologicalAlert: (alertId: string, response?: 'helpful' | 'not-helpful' | 'dismissed') => {
-        set((state) => ({
-          psychologicalSafetyAlerts: state.psychologicalSafetyAlerts.map(alert =>
+        const COOLDOWN_HOURS: Record<'urgent' | 'high' | 'medium' | 'low', number> = {
+          urgent: 24 * 7,   // 1 week for critical items
+          high: 72,         // 3 days
+          medium: 48,       // 2 days
+          low: 24           // 1 day
+        };
+
+        set((state) => {
+          // Mark the specific alert instance as acknowledged in UI
+          const updatedAlerts = state.psychologicalSafetyAlerts.map(alert =>
             alert.id === alertId 
               ? { ...alert, acknowledged: true, userResponse: response }
               : alert
-          )
-        }));
+          );
+
+          // Find the alert to compute feedback key
+          const target = state.psychologicalSafetyAlerts.find(a => a.id === alertId);
+          if (!target) {
+            return { psychologicalSafetyAlerts: updatedAlerts } as Partial<MedicationStore> as any;
+          }
+
+          const key = `${target.medicationId}:${target.type}`;
+          const prev = state.psychologicalAlertFeedback[key] || {
+            helpful: 0,
+            notHelpful: 0,
+            lastUpdated: new Date(),
+          } as PsychologicalAlertFeedback;
+
+          const next: PsychologicalAlertFeedback = { ...prev };
+          const now = new Date();
+          if (response === 'helpful') {
+            next.helpful = (next.helpful || 0) + 1;
+            next.lastResponse = 'helpful';
+            next.lastUpdated = now;
+            // Clear any dismissal window if previously set
+            next.dismissedUntil = undefined;
+          } else if (response === 'not-helpful') {
+            next.notHelpful = (next.notHelpful || 0) + 1;
+            next.lastResponse = 'not-helpful';
+            next.lastUpdated = now;
+            // Short suppression window based on priority
+            const hours = COOLDOWN_HOURS[target.priority];
+            next.dismissedUntil = new Date(now.getTime() + hours * 60 * 60 * 1000);
+          } else if (response === 'dismissed') {
+            next.lastResponse = 'dismissed';
+            next.lastUpdated = now;
+            // Stronger suppression window on explicit dismissal
+            const hours = COOLDOWN_HOURS[target.priority] * 1.5;
+            next.dismissedUntil = new Date(now.getTime() + hours * 60 * 60 * 1000);
+          }
+
+          return {
+            psychologicalSafetyAlerts: updatedAlerts,
+            psychologicalAlertFeedback: {
+              ...state.psychologicalAlertFeedback,
+              [key]: next,
+            },
+          } as Partial<MedicationStore> as any;
+        });
       },
 
       getPsychologicalSafetyAlertsForMedication: (medicationId: string) => {
-        return get().psychologicalSafetyAlerts.filter(alert => 
-          alert.medicationId === medicationId && !alert.acknowledged
-        );
+        const { psychologicalSafetyAlerts, psychologicalAlertFeedback } = get();
+        const now = new Date();
+        const score = (key: string) => {
+          const fb = psychologicalAlertFeedback[key];
+          const h = fb?.helpful || 0; const n = fb?.notHelpful || 0;
+          return (h + 1) / (h + n + 2);
+        };
+        return psychologicalSafetyAlerts
+          .filter(alert => alert.medicationId === medicationId)
+          .filter(alert => !alert.acknowledged)
+          .filter(alert => {
+            const key = `${alert.medicationId}:${alert.type}`;
+            const fb = psychologicalAlertFeedback[key];
+            if (fb?.dismissedUntil && new Date(fb.dismissedUntil) > now) return false;
+            if (fb?.lastResponse === 'not-helpful' && fb.lastUpdated) {
+              const last = new Date(fb.lastUpdated);
+              if (new Date(last.getTime() + 7 * 24 * 60 * 60 * 1000) > now && score(key) < 0.35) return false;
+            }
+            return true;
+          })
+          .sort((a, b) => score(`${b.medicationId}:${b.type}`) - score(`${a.medicationId}:${a.type}`));
       },
 
       getActivePsychologicalSafetyAlerts: () => {
-        return get().psychologicalSafetyAlerts.filter(alert => !alert.acknowledged);
+        const { psychologicalSafetyAlerts, psychologicalAlertFeedback } = get();
+        const now = new Date();
+        const score = (key: string) => {
+          const fb = psychologicalAlertFeedback[key];
+          const h = fb?.helpful || 0; const n = fb?.notHelpful || 0;
+          return (h + 1) / (h + n + 2);
+        };
+        return psychologicalSafetyAlerts
+          .filter(alert => !alert.acknowledged)
+          .filter(alert => {
+            const key = `${alert.medicationId}:${alert.type}`;
+            const fb = psychologicalAlertFeedback[key];
+            if (fb?.dismissedUntil && new Date(fb.dismissedUntil) > now) return false;
+            if (fb?.lastResponse === 'not-helpful' && fb.lastUpdated) {
+              const last = new Date(fb.lastUpdated);
+              if (new Date(last.getTime() + 7 * 24 * 60 * 60 * 1000) > now && score(key) < 0.35) return false;
+            }
+            return true;
+          })
+          .sort((a, b) => score(`${b.medicationId}:${b.type}`) - score(`${a.medicationId}:${a.type}`));
       },
 
       // Behavioral analysis

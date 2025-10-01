@@ -801,6 +801,15 @@ export interface PsychologicalSafetyAlert {
   userResponse?: 'helpful' | 'not-helpful' | 'dismissed';
 }
 
+// Tracks user feedback and suppression windows for psychological alerts by key (medicationId:type)
+export interface PsychologicalAlertFeedback {
+  helpful: number;
+  notHelpful: number;
+  lastResponse?: 'helpful' | 'not-helpful' | 'dismissed';
+  lastUpdated: Date;
+  dismissedUntil?: Date;
+}
+
 // Anonymous Reporting Types
 export interface AnonymousReportingPreferences {
   enabled: boolean;
