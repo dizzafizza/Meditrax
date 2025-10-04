@@ -1,13 +1,23 @@
 <a href="https://www.buymeacoffee.com/dizzafizza" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
-# 🏥 Meditrax - Comprehensive Medication Tracking App
+# 🏥 Meditrax - Cross-Platform Medication Tracking App
 
-A modern, responsive web application built with React and TypeScript for tracking medications, managing schedules, and monitoring adherence.
+A modern, cross-platform application built with React, TypeScript, and Capacitor for tracking medications, managing schedules, and monitoring adherence. Now available on iOS, Android, Desktop (Electron), and Web!
+
+## 🆕 What's New - Capacitor Migration
+
+Meditrax has been migrated from a PWA to **Capacitor** for enhanced native functionality:
+- ✅ **Native iOS & Android apps** with full App Store/Play Store deployment capability
+- ✅ **Desktop support** via Electron for Windows, macOS, and Linux
+- ✅ **Native features**: Biometric authentication, camera/barcode scanning, haptic feedback
+- ✅ **Local push notifications** that work reliably across all platforms
+- ✅ **Enhanced security** with biometric lock and PIN protection
+- ✅ **Web version** still available as a fallback
 
 ## 🐞🔧 Known Notes:
 - **Tapering System:** Sometimes you may get an incorrect dosage. *WIP*
-- **iOS PWA Push Notifications:** Fully supported via Web Push (VAPID) and/or FCM once environment variables are configured. See "Web Push (iOS/ Safari) and FCM Setup" below. If env keys are missing, the app falls back to local SW scheduling with missed‑dose recovery.
-- **App Updates Automatically:** The app now auto-detects new versions and prompts to reload. If you still see stale content, perform a hard refresh once.
+- **Native Features:** Camera, biometric, and haptic features only work on native mobile apps (iOS/Android)
+- **Notifications:** Now using Capacitor Local Notifications (no Firebase Cloud Messaging required)
 
 ## ✨ Features
 
@@ -31,33 +41,53 @@ A modern, responsive web application built with React and TypeScript for trackin
 - **Trend Analysis**: Track improvement or decline in adherence over time
 - **Date Range Filtering**: 7-day, 30-day, and 90-day analysis periods
 
-### 📱 Progressive Web App (PWA) Features
-- **Mobile Installation**: Install as a native-like app on iOS, Android, and desktop
+### 📱 Cross-Platform Native Features
+- **Native iOS & Android Apps**: Full native app experience on mobile devices
+- **Desktop App**: Electron-based desktop app for Windows, macOS, and Linux
+- **Web Version**: Still available as a fallback for browsers
 - **Offline Functionality**: Use the app without internet connection
-- **Push Notifications**: Receive medication reminders even when the app is closed
-- **Background Sync**: Data syncs automatically when connection is restored
-- **Fast Loading**: Cached resources for instant app startup
-- **Native Integration**: Home screen shortcuts and app-like experience
+- **Fast Loading**: Instant app startup with native performance
 
 ### 🔔 Smart Notifications
-- **Cross-Platform Push**: Works on iOS, Android, and desktop browsers
+- **Local Push Notifications**: Reliable notifications using Capacitor Local Notifications
+- **Cross-Platform**: Works consistently on iOS, Android, and desktop
 - **Interactive Notifications**: Mark as taken, snooze, or skip directly from notifications
 - **Smart Scheduling**: Automatic notification scheduling based on medication schedules
-- **Permission Management**: Easy notification permission setup and testing
-- **Offline Reminders**: Local notifications work even without internet
+- **Background Delivery**: Receive notifications even when app is closed
+
+### 🔒 Security & Privacy
+- **Biometric Authentication**: Unlock app with fingerprint or face ID (iOS/Android)
+- **App Lock**: Auto-lock after inactivity with customizable timeout
+- **PIN Protection**: Optional PIN for sensitive actions
+- **Local Storage**: All data stored locally on your device
+- **No Cloud Required**: Full functionality without internet connection
+
+### 📷 Native Capabilities
+- **Camera Access**: Take photos of medications for reference
+- **Barcode Scanning**: Scan medication barcodes for quick entry (iOS/Android)
+- **Haptic Feedback**: Tactile responses for actions (iOS/Android)
+- **Status Bar Control**: Native app appearance and behavior
+- **Splash Screen**: Professional app launch experience
 
 ### ⚙️ Advanced Features
 - **Data Export/Import**: JSON and CSV export with backup/restore functionality
 - **User Profiles**: Personal information, allergies, medical conditions
 - **Emergency Contacts**: Store important contact information
-- **Customizable Settings**: Themes, notifications, display preferences, PWA options
+- **Customizable Settings**: Themes, notifications, display preferences, security options
 - **Responsive Design**: Optimized for desktop, tablet, and mobile devices
 
 ## 🚀 Getting Started
 
 ### Prerequisites
+
+**For Web Development:**
 - Node.js 16.0 or higher
 - npm or yarn package manager
+
+**For Native Development:**
+- **iOS**: macOS with Xcode 14+, CocoaPods
+- **Android**: Android Studio with SDK 24+
+- **Electron**: No additional requirements
 
 ### Installation
 
@@ -70,39 +100,103 @@ A modern, responsive web application built with React and TypeScript for trackin
 2. **Install dependencies**
    ```bash
    npm install
-   # or
-   yarn install
    ```
 
-3. **Start the development server**
+3. **Build the web assets**
    ```bash
-   npm run dev
-   # or
-   yarn dev
+   npm run build
    ```
 
-4. **Open your browser**
-   Navigate to `http://localhost:3000` to view the application.
+### Development
 
-### PWA Installation
+#### Web Development
+```bash
+npm run dev
+```
+Navigate to `http://localhost:3000` to view the application.
 
-Meditrax can be installed as a Progressive Web App for the best mobile experience:
+#### iOS Development
+```bash
+# Build and sync to iOS
+npm run build:mobile
 
-**On Mobile (iOS/Android):**
-1. Open the app in your browser (Safari on iOS, Chrome on Android)
-2. Look for "Add to Home Screen" or "Install App" option
-3. Follow the prompts to install
-4. Access the app from your home screen like any native app
+# Open in Xcode
+npm run cap:ios
 
-**On Desktop:**
-1. Open the app in Chrome, Edge, or Safari
-2. Look for the install icon in the address bar
-3. Click "Install" to add to your desktop/applications
-4. Launch like any desktop application
+# Or use the combined script
+npm run ios:dev
+```
 
-**Benefits of PWA Installation:**
-- Receive push notifications for medication reminders
-- Works offline with cached data
+Then build and run from Xcode to test on simulator or device.
+
+#### Android Development
+```bash
+# Build and sync to Android
+npm run build:mobile
+
+# Open in Android Studio
+npm run cap:android
+
+# Or use the combined script
+npm run android:dev
+```
+
+Then build and run from Android Studio to test on emulator or device.
+
+#### Desktop (Electron) Development
+```bash
+# Build and sync to Electron
+npm run build:mobile
+
+# Open Electron app
+npm run cap:electron
+
+# Or use the combined script
+npm run electron:dev
+```
+
+### Building for Production
+
+#### iOS
+1. Open the project in Xcode: `npm run cap:ios`
+2. Configure signing & capabilities
+3. Archive and distribute to App Store or TestFlight
+
+#### Android
+1. Open the project in Android Studio: `npm run cap:android`
+2. Generate a signed APK or AAB
+3. Distribute via Google Play Store
+
+#### Desktop
+1. Navigate to the electron directory: `cd electron`
+2. Build using electron-builder:
+   ```bash
+   npm run build
+   npm run dist
+   ```
+3. Find distributables in `electron/dist/`
+
+### Web Deployment (GitHub Pages)
+```bash
+# Build PWA for web
+npm run build:web
+
+# Deploy to GitHub Pages
+npm run deploy
+
+# Or do both
+npm run predeploy && npm run deploy
+```
+
+The app is available at:
+- Production: https://www.meditrax.ca/
+- GitHub Pages: https://yourusername.github.io/Meditrax/
+
+**PWA Features:**
+- Offline functionality via service worker
+- Install to home screen
+- Push notifications (web browsers)
+- Local data storage
 - Faster loading and app-like experience
 - Integrates with your device's notification system
 

@@ -17,10 +17,14 @@ import { ChangelogModal } from '@/components/ui/ChangelogModal';
 import { UpdateNotification, useUpdateNotification } from '@/components/ui/UpdateNotification';
 import { useVersionCheck } from '@/hooks/useVersionCheck';
 import { useNotificationHandler } from '@/hooks/useNotificationHandler';
+import { useAlertNotifications } from '@/hooks/useAlertNotifications';
 // import { AdminIntegration } from '@/components/admin/AdminIntegration'; // DISABLED
 import { useMedicationStore } from '@/store';
 import { notificationService } from '@/services/notificationService';
 import { backendSyncService } from '@/services/backendSyncService';
+import { backgroundStateService } from '@/services/backgroundStateService';
+import { liveActivityService } from '@/services/liveActivityService';
+import { alertNotificationService } from '@/services/alertNotificationService';
 import { consoleCapture } from '@/utils/consoleCapture';
 
 function App() {
@@ -30,6 +34,9 @@ function App() {
 
   // Initialize notification handling
   const { checkMissedNotifications } = useNotificationHandler();
+  
+  // Initialize alert notifications
+  useAlertNotifications();
 
   // Initialize user profile if it doesn't exist
   React.useEffect(() => {
@@ -39,15 +46,148 @@ function App() {
     }
   }, [userProfile]);
 
+  // Set up notification action event listeners
+  React.useEffect(() => {
+    const { logMedication, updateMedication, recordEffectFeedback, acknowledgePsychologicalAlert, generatePsychologicalSafetyAlerts, updateRiskAssessment } = useMedicationStore.getState();
+
+    // Handle medication taken from notification
+    const handleMedicationTaken = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.medicationId) {
+        logMedication(detail.medicationId);
+      }
+    };
+
+    // Handle alert acknowledgment
+    const handleAlertAcknowledged = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.alertType === 'psychological' && detail.alertId) {
+        acknowledgePsychologicalAlert(detail.alertId, 'helpful');
+      }
+    };
+
+    // Handle alert dismissal
+    const handleAlertDismissed = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.alertType === 'psychological' && detail.alertId) {
+        acknowledgePsychologicalAlert(detail.alertId, 'dismissed');
+      }
+    };
+
+    // Handle refill request from notification
+    const handleRequestRefill = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.medicationId) {
+        // Navigate to inventory page or show refill modal
+        window.location.hash = '/inventory';
+      }
+    };
+
+    // Handle inventory update from notification
+    const handleUpdateInventory = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.medicationId) {
+        window.location.hash = '/inventory';
+      }
+    };
+
+    // Handle effect feedback from notification
+    const handleEffectFeedback = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.logId && detail.status) {
+        const session = useMedicationStore.getState().effectSessions.find(s => s.medicationLogId === detail.logId);
+        if (session) {
+          recordEffectFeedback(session.id, detail.status);
+        }
+      }
+    };
+
+    // Handle take medication now from notification
+    const handleTakeMedicationNow = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.medicationId) {
+        logMedication(detail.medicationId);
+      }
+    };
+
+    // Register all event listeners
+    window.addEventListener('medicationTaken', handleMedicationTaken);
+    window.addEventListener('alertAcknowledged', handleAlertAcknowledged);
+    window.addEventListener('alertDismissed', handleAlertDismissed);
+    window.addEventListener('requestRefill', handleRequestRefill);
+    window.addEventListener('updateInventory', handleUpdateInventory);
+    window.addEventListener('effectFeedback', handleEffectFeedback);
+    window.addEventListener('takeMedicationNow', handleTakeMedicationNow);
+    window.addEventListener('medicationAlreadyTaken', handleMedicationTaken);
+
+    return () => {
+      window.removeEventListener('medicationTaken', handleMedicationTaken);
+      window.removeEventListener('alertAcknowledged', handleAlertAcknowledged);
+      window.removeEventListener('alertDismissed', handleAlertDismissed);
+      window.removeEventListener('requestRefill', handleRequestRefill);
+      window.removeEventListener('updateInventory', handleUpdateInventory);
+      window.removeEventListener('effectFeedback', handleEffectFeedback);
+      window.removeEventListener('takeMedicationNow', handleTakeMedicationNow);
+      window.removeEventListener('medicationAlreadyTaken', handleMedicationTaken);
+    };
+  }, []);
+
+  // Restore effect sessions from background state on app load
+  React.useEffect(() => {
+    const restoreSessions = () => {
+      const restoredSessions = backgroundStateService.restoreEffectSessions();
+      if (restoredSessions.length > 0) {
+        const { effectSessions } = useMedicationStore.getState();
+        // Merge restored sessions with current sessions (avoid duplicates)
+        const mergedSessions = [...effectSessions];
+        restoredSessions.forEach(restored => {
+          if (!mergedSessions.find(s => s.id === restored.id)) {
+            mergedSessions.push(restored);
+          }
+        });
+        
+        // Update store with restored sessions
+        useMedicationStore.setState({ effectSessions: mergedSessions });
+        console.log(`✅ Restored ${restoredSessions.length} effect sessions from background state`);
+      }
+    };
+
+    restoreSessions();
+  }, []);
+
   // Check for missed notifications when the app loads
   React.useEffect(() => {
     const initializeApp = async () => {
-      console.log('App loaded, initializing iOS PWA notification system...');
+      console.log('App loaded, initializing notification system...');
       
-      // **CONSOLE CAPTURE**: Initialize global console capture for PWA debugging
+      // **CONSOLE CAPTURE**: Initialize global console capture for debugging
       // This persists across page navigation
       if (import.meta.env.DEV) {
         consoleCapture; // Initialize the singleton only in development
+      }
+      
+      // Update last active timestamp
+      backgroundStateService.updateLastActive();
+      
+      // Check for missed background tasks
+      const timeSinceActive = backgroundStateService.getTimeSinceLastActive();
+      console.log(`⏰ Time since last active: ${timeSinceActive} minutes`);
+      
+      // Run daily inventory check if needed (every 24 hours)
+      if (backgroundStateService.shouldRunBackgroundTask('inventory_check', 24 * 60)) {
+        const { medications, logs, userProfile } = useMedicationStore.getState();
+        const alertPrefs = userProfile?.preferences?.alertNotifications;
+        console.log('🔍 Running daily inventory check...');
+        await alertNotificationService.checkAllInventoryAlerts(medications, logs, alertPrefs);
+      }
+      
+      // Run daily adherence check if needed (every 24 hours)
+      if (backgroundStateService.shouldRunBackgroundTask('adherence_check', 24 * 60)) {
+        const { medications, generatePsychologicalSafetyAlerts } = useMedicationStore.getState();
+        console.log('🔍 Running daily adherence check...');
+        medications.filter(m => m.isActive).forEach(med => {
+          generatePsychologicalSafetyAlerts(med.id);
+        });
       }
       
       // Get current reminders and medications from store

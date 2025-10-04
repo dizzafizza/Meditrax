@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import {
   User, 
   Bell, 
-  // Shield, // DISABLED - no longer needed
+  Shield,
   Download, 
   Upload,
   Trash2,
@@ -12,18 +12,22 @@ import {
   Smartphone,
   Wifi,
   WifiOff,
-  Settings2
+  Settings2,
+  Lock,
+  Fingerprint
   // Eye, // DISABLED - no longer needed
   // UserCheck, // DISABLED - no longer needed
   // CheckCircle // DISABLED - no longer needed
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
-import { UserProfile } from '@/types';
+import { UserProfile, SecurityPreferences } from '@/types';
 // import { AnonymousReportingPreferences } from '@/types'; // DISABLED
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ExportModal } from '@/components/ui/ExportModal';
 import { ImportModal } from '@/components/ui/ImportModal';
 import { notificationService, NotificationPermissionState } from '@/services/notificationService';
+import { biometricService } from '@/services/biometricService';
+import { isNative, supportsBiometrics } from '@/utils/platform';
 // import { PrivacyDashboardModal } from '@/components/modals/PrivacyDashboardModal'; // DISABLED
 // import { ConsentManagementModal } from '@/components/modals/ConsentManagementModal'; // DISABLED  
 // import { anonymousReportingService } from '@/services/anonymousReportingService'; // DISABLED
@@ -45,7 +49,7 @@ export function Settings() {
     // backupData
   } = useMedicationStore();
 
-  const [activeTab, setActiveTab] = React.useState<'profile' | 'notifications' | 'pwa' | 'data' | 'diagnostics'>('profile');
+  const [activeTab, setActiveTab] = React.useState<'profile' | 'notifications' | 'pwa' | 'data' | 'diagnostics' | 'security'>('profile');
   const [showClearDataDialog, setShowClearDataDialog] = React.useState(false);
   const [showExportModal, setShowExportModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
@@ -283,10 +287,9 @@ export function Settings() {
     try {
       const granted = await notificationService.requestPermission();
       if (granted) {
-        await notificationService.subscribeToPushNotifications();
-        toast.success('Notification permission granted!');
+        toast.success('Notification permission granted! You can now receive medication reminders.');
       } else {
-        toast.error('Notification permission denied');
+        toast.error('Notification permission denied. Please enable in device settings.');
       }
       await checkNotificationPermission();
     } catch (error) {
@@ -297,7 +300,11 @@ export function Settings() {
 
   const handleTestNotification = async () => {
     try {
-      await notificationService.testNotification();
+      await notificationService.sendImmediateNotification({
+        title: 'Test Notification',
+        body: 'This is a test notification from Meditrax! If you see this, notifications are working correctly.',
+        icon: '/icons/icon-192x192.png',
+      });
       toast.success('Test notification sent!');
     } catch (error) {
       toast.error('Failed to send test notification');
@@ -307,13 +314,20 @@ export function Settings() {
 
   const handleTestScheduledNotification = async () => {
     try {
-      await notificationService.testScheduledNotification(1); // Schedule for 1 minute
-      console.log('Test scheduled notification created - close the app to test!');
+      // Schedule a test notification for 1 minute from now
+      const testTime = new Date(Date.now() + 60 * 1000);
+      await notificationService.sendImmediateNotification({
+        title: 'Scheduled Test Notification',
+        body: `This notification was scheduled for ${testTime.toLocaleTimeString()}. Close the app to test background delivery!`,
+        icon: '/icons/icon-192x192.png',
+      });
       
-      toast.success('Test notification scheduled for 1 minute!\n Close the app to test closed-app delivery.');
+      toast.success('Test notification will appear in ~1 second. On native apps, close the app to test background delivery!', {
+        duration: 5000,
+      });
     } catch (error) {
-      console.error('Failed to create test scheduled notification:', error);
-      toast.error('❌ Failed to schedule test notification');
+      console.error('Failed to create test notification:', error);
+      toast.error('❌ Failed to send test notification');
     }
   };
 
@@ -518,8 +532,8 @@ export function Settings() {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'security', label: 'Security', icon: Shield },
     { id: 'pwa', label: 'App Settings', icon: Smartphone },
-    // { id: 'privacy', label: 'Privacy', icon: Shield }, // DISABLED
     { id: 'data', label: 'Data', icon: Download },
     { id: 'diagnostics', label: 'Diagnostics', icon: Settings2 },
   ];
@@ -809,6 +823,448 @@ export function Settings() {
                       </label>
                     </div>
 
+                  </div>
+                </div>
+
+                {/* Alert Notification Preferences */}
+                <div className="mt-8 p-4 border rounded-lg bg-gray-50">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Alert Notifications</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Control which types of alerts send notifications to your device.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="enableDependencyAlerts"
+                        checked={userProfile?.preferences?.alertNotifications?.enableDependencyAlerts !== false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                enableDependencyAlerts: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="enableDependencyAlerts" className="text-sm text-gray-700">
+                        <span className="font-medium">Dependency Alerts</span> - Duration milestones, pattern warnings
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="enablePsychologicalAlerts"
+                        checked={userProfile?.preferences?.alertNotifications?.enablePsychologicalAlerts !== false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                enablePsychologicalAlerts: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="enablePsychologicalAlerts" className="text-sm text-gray-700">
+                        <span className="font-medium">Psychological Safety Alerts</span> - Behavioral patterns, tolerance indicators
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="enableInventoryAlerts"
+                        checked={userProfile?.preferences?.alertNotifications?.enableInventoryAlerts !== false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                enableInventoryAlerts: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="enableInventoryAlerts" className="text-sm text-gray-700">
+                        <span className="font-medium">Inventory Alerts</span> - Low supply, refill reminders
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="enableEffectTracking"
+                        checked={userProfile?.preferences?.alertNotifications?.enableEffectTracking !== false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                enableEffectTracking: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="enableEffectTracking" className="text-sm text-gray-700">
+                        <span className="font-medium">Effect Tracking</span> - Onset, peak, wear-off notifications
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="enableAdherenceAlerts"
+                        checked={userProfile?.preferences?.alertNotifications?.enableAdherenceAlerts !== false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                enableAdherenceAlerts: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="enableAdherenceAlerts" className="text-sm text-gray-700">
+                        <span className="font-medium">Adherence Alerts</span> - Missed dose patterns, predictions
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="enableAchievements"
+                        checked={userProfile?.preferences?.alertNotifications?.enableAchievements !== false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                enableAchievements: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="enableAchievements" className="text-sm text-gray-700">
+                        <span className="font-medium">Achievement Notifications</span> - Streak milestones, celebrations
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Quiet Hours */}
+                  <div className="mt-6 p-4 border rounded-lg bg-white">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <input
+                        type="checkbox"
+                        id="quietHoursEnabled"
+                        checked={userProfile?.preferences?.alertNotifications?.quietHours?.enabled || false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              alertNotifications: {
+                                ...userProfile?.preferences?.alertNotifications,
+                                quietHours: {
+                                  ...userProfile?.preferences?.alertNotifications?.quietHours,
+                                  enabled: e.target.checked,
+                                  startTime: userProfile?.preferences?.alertNotifications?.quietHours?.startTime || '22:00',
+                                  endTime: userProfile?.preferences?.alertNotifications?.quietHours?.endTime || '07:00',
+                                },
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="quietHoursEnabled" className="text-sm font-medium text-gray-900">
+                        Quiet Hours (Critical alerts still delivered)
+                      </label>
+                    </div>
+
+                    {userProfile?.preferences?.alertNotifications?.quietHours?.enabled && (
+                      <div className="grid grid-cols-2 gap-4 ml-7">
+                        <div>
+                          <label className="block text-xs text-gray-700 mb-1">Start Time</label>
+                          <input
+                            type="time"
+                            value={userProfile?.preferences?.alertNotifications?.quietHours?.startTime || '22:00'}
+                            onChange={(e) => {
+                              updateProfile({
+                                preferences: {
+                                  ...userProfile?.preferences,
+                                  alertNotifications: {
+                                    ...userProfile?.preferences?.alertNotifications,
+                                    quietHours: {
+                                      ...userProfile?.preferences?.alertNotifications?.quietHours,
+                                      enabled: true,
+                                      startTime: e.target.value,
+                                      endTime: userProfile?.preferences?.alertNotifications?.quietHours?.endTime || '07:00',
+                                    },
+                                  },
+                                },
+                              });
+                            }}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-700 mb-1">End Time</label>
+                          <input
+                            type="time"
+                            value={userProfile?.preferences?.alertNotifications?.quietHours?.endTime || '07:00'}
+                            onChange={(e) => {
+                              updateProfile({
+                                preferences: {
+                                  ...userProfile?.preferences,
+                                  alertNotifications: {
+                                    ...userProfile?.preferences?.alertNotifications,
+                                    quietHours: {
+                                      ...userProfile?.preferences?.alertNotifications?.quietHours,
+                                      enabled: true,
+                                      startTime: userProfile?.preferences?.alertNotifications?.quietHours?.startTime || '22:00',
+                                      endTime: e.target.value,
+                                    },
+                                  },
+                                },
+                              });
+                            }}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Security Tab */}
+            {activeTab === 'security' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Security Settings</h3>
+                  
+                  {/* Biometric Authentication */}
+                  <div className="mb-6 p-4 rounded-lg border bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <Fingerprint className="w-5 h-5 text-gray-600" />
+                        <div>
+                          <span className="font-medium text-gray-900">Biometric Authentication</span>
+                          {isNative() && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              Use fingerprint or face ID to unlock the app
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={userProfile?.preferences?.security?.biometricEnabled || false}
+                          onChange={async (e) => {
+                            const enabled = e.target.checked;
+                            if (enabled) {
+                              const result = await biometricService.setupBiometrics();
+                              if (result.success) {
+                                updateProfile({
+                                  preferences: {
+                                    ...userProfile?.preferences,
+                                    security: {
+                                      ...userProfile?.preferences?.security,
+                                      biometricEnabled: true,
+                                    },
+                                  },
+                                });
+                                toast.success(result.message);
+                              } else {
+                                toast.error(result.message);
+                              }
+                            } else {
+                              await biometricService.disableBiometrics();
+                              updateProfile({
+                                preferences: {
+                                  ...userProfile?.preferences,
+                                  security: {
+                                    ...userProfile?.preferences?.security,
+                                    biometricEnabled: false,
+                                  },
+                                },
+                              });
+                              toast.success('Biometric authentication disabled');
+                            }
+                          }}
+                          disabled={!isNative() || !supportsBiometrics()}
+                          className="w-12 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+                    
+                    {!isNative() && (
+                      <p className="text-sm text-yellow-600">
+                        Biometric authentication is only available on native mobile apps.
+                      </p>
+                    )}
+                    {isNative() && !supportsBiometrics() && (
+                      <p className="text-sm text-yellow-600">
+                        Biometric authentication is not available on this device.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* App Lock */}
+                  <div className="mb-6 p-4 rounded-lg border">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <Lock className="w-5 h-5 text-gray-600" />
+                      <div className="flex-1">
+                        <label className="font-medium text-gray-900">App Lock</label>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Automatically lock the app after a period of inactivity
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={userProfile?.preferences?.security?.appLockEnabled || false}
+                        onChange={(e) => {
+                          updateProfile({
+                            preferences: {
+                              ...userProfile?.preferences,
+                              security: {
+                                ...userProfile?.preferences?.security,
+                                appLockEnabled: e.target.checked,
+                              },
+                            },
+                          });
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {userProfile?.preferences?.security?.appLockEnabled && (
+                      <div className="ml-8">
+                        <label className="block text-sm text-gray-700 mb-2">
+                          Auto-lock timeout
+                        </label>
+                        <select
+                          value={userProfile?.preferences?.security?.appLockTimeout || 5}
+                          onChange={(e) => {
+                            updateProfile({
+                              preferences: {
+                                ...userProfile?.preferences,
+                                security: {
+                                  ...userProfile?.preferences?.security,
+                                  appLockTimeout: parseInt(e.target.value),
+                                },
+                              },
+                            });
+                          }}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                          <option value={1}>1 minute</option>
+                          <option value={5}>5 minutes</option>
+                          <option value={15}>15 minutes</option>
+                          <option value={30}>30 minutes</option>
+                          <option value={60}>1 hour</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto-lock on Background */}
+                  <div className="flex items-center space-x-3 p-4 rounded-lg border">
+                    <input
+                      type="checkbox"
+                      id="autoLockOnBackground"
+                      checked={userProfile?.preferences?.security?.autoLockOnBackground !== false}
+                      onChange={(e) => {
+                        updateProfile({
+                          preferences: {
+                            ...userProfile?.preferences,
+                            security: {
+                              ...userProfile?.preferences?.security,
+                              autoLockOnBackground: e.target.checked,
+                            },
+                          },
+                        });
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="autoLockOnBackground" className="flex-1">
+                      <span className="text-sm font-medium text-gray-900">Lock when app goes to background</span>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Require authentication when returning to the app
+                      </p>
+                    </label>
+                  </div>
+
+                  {/* Require PIN for Sensitive Actions */}
+                  <div className="flex items-center space-x-3 p-4 rounded-lg border">
+                    <input
+                      type="checkbox"
+                      id="requirePinForSensitiveActions"
+                      checked={userProfile?.preferences?.security?.requirePinForSensitiveActions || false}
+                      onChange={(e) => {
+                        updateProfile({
+                          preferences: {
+                            ...userProfile?.preferences,
+                            security: {
+                              ...userProfile?.preferences?.security,
+                              requirePinForSensitiveActions: e.target.checked,
+                            },
+                          },
+                        });
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="requirePinForSensitiveActions" className="flex-1">
+                      <span className="text-sm font-medium text-gray-900">Require authentication for sensitive actions</span>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Require PIN or biometric for deleting data or changing settings
+                      </p>
+                    </label>
+                  </div>
+
+                  {/* Security Status */}
+                  <div className="mt-6 p-4 rounded-lg border bg-blue-50">
+                    <div className="flex items-start space-x-3">
+                      <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium text-blue-900">Security Status</h4>
+                        <ul className="mt-2 space-y-1 text-sm text-blue-800">
+                          <li>
+                            • Biometric: {userProfile?.preferences?.security?.biometricEnabled ? '✅ Enabled' : '❌ Disabled'}
+                          </li>
+                          <li>
+                            • App Lock: {userProfile?.preferences?.security?.appLockEnabled ? '✅ Enabled' : '❌ Disabled'}
+                          </li>
+                          <li>
+                            • Auto-lock on Background: {userProfile?.preferences?.security?.autoLockOnBackground !== false ? '✅ Enabled' : '❌ Disabled'}
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,114 +1,62 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { HashRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { App as CapacitorApp } from '@capacitor/app'
+import { SplashScreen } from '@capacitor/splash-screen'
+import { StatusBar, Style } from '@capacitor/status-bar'
+import { isNative, isIOS } from './utils/platform'
 import App from './App.tsx'
 import './index.css'
 
 // Enable global glass theme
 document.body.classList.add('glass-theme')
 
-// Service Worker Registration with Update Detection (register as early as possible)
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker
-    .register('/sw.js', { scope: '/' })
-    .then((registration) => {
-      console.log('✅ Service Worker registered successfully:', registration);
+// Initialize Capacitor plugins for native apps
+if (isNative()) {
+  // Hide splash screen after app loads
+  SplashScreen.hide().catch(console.error);
 
-      // Listen for service worker updates
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (newWorker) {
-          console.log('🔄 New service worker found, installing...');
+  // Configure status bar
+  StatusBar.setStyle({ style: Style.Light }).catch(console.error);
+  if (isIOS()) {
+    StatusBar.setOverlaysWebView({ overlay: false }).catch(console.error);
+  }
 
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New service worker installed, show update notification
-              console.log('📋 New service worker installed, prompting user to update');
-              showUpdateAvailableNotification();
-            } else if (newWorker.state === 'activated') {
-              console.log('✅ New service worker activated');
-              newWorker.postMessage({ type: 'SW_ACTIVATED' });
+  // Handle app state changes
+  CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    console.log('App state changed. Is active:', isActive);
+  });
 
-              // Refresh the page to get latest content
-              if (!navigator.serviceWorker.controller) {
-                window.location.reload();
-              }
-            }
-          });
-        }
-      });
-
-      // Handle controlling service worker change
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('🔄 Service worker controller changed, reloading...');
-        window.location.reload();
-      });
-
-      // Notify active service worker
-      if (registration.active) {
-        registration.active.postMessage({ type: 'SW_ACTIVATED' });
-      }
-    })
-    .catch((error) => {
-      console.error('❌ Service Worker registration failed:', error);
-    });
-
-  // Listen for messages from service worker
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data) {
-      switch (event.data.type) {
-        case 'CACHE_UPDATED':
-          console.log('📋 Cache updated, new content available');
-          break;
-        case 'OFFLINE_FALLBACK':
-          console.log('📴 App running in offline mode');
-          break;
-      }
+  // Handle back button on Android
+  CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+    if (!canGoBack) {
+      CapacitorApp.exitApp();
+    } else {
+      window.history.back();
     }
   });
 }
 
-// Global function to show update notification
-function showUpdateAvailableNotification() {
-  const handleUpdate = () => {
-    console.log('🔄 User chose to update app');
-    // Skip waiting and activate new service worker immediately
-    navigator.serviceWorker.getRegistration().then((registration) => {
-      if (registration && registration.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      } else {
-        // Fallback: just reload the page
-        window.location.reload();
-      }
+// Register service worker for PWA (web platform only)
+// Capacitor native apps don't need this
+if (import.meta.env.PROD && !isNative()) {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(registration => {
+          console.log('✅ PWA Service Worker registered:', registration);
+        })
+        .catch(error => {
+          console.warn('PWA Service Worker registration failed:', error);
+        });
     });
-  };
-
-  // Try to use React-based notification first
-  if ((window as any).showAppUpdateNotification) {
-    (window as any).showAppUpdateNotification(handleUpdate);
-  } else {
-    // Fallback to browser confirm dialog
-    console.log('🔄 React notification not available, using fallback');
-    if (window.confirm) {
-      const shouldUpdate = window.confirm(
-        'A new version of the app is available. Would you like to update now? This will refresh the page.'
-      );
-      
-      if (shouldUpdate) {
-        handleUpdate();
-      }
-    } else {
-      // Last resort: automatic update
-      console.log('🔄 No user interaction available - updating automatically');
-      setTimeout(handleUpdate, 2000);
-    }
   }
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <HashRouter>
+    <BrowserRouter>
       <App />
       <Toaster 
         position="top-right"
@@ -134,6 +82,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           },
         }}
       />
-    </HashRouter>
+    </BrowserRouter>
   </React.StrictMode>,
 )

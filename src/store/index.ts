@@ -56,6 +56,8 @@ import { PsychologicalSafetyService } from '@/services/psychologicalSafetyServic
 import { notificationService } from '@/services/notificationService';
 import { backendSyncService } from '@/services/backendSyncService';
 import { EffectLearningService } from '@/services/effectLearningService';
+import { backgroundStateService } from '@/services/backgroundStateService';
+import { liveActivityService } from '@/services/liveActivityService';
 
 interface MedicationStore {
   // State
@@ -119,6 +121,13 @@ interface MedicationStore {
   // Profile actions
   updateProfile: (updates: Partial<UserProfile>) => void;
   createProfile: (profile: Omit<UserProfile, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  
+  // Security preferences actions
+  updateSecurityPreferences: (updates: Partial<import('@/types').SecurityPreferences>) => void;
+  enableBiometric: () => void;
+  disableBiometric: () => void;
+  setAppLockTimeout: (minutes: number) => void;
+  updateLastAuthTimestamp: () => void;
 
   // Enhanced Psychological Safety Alerts
   generatePsychologicalSafetyAlerts: (medicationId?: string) => PsychologicalSafetyAlert[];
@@ -233,6 +242,28 @@ const initialUserProfile: UserProfile = {
       timeFormat: '12h',
       dateFormat: 'MM/DD/YYYY',
       defaultView: 'dashboard',
+    },
+    security: {
+      biometricEnabled: false,
+      appLockEnabled: false,
+      appLockTimeout: 5,
+      requirePinForSensitiveActions: false,
+      autoLockOnBackground: true,
+    },
+    alertNotifications: {
+      enableDependencyAlerts: true,
+      enablePsychologicalAlerts: true,
+      enableInventoryAlerts: true,
+      enableEffectTracking: true,
+      enableAdherenceAlerts: true,
+      enableAchievements: true,
+      quietHours: {
+        enabled: false,
+        startTime: '22:00',
+        endTime: '07:00',
+      },
+      minimumPriority: 'low',
+      effectTrackingFrequency: 'peak-only',
     },
   },
   createdAt: new Date(),
@@ -404,6 +435,19 @@ export const useMedicationStore = create<MedicationStore>()(
         };
 
         set((s) => ({ effectSessions: [...s.effectSessions, session], activeEffectSessionId: session.id }));
+        
+        // Save to background state for persistence
+        const updatedSessions = [...state.effectSessions, session];
+        backgroundStateService.saveEffectSessions(updatedSessions);
+        
+        // Start Live Activity on iOS
+        const profile = get().effectProfiles[medicationId];
+        if (profile) {
+          liveActivityService.startLiveActivity(session, medication, profile).catch(error => {
+            console.warn('Failed to start Live Activity:', error);
+          });
+        }
+        
         return session.id;
       },
 
@@ -416,6 +460,15 @@ export const useMedicationStore = create<MedicationStore>()(
         const offsetMinutes = Math.max(0, Math.round((now.getTime() - new Date(session.startTime).getTime()) / 60000));
         const event = { timestamp: now, offsetMinutes, status } as const;
 
+        // Update Live Activity with current status
+        const medication = state.medications.find(m => m.id === session.medicationId);
+        const profile = state.effectProfiles[session.medicationId];
+        if (medication && profile) {
+          liveActivityService.updateLiveActivity(sessionId, status, offsetMinutes, profile, medication).catch(error => {
+            console.warn('Failed to update Live Activity:', error);
+          });
+        }
+
         // Update session
         const updatedSession: EffectSession = {
           ...session,
@@ -425,7 +478,6 @@ export const useMedicationStore = create<MedicationStore>()(
 
         // Update profile
         const currentProfile = state.effectProfiles[session.medicationId] || get().getEffectProfile(session.medicationId);
-        const medication = state.medications.find(m => m.id === session.medicationId);
         const categoryKey = medication?.dependencyRiskCategory || 'low-risk';
         const currentCategoryProfile = state.categoryEffectProfiles[categoryKey] || (medication ? EffectLearningService.getCategoryFallbackProfile(medication) : null);
         if (currentProfile) {
@@ -446,6 +498,10 @@ export const useMedicationStore = create<MedicationStore>()(
             effectSessions: s.effectSessions.map((x, i) => (i === sessionIndex ? updatedSession : x)),
           }));
         }
+        
+        // Save to background state after update
+        const finalSessions = get().effectSessions;
+        backgroundStateService.saveEffectSessions(finalSessions);
       },
 
       endEffectSession: (sessionId) => {
@@ -458,6 +514,20 @@ export const useMedicationStore = create<MedicationStore>()(
           effectSessions: s.effectSessions.map((x, i) => (i === sessionIndex ? ended : x)),
           activeEffectSessionId: s.activeEffectSessionId === sessionId ? null : s.activeEffectSessionId,
         }));
+        
+        // Save to background state
+        const updatedSessions = state.effectSessions.map((x, i) => (i === sessionIndex ? ended : x));
+        backgroundStateService.saveEffectSessions(updatedSessions);
+        
+        // End Live Activity
+        liveActivityService.endLiveActivity(sessionId).catch(error => {
+          console.warn('Failed to end Live Activity:', error);
+        });
+        
+        // Cancel effect tracking notifications
+        notificationService.cancelEffectNotifications(sessionId).catch(error => {
+          console.warn('Failed to cancel effect notifications:', error);
+        });
       },
 
       getActiveEffectSessionForMedication: (medicationId) => {
@@ -671,6 +741,25 @@ export const useMedicationStore = create<MedicationStore>()(
             
             get().updatePillInventory(medicationId, inventoryUpdates);
           }
+        }
+
+        // Schedule effect tracking notifications if enabled
+        const alertPrefs = get().userProfile?.preferences?.alertNotifications;
+        if (alertPrefs?.enableEffectTracking && alertPrefs.effectTrackingFrequency !== 'off') {
+          const effectProfile = get().getEffectProfile(medicationId);
+          if (effectProfile) {
+            notificationService.scheduleEffectNotifications(log, medication, effectProfile).catch(error => {
+              console.warn('Failed to schedule effect tracking notifications:', error);
+            });
+          }
+        }
+
+        // Check for streak achievements and send celebration
+        const currentStreak = get().getCurrentStreak(medicationId);
+        if (alertPrefs?.enableAchievements && [7, 14, 30, 60, 90, 180, 365].includes(currentStreak)) {
+          notificationService.scheduleStreakCelebration(currentStreak, medication.name).catch(error => {
+            console.warn('Failed to schedule streak celebration:', error);
+          });
         }
       },
 
@@ -1020,6 +1109,41 @@ export const useMedicationStore = create<MedicationStore>()(
         };
 
         set({ userProfile: profile });
+      },
+
+      // Security preferences actions
+      updateSecurityPreferences: (updates) => {
+        set((state) => ({
+          userProfile: state.userProfile
+            ? {
+                ...state.userProfile,
+                preferences: {
+                  ...state.userProfile.preferences,
+                  security: {
+                    ...state.userProfile.preferences.security,
+                    ...updates,
+                  },
+                },
+                updatedAt: new Date(),
+              }
+            : state.userProfile,
+        }));
+      },
+
+      enableBiometric: () => {
+        get().updateSecurityPreferences({ biometricEnabled: true });
+      },
+
+      disableBiometric: () => {
+        get().updateSecurityPreferences({ biometricEnabled: false });
+      },
+
+      setAppLockTimeout: (minutes) => {
+        get().updateSecurityPreferences({ appLockTimeout: minutes });
+      },
+
+      updateLastAuthTimestamp: () => {
+        get().updateSecurityPreferences({ lastAuthTimestamp: Date.now() });
       },
 
       // Analytics and computed values
@@ -2102,6 +2226,7 @@ export const useMedicationStore = create<MedicationStore>()(
 
       updateRiskAssessment: (medicationId) => {
         const assessment = get().assessDependencyRisk(medicationId);
+        const medication = get().medications.find(med => med.id === medicationId);
         
         set((state) => ({
           dependencyRiskAssessments: [
@@ -2113,6 +2238,18 @@ export const useMedicationStore = create<MedicationStore>()(
         // Generate alert message if high risk
         if (assessment.escalationRequired) {
           get().generateContextualMessage(medicationId, 'risk-alert');
+        }
+
+        // Schedule dependency alert notifications
+        const alertPrefs = get().userProfile?.preferences?.alertNotifications;
+        if (alertPrefs?.enableDependencyAlerts && medication && assessment.alerts) {
+          assessment.alerts.forEach(alert => {
+            if (notificationService.shouldSendAlert('dependency', alert.priority, alertPrefs)) {
+              notificationService.scheduleDependencyAlert(alert, medication).catch(error => {
+                console.warn('Failed to schedule dependency alert notification:', error);
+              });
+            }
+          });
         }
       },
 
@@ -2190,6 +2327,19 @@ export const useMedicationStore = create<MedicationStore>()(
         set(() => ({
           psychologicalSafetyAlerts: sortedAlerts.map(a => ({ ...a, acknowledged: false }))
         }));
+
+        // Schedule psychological alert notifications
+        const alertPrefs = get().userProfile?.preferences?.alertNotifications;
+        if (alertPrefs?.enablePsychologicalAlerts) {
+          sortedAlerts.forEach(alert => {
+            const medication = get().medications.find(m => m.id === alert.medicationId);
+            if (medication && notificationService.shouldSendAlert('psychological', alert.priority, alertPrefs)) {
+              notificationService.schedulePsychologicalAlert(alert, medication).catch(error => {
+                console.warn('Failed to schedule psychological alert notification:', error);
+              });
+            }
+          });
+        }
 
         return sortedAlerts;
       },

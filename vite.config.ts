@@ -2,58 +2,19 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
-import fs from 'fs'
-import { generateFirebaseServiceWorkerContent } from './src/utils/firebase-sw-config'
-
-// https://vitejs.dev/config/
-// Custom plugin to generate Firebase messaging service worker
-const firebaseServiceWorkerPlugin = () => {
-  return {
-    name: 'firebase-service-worker',
-    buildStart() {
-      // Generate Firebase service worker content
-      const content = generateFirebaseServiceWorkerContent();
-      
-      // Write to public directory
-      const publicDir = path.resolve(__dirname, 'public');
-      const swPath = path.join(publicDir, 'firebase-messaging-sw.js');
-      
-      try {
-        fs.writeFileSync(swPath, content);
-        console.log('🔥 Generated firebase-messaging-sw.js');
-      } catch (error) {
-        console.warn('Failed to generate Firebase service worker:', error);
-      }
-    }
-  };
-};
 
 export default defineConfig({
   plugins: [
     react(),
-    firebaseServiceWorkerPlugin(),
+    // PWA plugin for GitHub Pages / Web deployment
+    // This is separate from Capacitor and works alongside it
     VitePWA({
-      injectRegister: null, // avoid double registration; we register in src/main.tsx
       registerType: 'autoUpdate',
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.ts',
-      injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,vue,txt,woff2}'],
-      },
-      includeAssets: [
-        'icons/favicon-16x16.png',
-        'icons/favicon-32x32.png',
-        'icons/icon-180x180.png',
-        'icons/icon-192x192.png',
-        'icons/icon-256x256.png',
-        'icons/icon-384x384.png',
-        'icons/icon-512x512.png'
-      ],
+      includeAssets: ['icons/*.png', 'pill-icon.svg'],
       manifest: {
         name: 'Meditrax - Medication Tracker',
         short_name: 'Meditrax',
-        description: 'Comprehensive medication tracking and management application',
+        description: 'Cross-platform medication tracking and management application',
         theme_color: '#3b82f6',
         background_color: '#ffffff',
         display: 'standalone',
@@ -80,6 +41,25 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
+          }
+        ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
           }
         ]
       }

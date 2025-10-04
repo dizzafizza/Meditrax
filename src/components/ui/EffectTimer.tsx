@@ -2,6 +2,7 @@ import React from 'react';
 import { Activity, Clock, Play, StopCircle, Cog } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { EffectStatus } from '@/types';
+import { liveActivityService } from '@/services/liveActivityService';
 import { cn } from '@/utils/helpers';
 
 interface EffectTimerProps {
@@ -37,6 +38,31 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Update Live Activity every minute when session is active
+  React.useEffect(() => {
+    if (!activeSession || !profile || !prediction) return;
+
+    const updateLiveActivity = () => {
+      liveActivityService.updateLiveActivity(
+        activeSession.id,
+        prediction.status,
+        prediction.minutesSinceDose,
+        profile,
+        medication
+      ).catch(error => {
+        console.warn('Failed to update Live Activity from timer:', error);
+      });
+    };
+
+    // Update immediately
+    updateLiveActivity();
+
+    // Then update every minute
+    const interval = setInterval(updateLiveActivity, 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [activeSession?.id, prediction?.status, prediction?.minutesSinceDose, tick]);
 
   if (!medication) {
     return (

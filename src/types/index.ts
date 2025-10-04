@@ -172,6 +172,7 @@ export interface UserPreferences {
     push: boolean;
     sound: boolean;
     vibration: boolean;
+    reminderAdvance?: number;
   };
   privacy: {
     shareData: boolean;
@@ -184,6 +185,34 @@ export interface UserPreferences {
     defaultView: 'dashboard' | 'medications' | 'calendar';
   };
   effects?: EffectsPreferences;
+  security?: SecurityPreferences;
+  alertNotifications?: AlertNotificationPreferences;
+}
+
+export interface AlertNotificationPreferences {
+  enableDependencyAlerts: boolean;
+  enablePsychologicalAlerts: boolean;
+  enableInventoryAlerts: boolean;
+  enableEffectTracking: boolean;
+  enableAdherenceAlerts: boolean;
+  enableAchievements: boolean;
+  quietHours: {
+    enabled: boolean;
+    startTime: string; // "22:00"
+    endTime: string; // "07:00"
+  };
+  minimumPriority: 'low' | 'medium' | 'high' | 'critical';
+  effectTrackingFrequency: 'all' | 'peak-only' | 'off';
+}
+
+export interface SecurityPreferences {
+  biometricEnabled?: boolean;
+  appLockEnabled?: boolean;
+  appLockTimeout?: number; // in minutes
+  requirePinForSensitiveActions?: boolean;
+  pin?: string; // Hashed PIN
+  autoLockOnBackground?: boolean;
+  lastAuthTimestamp?: number;
 }
 
 export interface EffectsPreferences {
