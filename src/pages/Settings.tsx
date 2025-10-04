@@ -343,22 +343,26 @@ export function Settings() {
 
 
   const NotificationDiagnostics = () => {
-    const [diagnostics, setDiagnostics] = React.useState<any>(null);
+    const [pendingCount, setPendingCount] = React.useState(0);
     const [showDetails, setShowDetails] = React.useState(false);
 
     React.useEffect(() => {
       const loadDiagnostics = async () => {
-        const diag = await notificationService.getNotificationDiagnostics();
-        setDiagnostics(diag);
+        try {
+          const pending = await notificationService.getPendingNotifications();
+          setPendingCount(pending.notifications.length);
+        } catch (error) {
+          // Ignore errors on web platform
+        }
       };
       
       loadDiagnostics();
-      const interval = setInterval(loadDiagnostics, 5000); // Update every 5 seconds
+      const interval = setInterval(loadDiagnostics, 10000); // Update every 10 seconds
       
       return () => clearInterval(interval);
     }, []);
 
-    if (!diagnostics) return null;
+    if (!showDetails) return null;
 
     return (
       <div className="mt-4 p-3 bg-gray-50 rounded-lg">
@@ -462,67 +466,59 @@ export function Settings() {
     );
   };
 
-  const IOSPWAGuidance = () => {
-    const [iosInstructions, setIOSInstructions] = React.useState<any>(null);
-    const [showIOSInstructions, setShowIOSInstructions] = React.useState(false);
+  const PlatformGuidance = () => {
+    const [showGuidance, setShowGuidance] = React.useState(false);
 
-    React.useEffect(() => {
-      const instructions = notificationService.getIOSPWAInstructions();
-      setIOSInstructions(instructions);
-    }, []);
-
-    if (!iosInstructions || (!iosInstructions.isSupported && !iosInstructions.isPWA)) return null;
+    // Show guidance for web/PWA users
+    if (isNative()) {
+      return (
+        <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+          <div className="flex items-center">
+            <Smartphone className="w-4 h-4 mr-2 text-green-600" />
+            <span className="text-sm font-medium text-green-900">Native App - Full notification support</span>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
         <button
           type="button"
-          onClick={() => setShowIOSInstructions(!showIOSInstructions)}
+          onClick={() => setShowGuidance(!showGuidance)}
           className="flex items-center justify-between w-full text-sm text-blue-800 hover:text-blue-900 font-medium"
         >
           <span className="flex items-center">
             <Smartphone className="w-4 h-4 mr-2" />
-            {iosInstructions.isPWA ? 'iOS PWA Status' : 'iOS PWA Setup Instructions'}
+            Web/PWA Platform Info
           </span>
-          <Settings2 className={`w-4 h-4 transform transition-transform ${showIOSInstructions ? 'rotate-90' : ''}`} />
+          <Settings2 className={`w-4 h-4 transform transition-transform ${showGuidance ? 'rotate-90' : ''}`} />
         </button>
         
-        {showIOSInstructions && (
-          <div className="mt-3 space-y-3 text-sm">
-            {iosInstructions.isPWA ? (
-              <div className="p-2 bg-green-50 border border-green-200 rounded">
-                <p className="text-green-800 font-medium">✅ PWA Installed Successfully!</p>
-                <p className="text-green-700 text-xs mt-1">You're using the installed version of Meditrax. Notifications should work properly.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-blue-800 font-medium">📱 For best iOS notification experience:</p>
-                <ol className="text-blue-700 text-xs space-y-1 ml-4">
-                  {iosInstructions.instructions.map((instruction: string, index: number) => (
-                    <li key={index} className="flex items-start">
-                      <span className="inline-block w-4 h-4 text-center bg-blue-200 rounded-full text-blue-800 text-xs font-bold mr-2 mt-0.5 flex-shrink-0">
-                        {index + 1}
-                      </span>
-                      {instruction}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-            
-            {iosInstructions.limitations.length > 0 && (
-              <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                <p className="text-yellow-800 font-medium text-xs">⚠️ iOS Limitations:</p>
-                <ul className="text-yellow-700 text-xs mt-1 space-y-0.5">
-                  {iosInstructions.limitations.map((limitation: string, index: number) => (
-                    <li key={index} className="flex items-start">
-                      <span className="mr-1">•</span>
-                      {limitation}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+        {showGuidance && (
+          <div className="mt-3 space-y-2 text-xs text-gray-700">
+            <div className="p-2 bg-white border border-blue-100 rounded">
+              <p className="font-medium text-blue-900 mb-1">✅ What Works on Web/PWA:</p>
+              <ul className="list-disc ml-5 space-y-0.5">
+                <li>Immediate notifications (when app is open)</li>
+                <li>All medication tracking features</li>
+                <li>Offline functionality</li>
+                <li>Data export/import</li>
+              </ul>
+            </div>
+            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="font-medium text-yellow-800 mb-1">⚠️ Web/PWA Limitations:</p>
+              <ul className="list-disc ml-5 space-y-0.5 text-yellow-700">
+                <li>Scheduled notifications not reliable (browser dependent)</li>
+                <li>No background tracking when app is closed</li>
+                <li>No biometric authentication</li>
+                <li>No camera/barcode scanning</li>
+              </ul>
+            </div>
+            <div className="p-2 bg-blue-50 border border-blue-100 rounded">
+              <p className="font-medium text-blue-900 mb-1">💡 For Best Experience:</p>
+              <p className="text-blue-700">Install the native iOS or Android app for reliable scheduled reminders, background notifications, and all features.</p>
+            </div>
           </div>
         )}
       </div>
@@ -767,8 +763,7 @@ export function Settings() {
                 <p className="text-xs text-gray-600 mt-2">
                     💡 "Test in 1 min" - Close the app after clicking to test closed-app delivery
                 </p>
-                        <NotificationDiagnostics />
-                        <IOSPWAGuidance />
+                        <PlatformGuidance />
                       </div>
                     )}
                     
