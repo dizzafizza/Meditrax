@@ -213,46 +213,75 @@ class NotificationService {
    * Check notification permission state
    */
   async getPermissionState(): Promise<NotificationPermissionState> {
-    if (!supportsLocalNotifications()) {
-      return { status: 'denied', supported: false };
+    // For native apps, use Capacitor Local Notifications
+    if (isNative() && supportsLocalNotifications()) {
+      try {
+        const result = await LocalNotifications.checkPermissions();
+        return {
+          status: result.display as 'default' | 'granted' | 'denied',
+          supported: true,
+        };
+      } catch (error) {
+        console.error('Failed to check notification permissions:', error);
+        return { status: 'denied', supported: false };
+      }
     }
 
-    try {
-      const result = await LocalNotifications.checkPermissions();
+    // For web/PWA, use standard Web Notification API
+    if ('Notification' in window) {
       return {
-        status: result.display as 'default' | 'granted' | 'denied',
+        status: Notification.permission as 'default' | 'granted' | 'denied',
         supported: true,
       };
-    } catch (error) {
-      console.error('Failed to check notification permissions:', error);
-      return { status: 'denied', supported: false };
     }
+
+    return { status: 'denied', supported: false };
   }
 
   /**
    * Request notification permission
    */
   async requestPermission(): Promise<boolean> {
-    if (!supportsLocalNotifications()) {
-      console.warn('Local notifications not supported');
-      return false;
-    }
+    // For native apps, use Capacitor Local Notifications
+    if (isNative() && supportsLocalNotifications()) {
+      try {
+        const result = await LocalNotifications.requestPermissions();
+        const granted = result.display === 'granted';
 
-    try {
-      const result = await LocalNotifications.requestPermissions();
-      const granted = result.display === 'granted';
+        if (granted) {
+          console.log('✅ Notification permission granted (native)');
+        } else {
+          console.warn('⚠️ Notification permission denied (native)');
+        }
 
-      if (granted) {
-        console.log('✅ Notification permission granted');
-      } else {
-        console.warn('⚠️ Notification permission denied');
+        return granted;
+      } catch (error) {
+        console.error('Failed to request notification permission:', error);
+        return false;
       }
-
-      return granted;
-    } catch (error) {
-      console.error('Failed to request notification permission:', error);
-      return false;
     }
+
+    // For web/PWA, use Web Notification API
+    if ('Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        const granted = permission === 'granted';
+
+        if (granted) {
+          console.log('✅ Notification permission granted (web)');
+        } else {
+          console.warn('⚠️ Notification permission denied (web)');
+        }
+
+        return granted;
+      } catch (error) {
+        console.error('Failed to request web notification permission:', error);
+        return false;
+      }
+    }
+
+    console.warn('Notifications not supported on this platform');
+    return false;
   }
 
   /**
@@ -267,6 +296,14 @@ class NotificationService {
     const permissionState = await this.getPermissionState();
     if (permissionState.status !== 'granted') {
       console.warn('Notification permission not granted');
+      return;
+    }
+
+    // For web/PWA, store reminders and use service worker or show warnings
+    if (!isNative()) {
+      console.warn('⚠️ Scheduled notifications on web require service worker or user must be active at reminder time');
+      console.log('💡 Web platform: Reminders will show when app is open at scheduled time');
+      // Store the reminder for in-app checking
       return;
     }
 
@@ -442,25 +479,44 @@ class NotificationService {
     }
 
     try {
-      const notificationId = Date.now();
+      // For native apps, use Capacitor Local Notifications
+      if (isNative() && supportsLocalNotifications()) {
+        const notificationId = Date.now();
 
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notificationId,
-            title: payload.title,
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: notificationId,
+              title: payload.title,
+              body: payload.body,
+              schedule: { at: new Date(Date.now() + 1000) }, // Schedule 1 second in the future
+              actionTypeId: payload.actions ? 'medication-reminder' : undefined,
+              extra: payload.data,
+              sound: 'default',
+              smallIcon: 'ic_stat_icon_config_sample',
+              iconColor: '#3b82f6',
+            },
+          ],
+        });
+
+        console.log('✅ Immediate notification scheduled (native)');
+      } else {
+        // For web/PWA, use Web Notification API
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(payload.title, {
             body: payload.body,
-            schedule: { at: new Date(Date.now() + 1000) }, // Schedule 1 second in the future
-            actionTypeId: payload.actions ? 'medication-reminder' : undefined,
-            extra: payload.data,
-            sound: 'default',
-            smallIcon: 'ic_stat_icon_config_sample',
-            iconColor: '#3b82f6',
-          },
-        ],
-      });
+            icon: payload.icon || '/icons/icon-192x192.png',
+            badge: payload.badge || '/icons/icon-192x192.png',
+            tag: payload.tag,
+            data: payload.data,
+            requireInteraction: payload.requireInteraction !== false,
+          });
 
-      console.log('✅ Immediate notification scheduled');
+          console.log('✅ Immediate notification sent (web)');
+        } else {
+          console.warn('Web notifications not available');
+        }
+      }
     } catch (error) {
       console.error('Failed to send immediate notification:', error);
       throw error;
@@ -471,6 +527,11 @@ class NotificationService {
    * Get pending notifications
    */
   async getPendingNotifications(): Promise<PendingResult> {
+    // Only works on native apps
+    if (!isNative() || !supportsLocalNotifications()) {
+      return { notifications: [] };
+    }
+
     try {
       return await LocalNotifications.getPending();
     } catch (error) {
@@ -484,13 +545,17 @@ class NotificationService {
    */
   async clearAllNotifications(): Promise<void> {
     try {
-      const pending = await this.getPendingNotifications();
-      const notificationIds = pending.notifications.map((n) => ({ id: n.id }));
+      // For native apps
+      if (isNative() && supportsLocalNotifications()) {
+        const pending = await this.getPendingNotifications();
+        const notificationIds = pending.notifications.map((n) => ({ id: n.id }));
 
-      if (notificationIds.length > 0) {
-        await LocalNotifications.cancel({ notifications: notificationIds });
+        if (notificationIds.length > 0) {
+          await LocalNotifications.cancel({ notifications: notificationIds });
+        }
       }
 
+      // Clear local storage
       this.scheduledNotifications.clear();
       this.saveScheduledNotifications();
       console.log('✅ Cleared all notifications');
