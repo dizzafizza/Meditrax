@@ -1,0 +1,124 @@
+/* Ionic CSS variables aligned to iOS 26 design language */
+:root {
+  /* Primary */
+  --ion-color-primary: #007AFF; /* iOS 26 blue */
+  --ion-color-primary-rgb: 0, 122, 255;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #0062CC;
+  --ion-color-primary-tint: #3395FF;
+
+  /* Success */
+  --ion-color-success: #34C759; /* iOS 26 green */
+  --ion-color-success-rgb: 52, 199, 89;
+  --ion-color-success-contrast: #ffffff;
+  --ion-color-success-contrast-rgb: 255, 255, 255;
+  --ion-color-success-shade: #2A9F47;
+  --ion-color-success-tint: #5CD46E;
+
+  /* Warning */
+  --ion-color-warning: #FF9500; /* iOS 26 orange */
+  --ion-color-warning-rgb: 255, 149, 0;
+  --ion-color-warning-contrast: #000000;
+  --ion-color-warning-contrast-rgb: 0, 0, 0;
+  --ion-color-warning-shade: #CC7700;
+  --ion-color-warning-tint: #FFB340;
+
+  /* Danger */
+  --ion-color-danger: #FF3B30; /* iOS 26 red */
+  --ion-color-danger-rgb: 255, 59, 48;
+  --ion-color-danger-contrast: #ffffff;
+  --ion-color-danger-contrast-rgb: 255, 255, 255;
+  --ion-color-danger-shade: #CC2F26;
+  --ion-color-danger-tint: #FF5E54;
+
+  /* Backgrounds */
+  --ion-background-color: #f2f2f7; /* iOS 26 system gray */
+  --ion-text-color: #000000; /* pure black for iOS 26 */
+  --ion-border-color: #d1d1d6;
+  --ion-border-radius: 12px; /* iOS 26 rounded */
+  --ion-card-border-radius: 16px;
+
+  /* Typography - iOS 26 SF Pro */
+  --ion-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ion-font-size-base: 17px; /* iOS default body */
+  --ion-font-size-large: 20px;
+  --ion-font-size-small: 15px;
+
+  /* Translucent surfaces (iOS 26 materials) */
+  --ion-toolbar-background: rgba(248,248,248,0.94);
+  --ion-toolbar-border-color: rgba(0,0,0,0.04);
+  --ion-tab-bar-background: rgba(248,248,248,0.94);
+  
+  /* Spacing */
+  --ion-padding: 16px;
+  --ion-margin: 16px;
+  
+  /* Safe areas */
+  --ion-safe-area-top: env(safe-area-inset-top);
+  --ion-safe-area-bottom: env(safe-area-inset-bottom);
+  --ion-safe-area-left: env(safe-area-inset-left);
+  --ion-safe-area-right: env(safe-area-inset-right);
+}
+
+/* Respect existing glass theme on top of Ionic */
+body.glass-theme ion-modal::part(content) {
+  backdrop-filter: blur(8px);
+}
+
+/* iOS platform-specific polish */
+.ios ion-header, .ios ion-toolbar, .ios ion-tab-bar {
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.ios ion-title {
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+
+/* Android Material adjustments */
+.md ion-tab-bar {
+  box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+}
+
+/* Large title support for iOS */
+.ios ion-title[size="large"] {
+  font-size: 34px;
+  font-weight: 700;
+  padding-left: 16px;
+}
+
+/* Motion and transitions */
+ion-page {
+  --ion-transition-duration: 280ms;
+  --ion-transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1); /* iOS spring */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark mode - iOS 26 palette */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ion-background-color: #000000; /* pure black iOS 26 */
+    --ion-text-color: #ffffff;
+    --ion-toolbar-background: rgba(28,28,30,0.94);
+    --ion-tab-bar-background: rgba(28,28,30,0.94);
+    --ion-border-color: #38383a;
+    --ion-color-primary: #0A84FF; /* iOS 26 dark blue */
+    --ion-color-success: #30D158; /* iOS 26 dark green */
+    --ion-color-warning: #FF9F0A; /* iOS 26 dark orange */
+    --ion-color-danger: #FF453A; /* iOS 26 dark red */
+  }
+  
+  .ios ion-card, .ios .card {
+    background: #1c1c1e;
+  }
+}
+
+

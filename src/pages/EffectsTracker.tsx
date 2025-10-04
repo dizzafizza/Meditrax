@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/react';
 import { Link } from 'react-router-dom';
 import { Brain, Clock } from 'lucide-react';
 import { useMedicationStore } from '@/store';
@@ -14,8 +15,14 @@ export function EffectsTracker() {
   const activeSessions = effectSessions.filter(s => !s.endTime);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Effects Tracker</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
         {/* Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex items-center justify-between">
@@ -106,8 +113,9 @@ export function EffectsTracker() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+        </div>
+      </IonContent>
+    </IonPage>
   );
 }
 

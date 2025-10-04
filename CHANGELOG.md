@@ -5,6 +5,48 @@ All notable changes to Meditrax will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-10-04
+
+### 🎨 Major UI Overhaul - iOS 26 Design
+
+**Breaking Changes:**
+- Complete UI revamp to iOS 26 design language
+- Migrated to Ionic React Router for native navigation
+- Tabs-first navigation pattern (bottom tabs for primary destinations)
+- All pages now use native Ionic components
+
+**Added:**
+- Native iOS 26 design system with SF Pro typography
+- Translucent headers and tab bars with backdrop blur
+- Platform-adaptive styling (iOS vs Android Material)
+- Large title support with collapsing headers
+- IonSearchbar for native search experience
+- IonSegment controls for view modes
+- Comprehensive dark mode with iOS 26 palette
+- Safe area inset support for modern iOS devices
+- Springy iOS-native page transitions
+
+**Changed:**
+- Router: `BrowserRouter` → `IonReactRouter` with `IonRouterOutlet`
+- Navigation: Split-pane + side menu + bottom tabs architecture
+- Theme: Updated to iOS 26 color palette (pure blacks, vibrant accent colors)
+- Typography: SF Pro font stack with iOS-standard sizes (17px base)
+- Spacing: Consistent 16px padding/margin aligned to iOS HIG
+- Removed legacy `VITE_USE_IONIC_UI` feature flag (always Ionic now)
+
+**Improved:**
+- All pages wrapped in `IonPage` + `IonHeader` + `IonContent`
+- Medications: Native search bar, category filters
+- Calendar: Ionic segment controls for week/month views
+- Better touch targets and haptic feedback integration
+- Status bar and splash screen aligned to iOS 26 aesthetics
+
+**Technical:**
+- Added `@ionic/react-router@^8.7.5` dependency
+- Updated `capacitor.config.ts` with iOS safe areas and status bar config
+- Enhanced `src/theme/ionic.css` with comprehensive iOS 26 tokens
+- Type stubs for smooth migration
+
 ## [1.3.1] - 2025-10-01
 
 ### Fixed

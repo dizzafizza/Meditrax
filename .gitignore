@@ -118,3 +118,5 @@ backend/node_modules/
 # ConPort database
 context_portal/context.db
 conport.db
+
+.cursor/

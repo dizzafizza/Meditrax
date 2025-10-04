@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/react';
 import { Calendar, Activity, TrendingDown, CheckCircle, Edit, Info } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { CyclicDosingPattern, TaperingSchedule } from '@/types';
@@ -547,8 +548,14 @@ export function CyclicDosing() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Cyclic Dosing</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 sm:p-6 rounded-lg border border-gray-200 shadow">
           <div className="flex flex-col sm:flex-row sm:items-center mb-4 gap-3">
@@ -1124,6 +1131,8 @@ export function CyclicDosing() {
           medication={editingMedication}
         />
       )}
-    </div>
+        </div>
+      </IonContent>
+    </IonPage>
   );
 }

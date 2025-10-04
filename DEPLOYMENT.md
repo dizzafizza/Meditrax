@@ -22,14 +22,33 @@ npm run android:dev  # Opens Android Studio
 # First time: Install CocoaPods
 sudo gem install cocoapods
 
-# Install dependencies
-cd ios/App && pod install && cd ../..
+# Important: Updated iOS deployment target to 15.5 for ML Kit support
+# (GoogleMLKit/BarcodeScanning requires iOS 15.5+)
 
-# Open Xcode
+# Install dependencies
+cd ios/App
+pod install
+cd ../..
+
+# Open Xcode (MUST open .xcworkspace, not .xcodeproj!)
 open ios/App/App.xcworkspace
 
-# Build and run in Xcode
+# In Xcode:
+# 1. Select 'App' target
+# 2. General tab → Deployment Info → set to iOS 15.5
+# 3. Select a simulator or device (iOS 15.5+)
+# 4. Click Run (⌘R)
 ```
+
+**Troubleshooting iOS:**
+
+If pod install fails with "higher minimum deployment target":
+- ✅ Already fixed! Podfile updated to iOS 15.5
+- Run: `cd ios/App && pod install`
+
+If "pod: command not found":
+- Install: `sudo gem install cocoapods`
+- Or via Homebrew: `brew install cocoapods`
 
 ### Desktop (Electron)
 ```bash

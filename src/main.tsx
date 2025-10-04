@@ -1,13 +1,20 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { IonReactRouter } from '@ionic/react-router'
 import { Toaster } from 'react-hot-toast'
+import '@ionic/react/css/core.css'
+import '@ionic/react/css/normalize.css'
+import '@ionic/react/css/structure.css'
+import '@ionic/react/css/typography.css'
+import '@ionic/react/css/display.css'
+import { IonApp } from '@ionic/react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { isNative, isIOS } from './utils/platform'
 import App from './App.tsx'
 import './index.css'
+import './theme/ionic.css'
 
 // Enable global glass theme
 document.body.classList.add('glass-theme')
@@ -56,32 +63,34 @@ if (import.meta.env.PROD && !isNative()) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-          },
-          success: {
-            duration: 3000,
-            iconTheme: {
-              primary: '#22c55e',
-              secondary: '#fff',
+    <IonApp>
+      <IonReactRouter>
+        <App />
+        <Toaster 
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#363636',
+              color: '#fff',
             },
-          },
-          error: {
-            duration: 5000,
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
+            success: {
+              duration: 3000,
+              iconTheme: {
+                primary: '#22c55e',
+                secondary: '#fff',
+              },
             },
-          },
-        }}
-      />
-    </BrowserRouter>
+            error: {
+              duration: 5000,
+              iconTheme: {
+                primary: '#ef4444',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
+      </IonReactRouter>
+    </IonApp>
   </React.StrictMode>,
 )

@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -384,8 +385,14 @@ export function Analytics() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Analytics</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
         {/* Page Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1293,13 +1300,14 @@ export function Analytics() {
             )}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-      />
-    </div>
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+        />
+      </IonContent>
+    </IonPage>
   );
 }

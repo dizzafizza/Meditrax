@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonSegment, IonSegmentButton, IonLabel } from '@ionic/react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -629,8 +630,14 @@ export function Calendar() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Calendar</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
         {/* Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -658,29 +665,15 @@ export function Calendar() {
             ))}
           </select>
 
-          {/* View Mode Toggle */}
-          <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-            <button
-              onClick={() => setViewMode('week')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                viewMode === 'week'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              Week
-            </button>
-            <button
-              onClick={() => setViewMode('month')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                viewMode === 'month'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              Month
-            </button>
-          </div>
+          {/* View Mode Toggle - Ionic Segment */}
+          <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as 'week' | 'month')}>
+            <IonSegmentButton value="week">
+              <IonLabel>Week</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="month">
+              <IonLabel>Month</IonLabel>
+            </IonSegmentButton>
+          </IonSegment>
           </div>
         </div>
 
@@ -869,7 +862,8 @@ export function Calendar() {
           </div>
         </div>
       </div>
-    </div>
-    </div>
+        </div>
+      </IonContent>
+    </IonPage>
   );
 }

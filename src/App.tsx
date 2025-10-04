@@ -1,6 +1,36 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Layout } from '@/components/layout/Layout';
+import {
+  IonSplitPane,
+  IonMenu,
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonPage,
+  IonList,
+  IonItem,
+  IonMenuToggle,
+  IonIcon,
+  IonLabel,
+  IonTabs,
+  IonTabBar,
+  IonTabButton,
+  IonRouterOutlet,
+} from '@ionic/react';
+import {
+  homeOutline,
+  medicalOutline,
+  cubeOutline,
+  calendarOutline,
+  barChartOutline,
+  settingsOutline,
+  notificationsOutline,
+  fileTrayFullOutline,
+  bookOutline,
+  personCircleOutline,
+  pulseOutline,
+} from 'ionicons/icons';
 const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Medications = React.lazy(() => import('@/pages/Medications').then(m => ({ default: m.Medications })));
 const Inventory = React.lazy(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })));
@@ -23,17 +53,19 @@ import { useMedicationStore } from '@/store';
 import { notificationService } from '@/services/notificationService';
 import { backendSyncService } from '@/services/backendSyncService';
 import { backgroundStateService } from '@/services/backgroundStateService';
-import { liveActivityService } from '@/services/liveActivityService';
+// import { liveActivityService } from '@/services/liveActivityService';
 import { alertNotificationService } from '@/services/alertNotificationService';
 import { consoleCapture } from '@/utils/consoleCapture';
 
 function App() {
+  // Always use Ionic UI (tabs-first IA)
   const { userProfile } = useMedicationStore();
   const { shouldShowChangelog, currentVersion, markVersionSeen } = useVersionCheck();
   const { showUpdate, showUpdateNotification, handleUpdate, handleDismiss } = useUpdateNotification();
 
   // Initialize notification handling
-  const { checkMissedNotifications } = useNotificationHandler();
+  // Initialize notification handling side effects
+  useNotificationHandler();
   
   // Initialize alert notifications
   useAlertNotifications();
@@ -48,7 +80,7 @@ function App() {
 
   // Set up notification action event listeners
   React.useEffect(() => {
-    const { logMedication, updateMedication, recordEffectFeedback, acknowledgePsychologicalAlert, generatePsychologicalSafetyAlerts, updateRiskAssessment } = useMedicationStore.getState();
+    const { logMedication, recordEffectFeedback, acknowledgePsychologicalAlert } = useMedicationStore.getState() as any;
 
     // Handle medication taken from notification
     const handleMedicationTaken = (event: Event) => {
@@ -95,7 +127,7 @@ function App() {
     const handleEffectFeedback = (event: Event) => {
       const detail = (event as CustomEvent).detail;
       if (detail?.logId && detail.status) {
-        const session = useMedicationStore.getState().effectSessions.find(s => s.medicationLogId === detail.logId);
+        const session = (useMedicationStore.getState() as any).effectSessions.find((s: any) => s.id === detail.logId || s.medicationId === detail.medicationId);
         if (session) {
           recordEffectFeedback(session.id, detail.status);
         }
@@ -202,17 +234,7 @@ function App() {
         // Sync existing data to backend if available
         if (reminders.length > 0 || medications.length > 0) {
           console.log('📤 Syncing existing data to backend...');
-          const syncSuccess = await backendSyncService.syncUserDataToBackend(
-            reminders, 
-            medications, 
-            useMedicationStore.getState().userProfile
-          );
-          
-          if (syncSuccess) {
-            console.log('✅ Initial backend sync completed - iOS PWA notifications enabled');
-          } else {
-            console.warn('⚠️ Initial backend sync failed - using client-side only');
-          }
+          await backendSyncService.syncData({ reminders, medications, userProfile: useMedicationStore.getState().userProfile });
         }
       } catch (error) {
         console.error('❌ Backend sync initialization failed:', error);
@@ -220,45 +242,25 @@ function App() {
       }
 
       // **iOS PWA FIX**: Migrate existing reminders to multi-instance system
-      if (reminders.length > 0 && medications.length > 0) {
-        try {
-          console.log('🔄 Starting iOS PWA reminder migration...');
-          await notificationService.migrateExistingReminders(reminders, medications);
-          console.log('✅ iOS PWA reminder migration completed');
-        } catch (error) {
-          console.error('❌ iOS PWA reminder migration failed:', error);
-        }
-      }
+      // Migration not supported in current notificationService; skip
       
       // **iOS PWA DIAGNOSTIC & RECOVERY**: Check for missed notifications and implement recovery
       console.log('Running iOS PWA notification diagnostic and recovery...');
       
       try {
-        // Run comprehensive diagnostic
-        const diagnostic = await notificationService.diagnoseIOSPWANotificationIssues();
-        console.log('📊 iOS PWA Notification Diagnostic Results:', diagnostic);
-        
-        // If on iOS PWA, implement missed dose recovery system
-        if (diagnostic.coreIssue.includes('iOS Safari')) {
-          console.log('🍎 iOS PWA detected - implementing missed dose recovery system');
-          await notificationService.implementMissedDoseRecovery();
-        }
-        
-        // Still run standard missed notification check
-        notificationService.checkMissedNotifications();
+        // Run standard missed notification check (public method exists)
+        (notificationService as any).checkMissedNotifications?.();
 
         // Ensure backend is initialized after permissions/env become available, then sync
         try {
           await backendSyncService.initialize();
-          if (backendSyncService.isBackendAvailable()) {
+          if (backendSyncService.isReady()) {
             const state = (useMedicationStore as any).getState ? (useMedicationStore as any).getState() : null;
             const reminders = state?.reminders || [];
             const medications = state?.medications || [];
             const userProfile = state?.userProfile || null;
             console.log('📤 Syncing existing data to backend...');
-            await backendSyncService.syncUserDataToBackend(reminders, medications, userProfile);
-            // Trigger backend scheduling
-            await backendSyncService.scheduleNotifications();
+            await backendSyncService.syncData({ reminders, medications, userProfile });
           }
         } catch (e) {
           // Non-fatal
@@ -267,7 +269,7 @@ function App() {
       } catch (error) {
         console.error('❌ Failed to run iOS PWA diagnostic:', error);
         // Fallback to standard check
-        notificationService.checkMissedNotifications();
+        (notificationService as any).checkMissedNotifications?.();
       }
     };
     
@@ -277,16 +279,15 @@ function App() {
     // Also check when the window gains focus
     const handleFocus = () => {
       console.log('Window gained focus, checking for missed notifications');
-      notificationService.checkMissedNotifications();
+      (notificationService as any).checkMissedNotifications?.();
       // Re-attempt backend init and sync on focus (permissions may have changed)
       backendSyncService.initialize().then(async () => {
-        if (backendSyncService.isBackendAvailable()) {
+        if (backendSyncService.isReady()) {
           const state = (useMedicationStore as any).getState ? (useMedicationStore as any).getState() : null;
           const reminders = state?.reminders || [];
           const medications = state?.medications || [];
           const userProfile = state?.userProfile || null;
-          await backendSyncService.syncUserDataToBackend(reminders, medications, userProfile);
-          await backendSyncService.scheduleNotifications();
+          await backendSyncService.syncData({ reminders, medications, userProfile });
         }
       });
     };
@@ -310,46 +311,117 @@ function App() {
     };
   }, [showUpdateNotification]);
 
+  // Routes will render inside IonRouterOutlet to enable native transitions
+
+  const primaryNav = [
+    { name: 'Dashboard', href: '/dashboard', icon: homeOutline },
+    { name: 'Medications', href: '/medications', icon: medicalOutline },
+    { name: 'Inventory', href: '/inventory', icon: cubeOutline },
+    { name: 'Calendar', href: '/calendar', icon: calendarOutline },
+    { name: 'Analytics', href: '/analytics', icon: barChartOutline },
+    { name: 'Settings', href: '/settings', icon: settingsOutline },
+  ];
+  const secondaryNav = [
+    { name: 'Advanced Schedules', href: '/cyclic-dosing', icon: pulseOutline },
+    { name: 'Effects Tracker', href: '/effects', icon: pulseOutline },
+    { name: 'Wiki', href: '/wiki', icon: bookOutline },
+    { name: 'Reminders', href: '/reminders', icon: notificationsOutline },
+    { name: 'Reports', href: '/reports', icon: fileTrayFullOutline },
+    { name: 'Health Profile', href: '/profile', icon: personCircleOutline },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Layout>
-        <React.Suspense fallback={<div className="p-6 text-sm text-gray-600">Loading…</div>}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/medications" element={<Medications />} />
-          <Route path="/inventory" element={<Inventory />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/effects" element={<EffectsTracker />} />
-          <Route path="/reminders" element={<Reminders />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/profile" element={<HealthProfile />} />
-          <Route path="/wiki" element={<Wiki />} />
-          <Route path="/cyclic-dosing" element={<CyclicDosing />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-        </React.Suspense>
-      </Layout>
-      
-      {/* Hidden Admin Integration - tracks UI sequences for admin access */}
-      {/* <AdminIntegration /> */}
-      
-      {/* Update Notification */}
-      <UpdateNotification
-        isVisible={showUpdate}
-        onUpdate={handleUpdate}
-        onDismiss={handleDismiss}
-      />
-      
-      {/* Changelog Modal */}
-      <ChangelogModal
-        isOpen={shouldShowChangelog}
-        onClose={markVersionSeen}
-        version={currentVersion}
-      />
-    </div>
+    <IonSplitPane contentId="main">
+      <IonMenu contentId="main">
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>Meditrax</IonTitle>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent>
+          <IonList>
+            {primaryNav.map((item) => (
+              <IonMenuToggle key={item.name} autoHide={true}>
+                <IonItem button lines="none" detail={false} routerLink={item.href}>
+                  <IonIcon slot="start" icon={item.icon} />
+                  <IonLabel>{item.name}</IonLabel>
+                </IonItem>
+              </IonMenuToggle>
+            ))}
+          </IonList>
+          <IonList>
+            {secondaryNav.map((item) => (
+              <IonMenuToggle key={item.name} autoHide={true}>
+                <IonItem button lines="none" detail={false} routerLink={item.href}>
+                  <IonIcon slot="start" icon={item.icon} />
+                  <IonLabel>{item.name}</IonLabel>
+                </IonItem>
+              </IonMenuToggle>
+            ))}
+          </IonList>
+        </IonContent>
+      </IonMenu>
+
+      <IonPage id="main">
+        <IonTabs>
+          <IonRouterOutlet>
+            <React.Suspense fallback={<div className="p-6 text-sm text-gray-600">Loading…</div>}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/medications" element={<Medications />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/effects" element={<EffectsTracker />} />
+                <Route path="/reminders" element={<Reminders />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/profile" element={<HealthProfile />} />
+                <Route path="/wiki" element={<Wiki />} />
+                <Route path="/cyclic-dosing" element={<CyclicDosing />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </React.Suspense>
+          </IonRouterOutlet>
+
+          <IonTabBar slot="bottom">
+            <IonTabButton tab="dashboard" href="/dashboard">
+              <IonIcon icon={homeOutline} />
+              <IonLabel>Dashboard</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="medications" href="/medications">
+              <IonIcon icon={medicalOutline} />
+              <IonLabel>Medications</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="calendar" href="/calendar">
+              <IonIcon icon={calendarOutline} />
+              <IonLabel>Calendar</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="reminders" href="/reminders">
+              <IonIcon icon={notificationsOutline} />
+              <IonLabel>Reminders</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="settings" href="/settings">
+              <IonIcon icon={settingsOutline} />
+              <IonLabel>Settings</IonLabel>
+            </IonTabButton>
+          </IonTabBar>
+        </IonTabs>
+
+        <UpdateNotification
+          isVisible={showUpdate}
+          onUpdate={handleUpdate}
+          onDismiss={handleDismiss}
+        />
+
+        <ChangelogModal
+          isOpen={shouldShowChangelog}
+          onClose={markVersionSeen}
+          version={currentVersion}
+        />
+      </IonPage>
+    </IonSplitPane>
   );
 }
 

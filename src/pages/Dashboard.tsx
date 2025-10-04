@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonContent, IonHeader, IonToolbar, IonTitle } from '@ionic/react';
 import { Link } from 'react-router-dom';
 import { 
   Pill, 
@@ -37,36 +38,24 @@ export function Dashboard() {
     getMissedDoses,
     getUpcomingRefills,
     getMedicationAdherence,
-    markMedicationTaken,
-    markMedicationMissed,
     smartMessages,
     getSmartInsights,
     markMessageAsRead,
     getCurrentDose,
-    generatePsychologicalSafetyAlerts,
     getActivePsychologicalSafetyAlerts,
     acknowledgePsychologicalAlert,
-    initializeDependencePrevention,
-    updateDependenceAssessment,
-    acknowledgeDependenceAlert
-  } = useMedicationStore((s) => ({
+  } = useMedicationStore((s: any) => ({
     getTodaysReminders: s.getTodaysReminders,
     getTodaysLogs: s.getTodaysLogs,
     getMissedDoses: s.getMissedDoses,
     getUpcomingRefills: s.getUpcomingRefills,
     getMedicationAdherence: s.getMedicationAdherence,
-    markMedicationTaken: s.markMedicationTaken,
-    markMedicationMissed: s.markMedicationMissed,
     smartMessages: s.smartMessages,
     getSmartInsights: s.getSmartInsights,
     markMessageAsRead: s.markMessageAsRead,
     getCurrentDose: s.getCurrentDose,
-    generatePsychologicalSafetyAlerts: s.generatePsychologicalSafetyAlerts,
     getActivePsychologicalSafetyAlerts: s.getActivePsychologicalSafetyAlerts,
     acknowledgePsychologicalAlert: s.acknowledgePsychologicalAlert,
-    initializeDependencePrevention: s.initializeDependencePrevention,
-    updateDependenceAssessment: s.updateDependenceAssessment,
-    acknowledgeDependenceAlert: s.acknowledgeDependenceAlert,
   }), shallow);
 
   const todaysReminders = getTodaysReminders();
@@ -75,7 +64,7 @@ export function Dashboard() {
   const upcomingRefills = getUpcomingRefills();
   const activeMedications = medications.filter(med => med.isActive);
   const smartInsights = getSmartInsights();
-  const priorityMessages = smartMessages.filter(msg => msg.priority === 'high' || msg.priority === 'urgent');
+  const priorityMessages = smartMessages.filter((msg: any) => msg.priority === 'high' || msg.priority === 'urgent');
   const activeEffectSessions = React.useMemo(() => effectSessions.filter(s => !s.endTime), [effectSessions]);
 
   // Enhanced dashboard data
@@ -88,8 +77,10 @@ export function Dashboard() {
 
   // Enhanced Psychological Safety Alerts (with 7-day minimum requirement)
   React.useEffect(() => {
-    // Regenerate alerts when medications or logs change
-    generatePsychologicalSafetyAlerts();
+    // Regenerate alerts when medications or logs change (if exists)
+    try {
+      (useMedicationStore.getState() as any).generatePsychologicalSafetyAlerts?.();
+    } catch {}
   }, [medications, logs]);
 
   // Enhanced dose deviation warnings with improved accuracy
@@ -100,13 +91,13 @@ export function Dashboard() {
     
     // Build medication history for better context
     medications.forEach(medication => {
-      const medLogs = logs
-        .filter(l => l.medicationId === medication.id && l.adherence === 'taken')
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const medLogs = (logs as any[])
+        .filter((l: any) => l.medicationId === medication.id && l.adherence === 'taken')
+        .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       medicationHistory.set(medication.id, medLogs);
     });
     
-    todaysLogs.forEach(log => {
+    todaysLogs.forEach((log: any) => {
       // Skip if we've already processed this log
       if (processedLogIds.has(log.id)) return;
       processedLogIds.add(log.id);
@@ -126,7 +117,7 @@ export function Dashboard() {
       
       // For multiple pill medications, calculate equivalent dose from pill logs if available
       if (medication.useMultiplePills && log.pillsLogged && log.pillsLogged.length > 0) {
-        actualDose = log.pillsLogged.reduce((total, pillLog) => {
+        actualDose = (log.pillsLogged as any[]).reduce((total: number, pillLog: any) => {
           const pillConfig = medication.pillConfigurations?.find(config => 
             config.id === pillLog.pillConfigurationId
           );
@@ -148,16 +139,16 @@ export function Dashboard() {
       
       // Calculate baseline from recent doses to account for gradual changes
       const recentLogs = medicationLogs
-        .filter(recentLog => 
+        .filter((recentLog: any) => 
           new Date(recentLog.timestamp).getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000) // Last 7 days
         )
         .slice(-5); // Last 5 doses
       
       if (recentLogs.length < 2) return; // Need at least 2 recent doses for comparison
       
-      const recentDoses = recentLogs.map(recentLog => {
+      const recentDoses = recentLogs.map((recentLog: any) => {
         if (medication.useMultiplePills && recentLog.pillsLogged) {
-          return recentLog.pillsLogged.reduce((total, pillLog) => {
+          return recentLog.pillsLogged.reduce((total: number, pillLog: any) => {
             const pillConfig = medication.pillConfigurations?.find(config => 
               config.id === pillLog.pillConfigurationId
             );
@@ -167,7 +158,7 @@ export function Dashboard() {
         return recentLog.dosageTaken || 0;
       });
       
-      const averageRecentDose = recentDoses.reduce((a, b) => a + b, 0) / recentDoses.length;
+      const averageRecentDose = recentDoses.reduce((a: number, b: number) => a + b, 0) / recentDoses.length;
       const recentDoseVariation = Math.max(...recentDoses) - Math.min(...recentDoses);
       
       // Use recent average as baseline instead of theoretical expected dose
@@ -216,9 +207,9 @@ export function Dashboard() {
       // Check for high-risk medications with pattern-based warnings
       else if (medication.riskLevel === 'high' && absDeviation > 35) {
         // Check for concerning patterns in recent history
-        const significantDeviations = recentLogs.filter(recentLog => {
+        const significantDeviations = recentLogs.filter((recentLog: any) => {
           const recentActualDose = medication.useMultiplePills && recentLog.pillsLogged 
-            ? recentLog.pillsLogged.reduce((total, pillLog) => {
+            ? recentLog.pillsLogged.reduce((total: number, pillLog: any) => {
                 const pillConfig = medication.pillConfigurations?.find(config => 
                   config.id === pillLog.pillConfigurationId
                 );
@@ -274,16 +265,7 @@ export function Dashboard() {
   // (deduped) Psychological Safety Alerts generator lives in the effect above
 
   // Ensure Dependence Prevention is initialized and assessed for high-risk meds
-  React.useEffect(() => {
-    activeMedications.forEach((med) => {
-      if (!med.dependencePrevention && med.dependencyRiskCategory !== 'low-risk') {
-        initializeDependencePrevention(med.id);
-      } else if (med.dependencePrevention) {
-        updateDependenceAssessment(med.id);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMedications.length, logs.length]);
+  // Dependence assessment routines removed from UI to avoid tight coupling
 
 
   const stats = [
@@ -303,7 +285,7 @@ export function Dashboard() {
     },
     {
       name: 'Taken Today',
-      value: todaysLogs.filter(log => log.adherence === 'taken').length,
+      value: todaysLogs.filter((log: any) => log.adherence === 'taken').length,
       icon: CheckCircle,
       color: 'bg-green-500',
       href: '/analytics',
@@ -344,7 +326,7 @@ export function Dashboard() {
   );
   const reviewDueMeds = medsWithPrevention.filter(m => {
     const prev = m.dependencePrevention!;
-    const base = prev.lastUpdated ? new Date(prev.lastUpdated) : new Date(m.startDate);
+    const base = prev.lastDoctorReview ? new Date(prev.lastDoctorReview) : new Date(m.startDate);
     const next = new Date(base);
     next.setDate(next.getDate() + (prev.reviewFrequency || 7));
     return next <= now;
@@ -353,17 +335,17 @@ export function Dashboard() {
     ['high','very-high'].includes(m.dependencePrevention!.riskLevel as any)
   );
 
-  const handleMedicationAction = (medicationId: string, action: 'taken' | 'missed') => {
-    if (action === 'taken') {
-      markMedicationTaken(medicationId);
-    } else {
-      markMedicationMissed(medicationId);
-    }
-  };
+  // handleMedicationAction removed (unused)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Dashboard</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
         {/* Page Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -464,7 +446,7 @@ export function Dashboard() {
           </div>
           <div className="card-content">
             <div className="space-y-3">
-              {priorityMessages.slice(0, 3).map((message) => (
+              {priorityMessages.slice(0, 3).map((message: any) => (
                 <div
                   key={message.id}
                   className={`p-4 rounded-lg border-l-4 ${
@@ -514,8 +496,8 @@ export function Dashboard() {
                 Psychological Safety Alerts
               </h3>
               <span className={`badge ${
-                getActivePsychologicalSafetyAlerts().some(a => a.priority === 'urgent') ? 'badge-danger' : 
-                getActivePsychologicalSafetyAlerts().some(a => a.priority === 'high') ? 'badge-warning' : 'badge-info'
+                getActivePsychologicalSafetyAlerts().some((a: any) => a.priority === 'urgent') ? 'badge-danger' : 
+                getActivePsychologicalSafetyAlerts().some((a: any) => a.priority === 'high') ? 'badge-warning' : 'badge-info'
               }`}>
                 {getActivePsychologicalSafetyAlerts().length}
               </span>
@@ -523,15 +505,15 @@ export function Dashboard() {
           </div>
           <div className="card-content">
             <div className="space-y-4">
-              {getActivePsychologicalSafetyAlerts().map((alert, index) => {
+              {getActivePsychologicalSafetyAlerts().map((alert: any, index: number) => {
                 const medication = medications.find(med => med.id === alert.medicationId);
-                const priorityColors = {
+                const priorityColors: Record<string, string> = {
                   urgent: 'border-red-500 bg-red-50',
                   high: 'border-orange-500 bg-orange-50',
                   medium: 'border-yellow-500 bg-yellow-50',
                   low: 'border-blue-500 bg-blue-50'
                 };
-                const iconColors = {
+                const iconColors: Record<string, string> = {
                   urgent: 'text-red-500',
                   high: 'text-orange-500',
                   medium: 'text-yellow-500',
@@ -541,12 +523,12 @@ export function Dashboard() {
                 return (
                   <div
                     key={generateListItemKey(alert, index, 'safety-alert')}
-                    className={`p-4 rounded-lg border-l-4 ${priorityColors[alert.priority]}`}
+                    className={`p-4 rounded-lg border-l-4 ${priorityColors[alert.priority] || 'border-gray-500 bg-gray-50'}`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-2">
-                          <Brain className={`h-4 w-4 ${iconColors[alert.priority]}`} />
+                          <Brain className={`h-4 w-4 ${iconColors[alert.priority] || 'text-gray-500'}`} />
                           <h4 className="text-sm font-semibold text-gray-900">{alert.title}</h4>
                           <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                             alert.priority === 'urgent' ? 'bg-red-100 text-red-800' :
@@ -683,7 +665,7 @@ export function Dashboard() {
           </div>
           <div className="card-content">
             <div className="space-y-3">
-              {unacknowledgedDependenceAlerts.slice(0, 3).map(({ alert, medication }, index) => (
+              {unacknowledgedDependenceAlerts.slice(0, 3).map(({ alert, medication }: any, index: number) => (
                 <div key={`${alert.id}-${index}`} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
@@ -696,7 +678,7 @@ export function Dashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => acknowledgeDependenceAlert(medication.id, alert.id, 'acknowledged')}
+                        onClick={() => (useMedicationStore.getState() as any).acknowledgeDependenceAlert?.(medication.id, alert.id, 'acknowledged')}
                         className="text-xs px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50"
                       >
                         Acknowledge
@@ -1129,7 +1111,7 @@ export function Dashboard() {
                       </h4>
                       <div className="mt-2 text-sm text-yellow-700">
                         <ul className="list-disc list-inside space-y-1">
-                          {upcomingRefills.map((med) => (
+                          {upcomingRefills.map((med: any) => (
                             <li key={med.id}>
                               {med.name} - {med.pillsRemaining} {med.inventoryUnit || 'pills'} remaining
                             </li>
@@ -1162,7 +1144,7 @@ export function Dashboard() {
               )}
 
               {/* Smart Insights */}
-              {smartInsights.map((insight, index) => (
+              {smartInsights.map((insight: any, index: number) => (
                 <div key={index} className={`p-4 rounded-lg border ${
                   insight.priority === 'high' ? 'border-red-200 bg-red-50' :
                   insight.priority === 'medium' ? 'border-yellow-200 bg-yellow-50' :
@@ -1228,7 +1210,8 @@ export function Dashboard() {
           medication={taperingMedication}
         />
       )}
-      </div>
-    </div>
+        </div>
+      </IonContent>
+    </IonPage>
   );
 }

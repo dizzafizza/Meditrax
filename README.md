@@ -2,11 +2,20 @@
 
 # 🏥 Meditrax - Cross-Platform Medication Tracking App
 
-A modern, cross-platform application built with React, TypeScript, and Capacitor for tracking medications, managing schedules, and monitoring adherence. Now available on iOS, Android, Desktop (Electron), and Web!
+A modern, cross-platform application built with React, TypeScript, Ionic, and Capacitor for tracking medications, managing schedules, and monitoring adherence. Now available on iOS, Android, Desktop (Electron), and Web!
 
-## 🆕 What's New - Capacitor Migration
+## 🆕 What's New - v2.0 iOS 26 UI Revamp
 
-Meditrax has been migrated from a PWA to **Capacitor** for enhanced native functionality:
+Meditrax v2.0 features a complete UI overhaul with **iOS 26 design language**:
+- ✨ **Native iOS 26 design** with SF Pro typography, translucent materials, and authentic iOS visual language
+- 📱 **Tabs-first navigation** with bottom tabs for primary features, side menu for advanced options
+- 🎨 **Platform-adaptive styling** - iOS aesthetics on Apple devices, Material Design on Android
+- 🌙 **Comprehensive dark mode** with iOS 26 color palette
+- 🔄 **Native page transitions** via Ionic React Router
+- 📐 **Safe area support** for modern iOS devices with notches/Dynamic Island
+- ⚡ **Enhanced performance** with optimized Ionic components
+
+**Previous Migration - Capacitor:**
 - ✅ **Native iOS & Android apps** with full App Store/Play Store deployment capability
 - ✅ **Desktop support** via Electron for Windows, macOS, and Linux
 - ✅ **Native features**: Biometric authentication, camera/barcode scanning, haptic feedback

@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/react';
 import { 
   Plus, 
   Bell, 
@@ -220,8 +221,14 @@ export function Reminders() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Reminders</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
         {/* Page Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -652,17 +659,18 @@ export function Reminders() {
           message="Are you sure you want to delete this reminder? This action cannot be undone."
           confirmText="Delete"
         />
-      </div>
+        </div>
 
-      {/* Reminder Modal - Moved outside scrollable container to appear on top */}
-      <ReminderModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingReminder(null);
-        }}
-        reminder={editingReminder}
-      />
-    </div>
+        {/* Reminder Modal - Moved outside scrollable container to appear on top */}
+        <ReminderModal
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setEditingReminder(null);
+          }}
+          reminder={editingReminder}
+        />
+      </IonContent>
+    </IonPage>
   );
 }

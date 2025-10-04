@@ -1,4 +1,5 @@
 import React from 'react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/react';
 import { useForm } from 'react-hook-form';
 import {
   User, 
@@ -535,8 +536,14 @@ export function Settings() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-3 sm:p-4 lg:p-6">
+    <IonPage>
+      <IonHeader translucent>
+        <IonToolbar>
+          <IonTitle size="large">Settings</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen className="bg-gray-50">
+        <div className="max-w-4xl mx-auto p-3 sm:p-4 lg:p-6">
         <div className="bg-white rounded-lg shadow">
           {/* Header */}
           <div className="px-4 py-4 sm:px-6 border-b border-gray-200">
@@ -1648,7 +1655,7 @@ export function Settings() {
             </div>
           </form>
         </div>
-      </div>
+        </div>
 
       {/* Modals */}
       <ConfirmDialog
@@ -1693,6 +1700,7 @@ export function Settings() {
         title="Manage Data Sharing Consent"
         onConsentUpdated={handleConsentUpdated}
       /> */}
-    </div>
+      </IonContent>
+    </IonPage>
   );
 }
