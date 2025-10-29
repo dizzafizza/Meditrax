@@ -603,21 +603,35 @@ export function Medications() {
 
   return (
     <div className="space-y-6">
-      {/* Ionic toolbar with search and add */}
-      <IonToolbar>
-        <IonSearchbar
-          value={searchTerm}
-          onIonInput={(e) => setSearchTerm(e.detail.value || '')}
-          placeholder="Search medications..."
-          animated
-          showClearButton="always"
-        />
-        <IonButtons slot="end">
-          <IonButton onClick={handleAddMedication} color="primary">
-            <IonIcon slot="icon-only" icon={addOutline} />
-          </IonButton>
-        </IonButtons>
-      </IonToolbar>
+      {/* Search and Add Header */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search medications..."
+              className="mobile-input w-full pl-4 pr-10"
+              style={{ fontSize: '16px' }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleAddMedication}
+            className="btn-primary flex items-center justify-center px-4 py-2"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
 
       {/* Category Filter */}
       <div className="px-4 py-2 bg-white border-b border-gray-200">
