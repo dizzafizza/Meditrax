@@ -34,6 +34,20 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
   const [wearIn, setWearIn] = React.useState<number | null>(null);
   const [durationIn, setDurationIn] = React.useState<number | null>(null);
 
+  // Early return for missing medication
+  if (!medication) {
+    return (
+      <div className="p-4 bg-gray-50 rounded border border-gray-200 text-sm text-gray-600">
+        Medication not found.
+      </div>
+    );
+  }
+
+  // Compute variables BEFORE useEffects that reference them to avoid hoisting issues
+  const profile = getEffectProfile(medicationId);
+  const activeSession = getActiveEffectSessionForMedication(medicationId);
+  const prediction = getEffectPrediction(medicationId);
+
   React.useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
@@ -63,18 +77,6 @@ export function EffectTimer({ medicationId, compact = false }: EffectTimerProps)
     
     return () => clearInterval(interval);
   }, [activeSession?.id, prediction?.status, prediction?.minutesSinceDose, tick]);
-
-  if (!medication) {
-    return (
-      <div className="p-4 bg-gray-50 rounded border border-gray-200 text-sm text-gray-600">
-        Medication not found.
-      </div>
-    );
-  }
-
-  const profile = getEffectProfile(medicationId);
-  const activeSession = getActiveEffectSessionForMedication(medicationId);
-  const prediction = getEffectPrediction(medicationId);
 
   React.useEffect(() => {
     if (profile) {

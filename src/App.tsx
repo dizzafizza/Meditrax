@@ -1,36 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import {
-  IonSplitPane,
-  IonMenu,
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonContent,
-  IonPage,
-  IonList,
-  IonItem,
-  IonMenuToggle,
-  IonIcon,
-  IonLabel,
-  IonTabs,
-  IonTabBar,
-  IonTabButton,
-  IonRouterOutlet,
-} from '@ionic/react';
-import {
-  homeOutline,
-  medicalOutline,
-  cubeOutline,
-  calendarOutline,
-  barChartOutline,
-  settingsOutline,
-  notificationsOutline,
-  fileTrayFullOutline,
-  bookOutline,
-  personCircleOutline,
-  pulseOutline,
-} from 'ionicons/icons';
+import { Layout } from '@/components/layout/Layout';
 const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Medications = React.lazy(() => import('@/pages/Medications').then(m => ({ default: m.Medications })));
 const Inventory = React.lazy(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })));
@@ -311,117 +281,41 @@ function App() {
     };
   }, [showUpdateNotification]);
 
-  // Routes will render inside IonRouterOutlet to enable native transitions
-
-  const primaryNav = [
-    { name: 'Dashboard', href: '/dashboard', icon: homeOutline },
-    { name: 'Medications', href: '/medications', icon: medicalOutline },
-    { name: 'Inventory', href: '/inventory', icon: cubeOutline },
-    { name: 'Calendar', href: '/calendar', icon: calendarOutline },
-    { name: 'Analytics', href: '/analytics', icon: barChartOutline },
-    { name: 'Settings', href: '/settings', icon: settingsOutline },
-  ];
-  const secondaryNav = [
-    { name: 'Advanced Schedules', href: '/cyclic-dosing', icon: pulseOutline },
-    { name: 'Effects Tracker', href: '/effects', icon: pulseOutline },
-    { name: 'Wiki', href: '/wiki', icon: bookOutline },
-    { name: 'Reminders', href: '/reminders', icon: notificationsOutline },
-    { name: 'Reports', href: '/reports', icon: fileTrayFullOutline },
-    { name: 'Health Profile', href: '/profile', icon: personCircleOutline },
-  ];
-
   return (
-    <IonSplitPane contentId="main">
-      <IonMenu contentId="main">
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle>Meditrax</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-        <IonContent>
-          <IonList>
-            {primaryNav.map((item) => (
-              <IonMenuToggle key={item.name} autoHide={true}>
-                <IonItem button lines="none" detail={false} routerLink={item.href}>
-                  <IonIcon slot="start" icon={item.icon} />
-                  <IonLabel>{item.name}</IonLabel>
-                </IonItem>
-              </IonMenuToggle>
-            ))}
-          </IonList>
-          <IonList>
-            {secondaryNav.map((item) => (
-              <IonMenuToggle key={item.name} autoHide={true}>
-                <IonItem button lines="none" detail={false} routerLink={item.href}>
-                  <IonIcon slot="start" icon={item.icon} />
-                  <IonLabel>{item.name}</IonLabel>
-                </IonItem>
-              </IonMenuToggle>
-            ))}
-          </IonList>
-        </IonContent>
-      </IonMenu>
+    <>
+      <Layout>
+        <React.Suspense fallback={<div className="p-6 text-sm text-gray-600">Loading…</div>}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/medications" element={<Medications />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/effects" element={<EffectsTracker />} />
+            <Route path="/reminders" element={<Reminders />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/profile" element={<HealthProfile />} />
+            <Route path="/wiki" element={<Wiki />} />
+            <Route path="/cyclic-dosing" element={<CyclicDosing />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </React.Suspense>
+      </Layout>
 
-      <IonPage id="main">
-        <IonTabs>
-          <IonRouterOutlet>
-            <React.Suspense fallback={<div className="p-6 text-sm text-gray-600">Loading…</div>}>
-              <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/medications" element={<Medications />} />
-                <Route path="/inventory" element={<Inventory />} />
-                <Route path="/calendar" element={<Calendar />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/effects" element={<EffectsTracker />} />
-                <Route path="/reminders" element={<Reminders />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/profile" element={<HealthProfile />} />
-                <Route path="/wiki" element={<Wiki />} />
-                <Route path="/cyclic-dosing" element={<CyclicDosing />} />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </React.Suspense>
-          </IonRouterOutlet>
+      <UpdateNotification
+        isVisible={showUpdate}
+        onUpdate={handleUpdate}
+        onDismiss={handleDismiss}
+      />
 
-          <IonTabBar slot="bottom">
-            <IonTabButton tab="dashboard" href="/dashboard">
-              <IonIcon icon={homeOutline} />
-              <IonLabel>Dashboard</IonLabel>
-            </IonTabButton>
-            <IonTabButton tab="medications" href="/medications">
-              <IonIcon icon={medicalOutline} />
-              <IonLabel>Medications</IonLabel>
-            </IonTabButton>
-            <IonTabButton tab="calendar" href="/calendar">
-              <IonIcon icon={calendarOutline} />
-              <IonLabel>Calendar</IonLabel>
-            </IonTabButton>
-            <IonTabButton tab="reminders" href="/reminders">
-              <IonIcon icon={notificationsOutline} />
-              <IonLabel>Reminders</IonLabel>
-            </IonTabButton>
-            <IonTabButton tab="settings" href="/settings">
-              <IonIcon icon={settingsOutline} />
-              <IonLabel>Settings</IonLabel>
-            </IonTabButton>
-          </IonTabBar>
-        </IonTabs>
-
-        <UpdateNotification
-          isVisible={showUpdate}
-          onUpdate={handleUpdate}
-          onDismiss={handleDismiss}
-        />
-
-        <ChangelogModal
-          isOpen={shouldShowChangelog}
-          onClose={markVersionSeen}
-          version={currentVersion}
-        />
-      </IonPage>
-    </IonSplitPane>
+      <ChangelogModal
+        isOpen={shouldShowChangelog}
+        onClose={markVersionSeen}
+        version={currentVersion}
+      />
+    </>
   );
 }
 

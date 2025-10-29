@@ -1,5 +1,4 @@
 import React from 'react';
-import { IonPage, IonContent, IonHeader, IonToolbar, IonTitle } from '@ionic/react';
 import { Link } from 'react-router-dom';
 import { 
   Pill, 
@@ -338,14 +337,7 @@ export function Dashboard() {
   // handleMedicationAction removed (unused)
 
   return (
-    <IonPage>
-      <IonHeader translucent>
-        <IonToolbar>
-          <IonTitle size="large">Dashboard</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent fullscreen className="bg-gray-50">
-        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <div className="space-y-6">
         {/* Page Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1210,8 +1202,6 @@ export function Dashboard() {
           medication={taperingMedication}
         />
       )}
-        </div>
-      </IonContent>
-    </IonPage>
+    </div>
   );
 }
