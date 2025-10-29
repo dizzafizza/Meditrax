@@ -1,6 +1,4 @@
 import React from 'react';
-import { IonPage, IonContent, IonHeader, IonToolbar, IonTitle, IonSearchbar, IonButtons, IonButton, IonIcon } from '@ionic/react';
-import { addOutline } from 'ionicons/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Filter, 
@@ -604,14 +602,7 @@ export function Medications() {
   };
 
   return (
-    <IonPage>
-      <IonHeader translucent>
-        <IonToolbar>
-          <IonTitle size="large">Medications</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent fullscreen className="bg-gray-50">
-        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-6">
+    <div className="space-y-6">
       {/* Ionic toolbar with search and add */}
       <IonToolbar>
         <IonSearchbar
@@ -796,8 +787,6 @@ export function Medications() {
             }}
           />
         )}
-        </div>
-      </IonContent>
-    </IonPage>
+    </div>
   );
 }

@@ -739,6 +739,17 @@ class NotificationService {
     this.saveBadgeCount();
   }
 
+  /**
+   * Decrement badge count (called when user marks medication as taken)
+   */
+  async decrementBadgeCount(): Promise<void> {
+    if (this.currentBadgeCount > 0) {
+      this.currentBadgeCount--;
+      this.saveBadgeCount();
+      console.log(`📉 Badge count decremented to ${this.currentBadgeCount}`);
+    }
+  }
+
   private resetBadgeCount(): void {
     this.currentBadgeCount = 0;
     this.saveBadgeCount();
@@ -1238,6 +1249,40 @@ class NotificationService {
     const stageNum = stageMap[stage] || 0;
     const hash = logId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return (hash % 1000000) * 10 + stageNum;
+  }
+
+  /**
+   * Diagnose iOS PWA notification issues
+   * Returns diagnostic information about notification system status
+   */
+  async diagnoseIOSPWANotificationIssues(): Promise<{
+    supported: boolean;
+    permission: NotificationPermissionState;
+    pendingCount: number;
+    scheduledCount: number;
+    platform: string;
+  }> {
+    try {
+      const permission = await this.getPermissionState();
+      const pending = await this.getPendingNotifications();
+      
+      return {
+        supported: supportsLocalNotifications(),
+        permission,
+        pendingCount: pending.notifications.length,
+        scheduledCount: this.scheduledNotifications.size,
+        platform: isNative() ? 'native' : 'web',
+      };
+    } catch (error) {
+      console.error('Failed to diagnose notification issues:', error);
+      return {
+        supported: false,
+        permission: { status: 'denied', supported: false },
+        pendingCount: 0,
+        scheduledCount: 0,
+        platform: 'unknown',
+      };
+    }
   }
 }
 

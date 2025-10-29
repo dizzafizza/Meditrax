@@ -1,5 +1,4 @@
 import React from 'react';
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/react';
 import { 
   Book, 
   Heart, 
@@ -653,14 +652,7 @@ export function Wiki() {
   ];
 
   return (
-    <IonPage>
-      <IonHeader translucent>
-        <IonToolbar>
-          <IonTitle size="large">Wiki</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent fullscreen className="bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="space-y-6">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Meditrax Wiki</h1>
@@ -707,8 +699,6 @@ export function Wiki() {
             </div>
           </div>
         </div>
-        </div>
-      </IonContent>
-    </IonPage>
+    </div>
   );
 }
