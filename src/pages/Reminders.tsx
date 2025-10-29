@@ -651,7 +651,6 @@ export function Reminders() {
           message="Are you sure you want to delete this reminder? This action cannot be undone."
           confirmText="Delete"
         />
-        </div>
 
         {/* Reminder Modal - Moved outside scrollable container to appear on top */}
         <ReminderModal
