@@ -1647,9 +1647,8 @@ export function Settings() {
             </div>
           </form>
         </div>
-        </div>
 
-      {/* Modals */}
+        {/* Modals */}
       <ConfirmDialog
         isOpen={showClearDataDialog}
         onClose={() => setShowClearDataDialog(false)}

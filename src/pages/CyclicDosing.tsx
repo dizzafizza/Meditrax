@@ -1113,7 +1113,6 @@ export function CyclicDosing() {
       )}
           </div>
         </div>
-      </div>
 
       {/* Tapering Plan Modal */}
       {taperingModalOpen && editingMedication && (

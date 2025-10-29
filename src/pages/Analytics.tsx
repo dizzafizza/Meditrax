@@ -1292,7 +1292,6 @@ export function Analytics() {
             )}
           </div>
         </div>
-        </div>
 
         {/* Export Modal */}
         <ExportModal
