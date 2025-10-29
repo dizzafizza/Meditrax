@@ -15,7 +15,8 @@ import {
   Calendar,
   Play,
   Coffee,
-  Pill
+  Pill,
+  Plus
 } from 'lucide-react';
 import { useMedicationStore } from '@/store';
 import { MedicationModal } from '@/components/modals/MedicationModal';
