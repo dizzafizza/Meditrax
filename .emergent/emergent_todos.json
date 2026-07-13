@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Phase A: Offline foundation (ai.js, api.js compat, push.js local notifs, ProfileContext, AIToolsContext, App.js providers, ProfileSwitcher, remove Emergent badge)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase B: Markdown.jsx + Assistant rewrite + Settings AI config + Profile multi-profile + KnowledgeBase autofill",
+    "status": "completed"
+  },
+  {
+    "content": "Phase C: share.js + ShareDialog + branded cards + share buttons on MedicationDetail & TaperDetail",
+    "status": "completed"
+  },
+  {
+    "content": "Phase C: esbuild verify + smoke test (add med offline + share dialog)",
+    "status": "completed"
+  },
+  {
+    "content": "Verified: offline CRUD, multi-profile, AI config persistence across reload, Assistant graceful error handling (fake key), share dialog, Emergent badge removed",
+    "status": "completed"
+  }
+]

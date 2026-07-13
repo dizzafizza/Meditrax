@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "meditrax-build",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", "frontend/build", "-l", "3210"],
+      "port": 3210
+    }
+  ]
+}

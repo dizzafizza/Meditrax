@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Warm paper neutrals + sea-glass teal (design system) */
+    --background: 36 33% 97%;
+    --foreground: 222 18% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 18% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 18% 14%;
+
+    --primary: 186 38% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 36 22% 92%;
+    --secondary-foreground: 222 18% 14%;
+
+    --muted: 36 18% 94%;
+    --muted-foreground: 215 10% 42%;
+
+    --accent: 164 28% 88%;
+    --accent-foreground: 186 38% 22%;
+
+    --destructive: 6 72% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 14% 86%;
+    --input: 30 14% 86%;
+    --ring: 186 38% 32%;
+
+    --success: 152 45% 34%;
+    --success-surface: 152 35% 92%;
+    --warning: 34 88% 42%;
+    --warning-surface: 34 90% 92%;
+    --info: 199 78% 44%;
+    --info-surface: 199 70% 92%;
+
+    --risk-low-bg: 152 35% 92%;     --risk-low-fg: 152 45% 24%;     --risk-low-border: 152 25% 80%;
+    --risk-medium-bg: 34 90% 92%;   --risk-medium-fg: 34 88% 26%;   --risk-medium-border: 34 55% 80%;
+    --risk-high-bg: 6 85% 94%;      --risk-high-fg: 6 72% 34%;      --risk-high-border: 6 55% 84%;
+    --risk-dependency-bg: 18 60% 92%; --risk-dependency-fg: 18 72% 28%; --risk-dependency-border: 18 40% 82%;
+
+    --chart-1: 186 38% 32%;
+    --chart-2: 152 45% 34%;
+    --chart-3: 34 88% 50%;
+    --chart-4: 199 78% 44%;
+    --chart-5: 18 70% 48%;
+
+    --radius: 1rem;
+
+    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+    --font-body: 'Manrope', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    --sat: env(safe-area-inset-top);
+    --sab: env(safe-area-inset-bottom);
+    --tabbar-h: 76px;
+  }
+
+  .dark {
+    --background: 222 22% 10%;
+    --foreground: 36 20% 96%;
+    --card: 222 22% 13%;
+    --card-foreground: 36 20% 96%;
+    --popover: 222 22% 13%;
+    --popover-foreground: 36 20% 96%;
+
+    --primary: 164 42% 55%;
+    --primary-foreground: 222 22% 10%;
+
+    --secondary: 222 16% 19%;
+    --secondary-foreground: 36 20% 96%;
+
+    --muted: 222 16% 17%;
+    --muted-foreground: 36 10% 70%;
+
+    --accent: 186 26% 20%;
+    --accent-foreground: 164 42% 74%;
+
+    --destructive: 6 64% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 14% 23%;
+    --input: 222 14% 23%;
+    --ring: 164 42% 55%;
+
+    --success: 152 45% 50%;
+    --success-surface: 152 25% 17%;
+    --warning: 34 88% 60%;
+    --warning-surface: 38 35% 17%;
+    --info: 199 78% 60%;
+    --info-surface: 199 35% 17%;
+
+    --risk-low-bg: 152 25% 16%;     --risk-low-fg: 152 45% 70%;     --risk-low-border: 152 25% 26%;
+    --risk-medium-bg: 38 35% 17%;   --risk-medium-fg: 34 88% 68%;   --risk-medium-border: 34 35% 28%;
+    --risk-high-bg: 6 40% 20%;      --risk-high-fg: 6 80% 76%;      --risk-high-border: 6 40% 32%;
+    --risk-dependency-bg: 18 36% 19%; --risk-dependency-fg: 18 80% 74%; --risk-dependency-border: 18 36% 30%;
+
+    --chart-1: 164 42% 55%;
+    --chart-2: 199 78% 60%;
+    --chart-3: 34 88% 60%;
+    --chart-4: 152 45% 50%;
+    --chart-5: 18 72% 62%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, .font-display { font-family: var(--font-display); }
+}
+
+@layer utilities {
+  .font-display { font-family: var(--font-display); }
+  .safe-top { padding-top: calc(8px + var(--sat)); }
+  .pb-tabbar { padding-bottom: calc(var(--tabbar-h) + var(--sab) + 12px); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .glass {
+    background-color: hsl(var(--background) / 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+  .card-soft {
+    @apply rounded-2xl bg-card text-card-foreground border border-border/70;
+    box-shadow: 0 10px 30px -18px rgba(15, 23, 42, 0.32);
+  }
+  .dark .card-soft { box-shadow: 0 16px 44px -24px rgba(0, 0, 0, 0.7); }
+  .pressable { transition: transform 150ms ease, box-shadow 200ms ease; }
+  .pressable:active { transform: scale(0.98); }
+  .hero-wash {
+    background-image: linear-gradient(135deg, hsl(164 28% 88% / 0.6), hsl(36 33% 97% / 0.2) 55%, hsl(199 70% 92% / 0.4));
+  }
+  .dark .hero-wash {
+    background-image: linear-gradient(135deg, hsl(186 28% 18% / 0.6), hsl(222 22% 10% / 0.2) 55%, hsl(164 42% 30% / 0.25));
+  }
+  .noise::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  }
+}
+
+@keyframes mt-typing { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+.typing-dot { animation: mt-typing 1.2s infinite; }
+@keyframes mt-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-rise { animation: mt-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both; }

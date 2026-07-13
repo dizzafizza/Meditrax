@@ -1,0 +1,13 @@
+.App { min-height: 100vh; }
+
+/* iOS momentum scrolling */
+.scroll-y { -webkit-overflow-scrolling: touch; }
+
+/* recharts tweaks */
+.recharts-cartesian-axis-tick-value { font-size: 11px; }
+.recharts-default-tooltip { border-radius: 12px !important; border: 1px solid hsl(var(--border)) !important; }
+
+/* hide number input spinners */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
