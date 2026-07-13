@@ -35,10 +35,10 @@ export function mapOpenRouterError(status, body) {
   switch (status) {
     case 400: return `Bad request${detail ? ": " + detail : ""}.`;
     case 401: return "Invalid API key. Check your OpenRouter key in Settings.";
-    case 402: return "Insufficient OpenRouter credits. Add credits at openrouter.ai.";
+    case 402: return `Insufficient OpenRouter credits${detail ? ": " + detail : ""}. Add credits at openrouter.ai.`;
     case 403: return "Request blocked (moderation or permissions).";
     case 408: return "Request timed out. Please try again.";
-    case 429: return "Rate limited. Slow down or add credits.";
+    case 429: return `Rate limited${detail ? ": " + detail : ""}. Slow down or try again shortly.`;
     case 502: return "Model provider error. Try a different model.";
     case 503: return "No available provider right now. Try again shortly.";
     default: return detail || `Request failed (HTTP ${status}).`;
@@ -104,8 +104,14 @@ export async function completeJSON({ config, tier = "light", system, user, tempe
 }
 
 // ---- one streaming round-trip ----
-async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperature = 0.5, signal, onDelta }) {
-  const body = { model, messages, stream: true, temperature };
+async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperature = 0.5, maxTokens = 2048, signal, onDelta }) {
+  // IMPORTANT: always send an explicit max_tokens. When omitted, OpenRouter
+  // pre-authorizes the request against the model's maximum possible output
+  // length (which can be 60k-200k+ tokens for some models) rather than what
+  // the reply will actually use — so it can reject with "insufficient
+  // credits" even when the account has plenty of balance for a normal-length
+  // reply. Bounding max_tokens keeps that pre-flight cost estimate realistic.
+  const body = { model, messages, stream: true, temperature, max_tokens: maxTokens };
   if (tools && tools.length) { body.tools = tools; body.tool_choice = toolChoice || "auto"; }
 
   let resp;
@@ -142,7 +148,10 @@ async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperat
       if (data === "[DONE]") { finishReason = finishReason || "stop"; continue; }
       let chunk;
       try { chunk = JSON.parse(data); } catch (e) { continue; }
-      if (chunk.error) throw new Error(chunk.error.message || "Streaming error");
+      if (chunk.error) {
+        const code = Number(chunk.error.code);
+        throw new Error(code ? mapOpenRouterError(code, { error: chunk.error }) : (chunk.error.message || "Streaming error"));
+      }
       if (chunk.model && !modelUsed) modelUsed = chunk.model;
       const choice = chunk.choices?.[0];
       if (!choice) continue;
@@ -168,12 +177,23 @@ async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperat
   return { content, toolCalls, finishReason, model: modelUsed };
 }
 
+// Bound the per-turn response length by the user's verbosity preference —
+// keeps OpenRouter's cost pre-check realistic (see streamOnce) while still
+// giving "detailed" responses enough room.
+function maxTokensForConfig(config) {
+  const v = config?.personality?.verbosity;
+  if (v === "brief") return 1024;
+  if (v === "detailed") return 4096;
+  return 2048; // balanced (default)
+}
+
 // ---- multi-turn tool-calling loop with streaming ----
 export async function runAssistantLoop({ config, messages, tools, executeTool, onDelta, onEvent, signal }) {
   const apiKey = (config?.apiKeys?.openrouter || "").trim();
   if (!apiKey) throw new Error("No OpenRouter API key set. Add one in Settings.");
   const model = resolveModel(config);
   const useTools = !!(tools && tools.length && config?.advanced !== false);
+  const maxTokens = maxTokensForConfig(config);
 
   const working = [...messages];
   let finalContent = "";
@@ -182,7 +202,7 @@ export async function runAssistantLoop({ config, messages, tools, executeTool, o
     const { content, toolCalls, model: usedModel } = await streamOnce({
       apiKey, model, messages: working,
       tools: useTools ? tools : undefined,
-      onDelta, signal,
+      maxTokens, onDelta, signal,
     });
     if (usedModel) onEvent?.({ type: "model", model: usedModel });
 
