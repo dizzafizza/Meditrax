@@ -1,69 +1,83 @@
 # Deploying Meditrax
 
-Meditrax is split into two parts:
+Meditrax is a **fully static, offline-first PWA**. There is no backend to deploy, no
+database, and no server-side secrets — everything runs in the browser and data is
+stored locally on the user's device (IndexedDB). The only external network calls the
+app ever makes are to **OpenRouter**, and only when a user has entered their own API
+key in Settings.
 
-- **Backend** (FastAPI + MongoDB + AI + Web Push) -> hosted on **Emergent**
-- **Frontend** (React PWA) -> hosted on **GitHub Pages** at **https://meditrax.ca**
-
-The frontend talks to the backend through the `REACT_APP_BACKEND_URL` environment variable.
+> The `backend/` folder in this repo is legacy code from an earlier architecture and is
+> **not used** by the deployed app. See [README.md](README.md#architecture) for details.
 
 ---
 
-## 1. Deploy the backend on Emergent
+## 1. Push to GitHub
 
-1. In the Emergent editor, click **Deploy**.
-2. After it finishes, copy the **deployed backend URL** (e.g. `https://meditrax.emergent.host`).
-   - All API routes are under `/api`, so the frontend will call `<backend-url>/api/...`.
-3. The backend already reads its secrets from environment variables
-   (`MONGO_URL`, `DB_NAME`, `EMERGENT_LLM_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CORS_ORIGINS`).
-   - `CORS_ORIGINS` is `*` by default (works for GitHub Pages). To lock it down, set it to
-     `https://meditrax.ca` on the deployed backend.
+The repo already ships `.github/workflows/deploy-pages.yml`, which builds the React
+app in `frontend/` and publishes it to GitHub Pages on every push to `main`.
 
-## 2. Push the code to GitHub
+## 2. Enable GitHub Pages
 
-Commit the repository (it should contain a `frontend/` folder and this workflow at
-`.github/workflows/deploy-pages.yml`).
+**Settings → Pages → Build and deployment → Source: GitHub Actions.**
 
-## 3. Configure the frontend build
+That's it — no environment variables or repository secrets are required for the build.
+Push to `main` (or run the **Deploy frontend to GitHub Pages** workflow manually from
+the Actions tab) and it will build and publish the site.
 
-In your GitHub repo: **Settings -> Secrets and variables -> Actions -> Variables -> New repository variable**
+## 3. Custom domain (optional)
 
-| Name | Value |
-|------|-------|
-| `REACT_APP_BACKEND_URL` | your deployed Emergent backend URL (no trailing slash) |
+`frontend/public/CNAME` currently contains `meditrax.ca` (Create React App copies it
+into the build automatically). To use your own domain:
 
-## 4. Enable GitHub Pages
+1. Edit `frontend/public/CNAME` to your domain.
+2. At your DNS provider, point the domain at GitHub Pages:
 
-**Settings -> Pages -> Build and deployment -> Source: GitHub Actions.**
+   **Apex domain → A records:**
+   ```
+   185.199.108.153
+   185.199.109.153
+   185.199.110.153
+   185.199.111.153
+   ```
+   **(optional) `www` subdomain → CNAME → `<your-username>.github.io`**
 
-Push to `main` (or run the **Deploy frontend to GitHub Pages** workflow manually). It will build the
-React app with your backend URL baked in and publish it.
+3. In **Settings → Pages**, set the custom domain and enable **Enforce HTTPS**.
 
-## 5. Custom domain (meditrax.ca)
+To deploy without a custom domain, delete `frontend/public/CNAME` and GitHub Pages will
+serve from `https://<your-username>.github.io/<repo-name>/` — in that case also set
+`"homepage": "https://<your-username>.github.io/<repo-name>"` in `frontend/package.json`
+so asset paths resolve correctly under the repo subpath.
 
-- `frontend/public/CNAME` already contains `meditrax.ca` (CRA copies it into the build).
-- At your DNS provider, point the apex domain to GitHub Pages:
+## 4. Verify
 
-  **Apex (meditrax.ca) -> A records:**
-  ```
-  185.199.108.153
-  185.199.109.153
-  185.199.110.153
-  185.199.111.153
-  ```
-  **(optional) www.meditrax.ca -> CNAME -> <your-username>.github.io**
+- Visit the deployed URL. Deep links (e.g. `/medications`) work thanks to the
+  `404.html` SPA fallback the workflow generates from `index.html`.
+- On iPhone: Safari → Share → **Add to Home Screen**, open the installed app, then
+  enable notifications in **Settings** inside Meditrax.
+- Confirm the app works fully offline: add a medication, log a dose, close the tab,
+  reopen it — everything should still be there (it's in IndexedDB, not on a server).
 
-- In **Settings -> Pages**, set the custom domain to `meditrax.ca` and enable **Enforce HTTPS**.
+## 5. Using the AI features
 
-## 6. Verify
+AI features (assistant chat, medication research, AI insights) are optional and are
+enabled per-user, per-device:
 
-- Visit https://meditrax.ca
-- Deep links (e.g. /medications) work thanks to the `404.html` SPA fallback.
-- On iPhone: Safari -> Share -> **Add to Home Screen**, open the installed app, then enable
-  notifications in **Settings** inside Meditrax.
+1. Get an API key at [openrouter.ai/keys](https://openrouter.ai/keys).
+2. In the deployed app, go to **Settings → AI Assistant** and paste the key.
+3. The key is stored only in that browser's IndexedDB and is sent only to OpenRouter.
+
+There is nothing to configure at deploy time for this — no repo secrets, no build
+variables. Every user brings (and pays for) their own key.
 
 ---
 
 ### Notes
-- Web Push requires the installed PWA (iOS 16.4+). The VAPID keys live on the backend.
-- The AI assistant and push sender run on the backend; the static GitHub Pages site never sees the LLM key.
+
+- **Notifications** are local-only (the Notification API + client-side scheduling).
+  There is no push server, so background delivery is best-effort and varies by
+  platform — iOS in particular only fires reminders while the installed PWA is open
+  or recently active.
+- **Data portability**: Settings → Export/Import produces a JSON file the user
+  controls — use it to back up or move data between devices; there is no cloud sync.
+- **Local development**: see [README.md](README.md#development) for `yarn`/`npm`
+  setup, running tests, and the dev server.

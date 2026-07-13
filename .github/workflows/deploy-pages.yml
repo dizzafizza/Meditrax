@@ -34,9 +34,8 @@ jobs:
 
       - name: Build
         env:
-          # Set this in: GitHub repo -> Settings -> Secrets and variables -> Actions -> Variables
-          # Value = your deployed Emergent backend URL, e.g. https://meditrax.emergent.host
-          REACT_APP_BACKEND_URL: ${{ vars.REACT_APP_BACKEND_URL }}
+          # Fully static, offline-first build. No backend, no build-time secrets —
+          # the AI assistant uses a user-supplied OpenRouter key entered in Settings.
           CI: "false"
         run: yarn build
 
