@@ -1,12 +1,13 @@
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
-import { CalendarDays, TrendingDown, RefreshCw, Package, BookOpen, Sparkles, Activity, Bell, User, Settings as SettingsIcon, ChevronRight, ShieldCheck, FileText, Stethoscope } from "lucide-react";
+import { CalendarDays, TrendingDown, RefreshCw, Package, BookOpen, Sparkles, Activity, Bell, User, Settings as SettingsIcon, ChevronRight, ShieldCheck, FileText, Stethoscope, FlaskConical } from "lucide-react";
 
 const ITEMS = [
   { to: "/calendar", label: "Calendar", desc: "Adherence history", icon: CalendarDays, testid: "more-calendar" },
   { to: "/taper", label: "Taper Planner", desc: "Plan dose reductions", icon: TrendingDown, testid: "more-taper" },
   { to: "/cyclic", label: "Cyclic Dosing", desc: "On/off cycles", icon: RefreshCw, testid: "more-cyclic" },
   { to: "/inventory", label: "Inventory", desc: "Stock & refills", icon: Package, testid: "more-inventory" },
+  { to: "/capsules", label: "Capsule Calculator", desc: "Fill capsules from bulk powder", icon: FlaskConical, testid: "more-capsules" },
   { to: "/knowledge", label: "Knowledge Base", desc: "Medication library", icon: BookOpen, testid: "more-knowledge" },
   { to: "/assistant", label: "AI Assistant", desc: "Ask anything", icon: Sparkles, testid: "more-assistant" },
   { to: "/effects", label: "Effects & Journal", desc: "Mood & effectiveness", icon: Activity, testid: "more-effects" },

@@ -17,6 +17,7 @@ import Inventory from "@/pages/Inventory";
 import TaperPlanner from "@/pages/TaperPlanner";
 import TaperDetail from "@/pages/TaperDetail";
 import CyclicDosing from "@/pages/CyclicDosing";
+import CapsuleCalculator from "@/pages/CapsuleCalculator";
 import KnowledgeBase from "@/pages/KnowledgeBase";
 import KnowledgeArticle from "@/pages/KnowledgeArticle";
 import Assistant from "@/pages/Assistant";
@@ -68,6 +69,7 @@ function App() {
                     <Route path="/taper" element={<TaperPlanner />} />
                     <Route path="/taper/:id" element={<TaperDetail />} />
                     <Route path="/cyclic" element={<CyclicDosing />} />
+                    <Route path="/capsules" element={<CapsuleCalculator />} />
                     <Route path="/knowledge" element={<KnowledgeBase />} />
                     <Route path="/knowledge/:id" element={<KnowledgeArticle />} />
                     <Route path="/assistant" element={<Assistant />} />
