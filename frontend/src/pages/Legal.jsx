@@ -2,7 +2,11 @@ import { useParams, Link, Navigate } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
 import { ShieldCheck, FileText, Stethoscope } from "lucide-react";
 
-const EFFECTIVE_DATE = "July 12, 2026";
+const EFFECTIVE_DATE = "July 15, 2026";
+
+// GitHub repository used as the contact channel for privacy/legal questions —
+// there is no company, account system, or support inbox behind this app.
+const REPO_URL = "https://github.com/dizzafizza/Meditrax";
 
 // All legal copy lives here so the three documents stay consistent with the
 // app's actual architecture: local-only storage, no server, no accounts,
@@ -33,9 +37,15 @@ const DOCS = {
         ],
       },
       {
+        h: "International data transfers",
+        p: [
+          "If you add an OpenRouter API key and use an AI feature, the request described above is sent to OpenRouter and the model provider you selected, which may process it on servers outside your country — commonly the United States. That transfer happens only for the request you triggered, only with data you chose to send, and only because you supplied your own key. If you never use an AI feature, no data ever crosses a border, because it never leaves your device.",
+        ],
+      },
+      {
         h: "What we don't do",
         p: [
-          "No analytics, no tracking pixels, no advertising, no cookies for tracking, no fingerprinting, no telemetry. The app makes no network requests at runtime other than the OpenRouter calls you explicitly trigger with your own key.",
+          "No analytics, no tracking pixels, no advertising, no cookies for tracking, no fingerprinting, no telemetry. Fonts and all other app assets are bundled with the App (self-hosted) rather than loaded from a third-party CDN, so the App makes zero network requests at startup or while idle — the only network activity, ever, is the OpenRouter call you explicitly trigger with your own key.",
         ],
       },
       {
@@ -51,9 +61,40 @@ const DOCS = {
         ],
       },
       {
+        h: "Health information & special category data",
+        p: [
+          "Some information you choose to enter — medications, conditions, allergies, dependency-risk and behaviour signals — is sensitive health information (\"special category data\" under GDPR Art. 9). Because it is stored only on your device and never transmitted to us, Meditrax is not a \"covered entity\" or \"business associate\" under the U.S. Health Insurance Portability and Accountability Act (HIPAA), and HIPAA does not apply to your use of the App. The protection here comes from the App's architecture — your data physically never reaches a server we operate — not from a regulatory relationship, so you remain responsible for securing the device it lives on.",
+        ],
+      },
+      {
+        h: "Children's privacy",
+        p: [
+          "Meditrax is not directed at children and we do not knowingly collect personal information from anyone, of any age — we don't collect data from anyone, period. Consistent with the U.S. Children's Online Privacy Protection Act (COPPA) and EU/UK rules on the age of consent for information-society services, you must be at least 16 years old to use the App on your own, or use it under the supervision of a parent or guardian (see Terms of Use). If a parent or guardian records a minor's medications using a family profile, that data stays on the same device under the adult's control, exactly like any other profile.",
+        ],
+      },
+      {
+        h: "Your rights under GDPR, CCPA/CPRA and other privacy laws",
+        p: [
+          "Because Meditrax never receives, stores, or has access to your personal data, there is nothing on our side to request, correct, delete, or export — you already hold the only copy, and every right below is exercised directly in the App rather than through a request to us:",
+          "• Access & portability (GDPR Art. 15/20, CCPA \"right to know\"): Settings → Export gives you a complete, machine-readable copy of your data at any time.",
+          "• Rectification (GDPR Art. 16): edit any record directly in the App.",
+          "• Erasure (GDPR \"right to be forgotten\", CCPA \"right to delete\"): delete a profile, or clear the App's site data / uninstall it, to permanently remove everything.",
+          "• Restriction & objection (GDPR Art. 18/21): simply stop using a feature — nothing continues to run or process data in the background.",
+          "• No sale or sharing of personal information, and no targeted or cross-context behavioural advertising (CCPA/CPRA and similar laws in Colorado, Connecticut, Virginia, Utah and other U.S. states) — we cannot sell or share what we never receive.",
+          "• No automated decision-making or profiling with legal or similarly significant effects (GDPR Art. 22) — behaviour/dependency signals are informational only (see Medical Disclaimer) and are never used to make decisions about you.",
+          "This applies equally to users in the EU/EEA, UK (UK GDPR), Canada (PIPEDA), Australia (Privacy Act 1988), Brazil (LGPD), and any other jurisdiction: the same local-only architecture means the same rights, exercised the same self-service way, everywhere. We don't honour Do Not Track / Global Privacy Control signals with a special response because there is no tracking to turn off in the first place.",
+        ],
+      },
+      {
         h: "Your control",
         p: [
           "Export your data at any time (Settings → Export). Delete everything by deleting profiles, clearing browser site data, or uninstalling the app. There is no copy on our side to request or delete — you hold the only copy.",
+        ],
+      },
+      {
+        h: "Contact us",
+        p: [
+          `Meditrax is an independently developed project with no company, account system, or support inbox behind it. Privacy questions or concerns can be raised by opening an issue at ${REPO_URL}. Because we hold no personal data, most requests are already answered above — but we're glad to explain how any part of the App works.`,
         ],
       },
       {
@@ -85,7 +126,7 @@ const DOCS = {
         h: "Your responsibilities",
         p: [
           "You are responsible for the accuracy of the data you enter, for verifying medication information against official sources (package inserts, your pharmacist), for backing up your data via Export, and for securing the device the data lives on. If you track medications for others (family profiles), you are responsible for having their consent.",
-          "You must be at least 16 years old, or use the App under the supervision of a parent or guardian.",
+          "You must be at least 16 years old to use the App on your own, or use it under the supervision of a parent or guardian who controls the device and any family profiles on it — consistent with COPPA (US) and the age-of-consent rules for online services in the EU/UK.",
         ],
       },
       {
@@ -97,7 +138,7 @@ const DOCS = {
       {
         h: "Emergencies",
         p: [
-          "The App is not for emergencies. If you experience an overdose, a severe reaction, or a mental-health crisis, contact your local emergency number immediately (911 in North America), or call/text 988 (Suicide & Crisis Lifeline, US/Canada).",
+          "The App is not for emergencies. If you experience an overdose, a severe reaction, or a mental-health crisis, contact your local emergency number immediately (911 in North America, 999 in the UK, 112 across the EU, 000 in Australia), or call/text 988 (Suicide & Crisis Lifeline, US/Canada).",
         ],
       },
       {
@@ -110,6 +151,18 @@ const DOCS = {
         h: "Limitation of liability",
         p: [
           "To the maximum extent permitted by law, the developers and contributors of Meditrax shall not be liable for any indirect, incidental, special, consequential or exemplary damages — including harm arising from missed or incorrect doses, reliance on projections or AI output, or loss of data — arising from your use of, or inability to use, the App.",
+        ],
+      },
+      {
+        h: "Governing law & your statutory rights",
+        p: [
+          "These Terms are intended to apply wherever you use the App. To the extent your local law permits, they are governed by general contract-law principles without regard to conflict-of-laws rules. Nothing in these Terms limits or waives any statutory right that cannot lawfully be excluded under the law of your country of residence — for example, EU/UK consumer-protection law, Australian Consumer Law's consumer guarantees, or equivalent protections elsewhere. If any term above conflicts with a mandatory protection you're entitled to, your local mandatory protection controls for that term only, and every other term stays in effect.",
+        ],
+      },
+      {
+        h: "Severability",
+        p: [
+          "If any provision of these Terms is found unenforceable or invalid under applicable law, that provision is limited or removed to the minimum extent necessary, and the remaining provisions remain in full force and effect.",
         ],
       },
       {
@@ -151,7 +204,8 @@ const DOCS = {
       {
         h: "If you need help now",
         p: [
-          "For overdose or severe reactions call your local emergency number (911 in North America) or poison control (1-800-222-1222 in the US). If you feel unable to control your medication use, or you're in crisis: call or text 988 (Suicide & Crisis Lifeline, US/Canada), or contact the SAMHSA helpline at 1-800-662-4357 — free, confidential, 24/7.",
+          "For overdose or severe reactions call your local emergency number (911 in North America, 999 in the UK, 112 across the EU, 000 in Australia) or poison control (1-800-222-1222 in the US). If you feel unable to control your medication use, or you're in crisis: call or text 988 (Suicide & Crisis Lifeline, US/Canada), contact the SAMHSA helpline at 1-800-662-4357 (US, free, confidential, 24/7), call Samaritans at 116 123 (UK & Ireland, free, 24/7), or Lifeline at 13 11 14 (Australia).",
+          "Outside these countries, search for \"[your country] suicide or crisis helpline\" or contact a local emergency service — this App cannot provide region-specific numbers for every country, and it is never a substitute for local emergency services.",
         ],
       },
     ],

@@ -3,6 +3,29 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-15 — International data-compliance pass
+
+### Fixed
+- **Google Fonts CDN call** — the app loaded Fraunces/Manrope from
+  `fonts.googleapis.com`/`fonts.gstatic.com` on every launch, an undisclosed,
+  non-user-triggered network request that sends the visitor's IP address to Google
+  (the source of the well-known EU "Google Fonts GDPR" liability cases). Fonts are
+  now bundled with the app (`@fontsource-variable/fraunces`,
+  `@fontsource-variable/manrope`), so the only network request the app ever makes is
+  the OpenRouter call a user explicitly triggers with their own key — matching what
+  the Privacy Policy already claimed.
+
+### Added
+- **Expanded Legal docs** (`src/pages/Legal.jsx`) — Privacy Policy, Terms of Use, and
+  Medical Disclaimer now explicitly address international data-protection regimes:
+  GDPR/UK GDPR (legal basis, Art. 9 special-category health data, data-subject
+  rights), CCPA/CPRA and other US state privacy laws, PIPEDA (Canada), the Australian
+  Privacy Act, and LGPD (Brazil); children's privacy (COPPA + EU age-of-consent);
+  international AI data transfers; a HIPAA-applicability clarification; governing
+  law/severability in the Terms; and a contact channel for privacy questions. All
+  additions are framed around the app's actual local-only architecture rather than
+  generic boilerplate.
+
 ## 2026-07-12 — Inventory, prediction, mood/behaviour & AI overhaul
 
 ### Fixed

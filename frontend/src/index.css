@@ -51,8 +51,8 @@
 
     --radius: 1rem;
 
-    --font-display: 'Fraunces', ui-serif, Georgia, serif;
-    --font-body: 'Manrope', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: 'Fraunces Variable', 'Fraunces', ui-serif, Georgia, serif;
+    --font-body: 'Manrope Variable', 'Manrope', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
     --sat: env(safe-area-inset-top);
     --sab: env(safe-area-inset-bottom);
