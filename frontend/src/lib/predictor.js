@@ -7,7 +7,7 @@
 // Outputs a run-out date, a refill-by date (lead time) and a confidence level.
 import { WEEKDAYS } from "./format";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
-import { doseOnDate } from "./taperEngine";
+import { taperDoseOnDate } from "./taperEngine";
 
 const CONSUMING_STATUSES = ["taken", "partial"];
 
@@ -170,7 +170,7 @@ export function predictRunOut({ med, logs = [], taper = null, settings = {}, now
     for (let day = 0; day <= 365; day++) {
       const dstr = addDaysStr(nowStr, day);
       if (!dows.includes(weekdayKeyLocal(dstr))) continue;
-      const dose = doseOnDate(activeTaper.schedule, dstr, activeTaper.start_date);
+      const dose = taperDoseOnDate(activeTaper, dstr); // pause-aware
       const unitsPerDay = (dose / Number(med.strength)) * times.length * adh;
       if (unitsPerDay <= 0) continue; // taper reached 0 — stock stops draining
       remaining -= unitsPerDay;

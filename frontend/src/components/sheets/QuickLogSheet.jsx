@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog, updateLog, deleteLog } from "@/lib/api";
+import { createLog, updateLog, deleteLog, logDefaultsForMed } from "@/lib/api";
+import { scheduleAllReminders } from "@/lib/push";
 import MedColorDot from "@/components/MedColorDot";
 import { doseLabel, fmtTime12, toDatetimeLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -46,12 +47,32 @@ export default function QuickLogSheet() {
   const [mood, setMood] = useState(null);
   const [effectiveness, setEffectiveness] = useState([7]);
   const [showMore, setShowMore] = useState(false);
+  // While true, the dose/quantity fields track the computed taper/cyclic-aware
+  // default; any manual change hands control to the user.
+  const [autoDefault, setAutoDefault] = useState(true);
+
+  // Taper/cyclic-aware default for today — the med objects passed in by the
+  // various entry points don't carry plan info, so the sheet resolves it.
+  const { data: defaults } = useQuery({
+    queryKey: ["logDefaults", med?.id],
+    queryFn: () => logDefaultsForMed(med.id),
+    enabled: !!(ui.logSheet.open && !ui.logSheet.log && med?.id),
+  });
+
+  useEffect(() => {
+    if (!ui.logSheet.open || editLog || !autoDefault || !defaults) return;
+    if (defaults.dose != null) {
+      setDose(defaults.dose);
+      setQuantity(defaults.quantity ?? perDose);
+    }
+  }, [defaults, ui.logSheet.open]); // eslint-disable-line
 
   useEffect(() => {
     if (!ui.logSheet.open) return;
     const m = ui.logSheet.med;
     const per = Number(m?.dose_quantity ?? m?.inventory?.units_per_dose ?? 1) || 1;
     const lg = ui.logSheet.log;
+    setAutoDefault(!lg);
     if (lg) {
       setStatus(lg.status || "taken");
       setQuantity(Number(lg.quantity ?? per) || 0);
@@ -76,6 +97,7 @@ export default function QuickLogSheet() {
   // Keep the total-amount field derived from the pill count unless the user
   // has manually overridden it.
   const changeQuantity = (q) => {
+    setAutoDefault(false);
     const next = Math.max(0, Math.round(q * 4) / 4); // quarter-pill precision
     setQuantity(next);
     if (!doseTouched && med?.strength != null) setDose(med.strength * next);
@@ -92,6 +114,7 @@ export default function QuickLogSheet() {
     mutationFn: (payload) => (editLog ? updateLog(editLog.id, payload) : createLog(payload)),
     onSuccess: () => {
       invalidate();
+      scheduleAllReminders().catch(() => {}); // don't notify for doses just logged
       toast.success(editLog ? "Log updated" : "Dose logged");
       ui.closeQuickLog();
       if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
@@ -103,6 +126,7 @@ export default function QuickLogSheet() {
     mutationFn: () => deleteLog(editLog.id),
     onSuccess: () => {
       invalidate();
+      scheduleAllReminders().catch(() => {});
       toast.success("Log deleted");
       ui.closeQuickLog();
     },
@@ -192,7 +216,7 @@ export default function QuickLogSheet() {
               <div>
                 <Label className="text-xs text-muted-foreground">Total amount</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Input type="number" value={dose} onChange={(e) => { setDose(e.target.value); setDoseTouched(true); }} className="h-11 rounded-xl" data-testid="quick-log-dose-input" />
+                  <Input type="number" value={dose} onChange={(e) => { setDose(e.target.value); setDoseTouched(true); setAutoDefault(false); }} className="h-11 rounded-xl" data-testid="quick-log-dose-input" />
                   <span className="text-sm text-muted-foreground w-12">{med.unit}</span>
                 </div>
               </div>

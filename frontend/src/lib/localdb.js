@@ -2,7 +2,7 @@
 // Profile-scoped collections + catalog + settings + AI config + computed views.
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
-import { generateTaperSchedule, doseOnDate, suggestTaperParams } from "./taperEngine";
+import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus } from "./predictor";
 
@@ -410,17 +410,41 @@ export async function getTaper(id) {
   const t = (await getArr(pkey("tapers"))).find((x) => x.id === id);
   if (!t) throw new Error("Taper not found");
   const med = (await getArr(pkey("medications"))).find((m) => m.id === t.medication_id);
-  const day = diffDays(t.start_date, todayStr());
+  // While paused, progress (dose AND step marker) holds at the pause date.
+  const effToday = t.is_paused && t.paused_on && t.paused_on < todayStr() ? t.paused_on : todayStr();
+  const day = diffDays(t.start_date, effToday);
   const interval = t.step_interval_days || 7;
-  return { ...t, medication: med, current_dose: doseOnDate(t.schedule, todayStr(), t.start_date), current_step: day >= 0 ? Math.max(0, Math.min(t.schedule.steps.length - 1, Math.floor(day / interval))) : 0 };
+  return { ...t, medication: med, current_dose: taperDoseOnDate(t, todayStr()), current_step: day >= 0 ? Math.max(0, Math.min(t.schedule.steps.length - 1, Math.floor(day / interval))) : 0 };
 }
 export async function updateTaper(id, patch) {
   await ensureInit();
   const tapers = await getArr(pkey("tapers"));
   const idx = tapers.findIndex((t) => t.id === id);
   if (idx === -1) throw new Error("Taper not found");
-  ["is_active", "is_paused", "notes"].forEach((k) => { if (k in patch) tapers[idx][k] = patch[k]; });
-  tapers[idx].updated_at = nowIso();
+  const t = tapers[idx];
+  // Pausing freezes progress at today's step; resuming shifts the whole
+  // schedule forward by the paused duration so the taper picks up exactly
+  // where it left off (dates regenerate to match the new start).
+  if ("is_paused" in patch && patch.is_paused !== t.is_paused) {
+    if (patch.is_paused) {
+      t.paused_on = todayStr();
+    } else {
+      const shift = t.paused_on ? Math.max(0, diffDays(t.paused_on, todayStr())) : 0;
+      if (shift > 0) {
+        t.start_date = addDaysStr(t.start_date, shift);
+        try {
+          t.schedule = generateTaperSchedule({
+            initialDose: t.initial_dose, finalDose: t.final_dose ?? 0, startDate: t.start_date,
+            stepIntervalDays: t.step_interval_days, totalDays: t.total_days, method: t.method,
+            unit: t.unit, customSteps: t.custom_steps,
+          });
+        } catch { /* keep old schedule if params are somehow invalid */ }
+      }
+      t.paused_on = null;
+    }
+  }
+  ["is_active", "is_paused", "notes"].forEach((k) => { if (k in patch) t[k] = patch[k]; });
+  t.updated_at = nowIso();
   await setArr(pkey("tapers"), tapers);
   if (patch.is_active === false) {
     const meds = await getArr(pkey("medications"));
@@ -528,7 +552,60 @@ export async function saveInsight(key, value) {
 }
 
 // ---- compute: today / inventory / analytics ----
-function buildTodayDoses(meds, logsToday, forDate) {
+
+// Where a date falls in a cyclic plan's repeating pattern.
+// Returns { multiplier, phase } — multiplier 1 / phase null when the plan
+// doesn't apply (not started yet, empty pattern, invalid durations).
+export function cyclicMultiplierOn(plan, dateStr) {
+  const none = { multiplier: 1, phase: null };
+  if (!plan || plan.is_active === false) return none;
+  const pattern = (plan.pattern || []).filter((p) => Number(p.duration) > 0);
+  if (!pattern.length) return none;
+  const total = pattern.reduce((a, p) => a + Number(p.duration), 0);
+  const day = diffDays(plan.start_date, dateStr);
+  if (day < 0) return none; // plan hasn't started yet
+  let idx = day % total;
+  for (const p of pattern) {
+    if (idx < Number(p.duration)) {
+      const m = Number(p.dose_multiplier);
+      return { multiplier: isFinite(m) && m >= 0 ? m : 1, phase: p.phase || null };
+    }
+    idx -= Number(p.duration);
+  }
+  return none;
+}
+
+// Round to quarter-pill, the same precision the log sheet stepper uses.
+function quarter(x) { return Math.max(0, Math.round(x * 4) / 4); }
+
+// The per-dose amount actually due on a date, honoring an active taper
+// (pause-aware) and an active cyclic plan. Returns { dose, quantity,
+// multiplier, phase, taper_dose } — dose/quantity null when unknowable.
+export function effectiveDoseInfo(med, { taper = null, cyclic = null } = {}, dateStr) {
+  const { multiplier, phase } = cyclicMultiplierOn(cyclic, dateStr);
+  const taperDose = taper && taper.is_active !== false ? taperDoseOnDate(taper, dateStr) : null;
+  const strength = Number(med?.strength);
+  const perDose = doseQuantity(med);
+  const base = taperDose != null ? taperDose : (isFinite(strength) && strength > 0 ? strength * perDose : null);
+  const dose = base != null ? Math.round(base * multiplier * 10000) / 10000 : null;
+  const quantity = dose != null && isFinite(strength) && strength > 0 ? quarter(dose / strength) : perDose;
+  return { dose, quantity, multiplier, phase, taper_dose: taperDose };
+}
+
+// One-stop default for "log a dose now": the taper/cyclic-aware amount and
+// pill count for a medication today. Used by the log sheet and the AI tool so
+// every entry point defaults to what is actually due, not the base strength.
+export async function logDefaultsForMed(medId, dateStr) {
+  await ensureInit();
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medId);
+  if (!med) throw new Error("Medication not found");
+  const theDate = dateStr || todayStr();
+  const taper = (await getArr(pkey("tapers"))).find((t) => t.medication_id === medId && t.is_active) || null;
+  const cyclic = (await getArr(pkey("cyclic"))).find((c) => c.medication_id === medId && c.is_active !== false) || null;
+  return effectiveDoseInfo(med, { taper, cyclic }, theDate);
+}
+
+function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []) {
   const wd = weekdayKeyLocal(forDate);
   const doses = []; const prn = [];
   const logIndex = {};
@@ -536,13 +613,22 @@ function buildTodayDoses(meds, logsToday, forDate) {
   meds.forEach((med) => {
     if (med.is_active === false) return;
     if (med.start_date && forDate < med.start_date) return; // med didn't exist yet
-    if (med.is_prn) { prn.push({ medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, dose_quantity: doseQuantity(med) }); return; }
+    const taper = tapers.find((t) => t.medication_id === med.id && t.is_active) || null;
+    const cyclic = cyclicPlans.find((c) => c.medication_id === med.id && c.is_active !== false) || null;
+    const eff = effectiveDoseInfo(med, { taper, cyclic }, forDate);
+    // Cyclic "off" day: no dose is due — exclude from schedule and adherence.
+    if (eff.multiplier === 0) return;
+    if (med.is_prn) { prn.push({ medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, dose_quantity: doseQuantity(med), effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier }); return; }
     const days = med.days_of_week || WEEKDAYS;
     if (!days.includes(wd)) return;
     const times = (med.times && med.times.length) ? med.times : ["09:00"];
     times.forEach((t) => {
       const lg = logIndex[`${med.id}|${t}`];
-      doses.push({ id: `${med.id}_${t}`, medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status: lg ? lg.status : "pending", instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: doseQuantity(med) });
+      doses.push({
+        id: `${med.id}_${t}`, medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status: lg ? lg.status : "pending", instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: eff.quantity,
+        effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier,
+        taper_dose: eff.taper_dose != null ? eff.taper_dose : undefined, taper_unit: eff.taper_dose != null ? (taper?.unit || med.unit) : undefined,
+      });
     });
   });
   doses.sort((a, b) => a.time.localeCompare(b.time));
@@ -554,14 +640,9 @@ export async function getToday(dateStr) {
   const meds = await getArr(pkey("medications"));
   const allLogs = await getArr(pkey("logs"));
   const logs = allLogs.filter((l) => timestampToLocalDate(l.timestamp) === theDate);
-  const { doses, prn } = buildTodayDoses(meds, logs, theDate);
   const tapers = await getArr(pkey("tapers"));
-  doses.forEach((dose) => {
-    if (dose.is_tapering) {
-      const tp = tapers.find((t) => t.medication_id === dose.medication_id && t.is_active);
-      if (tp) { dose.taper_dose = doseOnDate(tp.schedule, theDate, tp.start_date); dose.taper_unit = tp.unit; }
-    }
-  });
+  const cyclicPlans = await getArr(pkey("cyclic"));
+  const { doses, prn } = buildTodayDoses(meds, logs, theDate, tapers, cyclicPlans);
   const total = doses.length;
   const taken = doses.filter((x) => ["taken", "partial"].includes(x.status)).length;
   const pending = doses.filter((x) => x.status === "pending").length;
@@ -605,6 +686,8 @@ export async function getInventory() {
 export async function getAnalytics(days = 30) {
   await ensureInit();
   const meds = await getArr(pkey("medications"));
+  const tapers = await getArr(pkey("tapers"));
+  const cyclicPlans = await getArr(pkey("cyclic"));
   const endStr = todayStr();
   const startStr = addDaysStr(endStr, -(days - 1));
   const allLogs = await getArr(pkey("logs"));
@@ -618,7 +701,7 @@ export async function getAnalytics(days = 30) {
   const trend = []; let totalExpected = 0, totalTaken = 0; const perMed = {}; const streakDays = [];
   for (let i = 0; i < days; i++) {
     const dk = addDaysStr(startStr, i);
-    const { doses } = buildTodayDoses(meds, logsByDate[dk] || [], dk);
+    const { doses } = buildTodayDoses(meds, logsByDate[dk] || [], dk, tapers, cyclicPlans);
     const exp = doses.length; const tkn = doses.filter((x) => ["taken", "partial"].includes(x.status)).length;
     totalExpected += exp; totalTaken += tkn;
     trend.push({ date: dk, expected: exp, taken: tkn, adherence: exp ? Math.round((tkn / exp) * 100) : null });

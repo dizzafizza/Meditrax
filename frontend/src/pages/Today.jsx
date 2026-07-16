@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useUI } from "@/context/UIContext";
 import ProfileSwitcher from "@/components/ProfileSwitcher";
 import { getToday, getAnalytics, createLog, deleteLog, getLog, getCheckins } from "@/lib/api";
+import { scheduleAllReminders } from "@/lib/push";
 import { greeting, fmtDate, fmtTime12, timeOfDay, doseLabel, depTone, riskTone } from "@/lib/format";
 import { localDateStr } from "@/lib/dates";
 import { Check, SkipForward, Clock, Pill, Flame, AlertTriangle, ChevronRight, Sparkles, Plus, Smile } from "lucide-react";
@@ -26,7 +27,10 @@ export default function Today() {
     queryFn: () => { const s = localDateStr(); return getCheckins({ start: s, end: s }); },
   });
 
-  const invalidate = () => ["today", "analytics", "inventory", "logs", "medications", "medication"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const invalidate = () => {
+    ["today", "analytics", "inventory", "logs", "medications", "medication"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    scheduleAllReminders().catch(() => {}); // logged doses shouldn't still notify
+  };
 
   const logMut = useMutation({
     mutationFn: ({ _name, ...payload }) => createLog(payload),
@@ -44,11 +48,13 @@ export default function Today() {
   });
 
   const quickLog = (dose, status) => {
+    // dose_quantity and effective_dose come taper/cyclic-adjusted from getToday,
+    // so one-tap logging records what was actually due today — not base strength.
     const quantity = status === "taken" ? (dose.dose_quantity || 1) : 0;
     logMut.mutate({
       medication_id: dose.medication_id, scheduled_time: dose.scheduled_time, status,
       quantity: status === "taken" ? quantity : undefined,
-      dose_taken: status === "taken" && dose.strength != null ? dose.strength * quantity : null,
+      dose_taken: status === "taken" ? (dose.effective_dose ?? (dose.strength != null ? dose.strength * quantity : null)) : null,
       unit: dose.unit, _name: dose.name,
     });
   };
@@ -204,6 +210,17 @@ export default function Today() {
   );
 }
 
+// What amount to show on a dose card: the taper/cyclic-adjusted amount with a
+// tag explaining why it differs, otherwise the plain strength label.
+function doseText(dose) {
+  const adjusted = dose.taper_dose != null || (dose.cyclic_multiplier ?? 1) !== 1;
+  if (dose.effective_dose != null && adjusted) {
+    const tag = dose.taper_dose != null ? "taper" : (dose.cyclic_phase || "cycle");
+    return `${dose.effective_dose} ${dose.taper_unit || dose.unit || ""} (${tag})`.trim();
+  }
+  return doseLabel(dose.strength, dose.unit);
+}
+
 function DoseCard({ dose, onTake, onSkip, onTap }) {
   const done = dose.status === "taken" || dose.status === "partial";
   const skipped = dose.status === "skipped" || dose.status === "missed";
@@ -217,7 +234,7 @@ function DoseCard({ dose, onTake, onSkip, onTap }) {
             {depTone(dose.dependency_risk_category) === "high" && <RiskBadge tone="dependency" label="Dependency" icon={false} />}
           </div>
           <p className="text-xs text-muted-foreground">
-            {fmtTime12(dose.time)} · {dose.taper_dose != null ? `${dose.taper_dose} ${dose.taper_unit} (taper)` : doseLabel(dose.strength, dose.unit)}
+            {fmtTime12(dose.time)} · {doseText(dose)}
             {dose.instructions ? ` · ${dose.instructions}` : ""}
           </p>
         </button>

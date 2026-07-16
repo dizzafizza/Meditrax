@@ -11,6 +11,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getReminders, createReminder, updateReminder, deleteReminder, getMedications } from "@/lib/api";
+import { scheduleAllReminders } from "@/lib/push";
 import { fmtTime12, WEEKDAYS, WEEKDAY_LABELS } from "@/lib/format";
 import { Bell, Plus, Trash2 } from "lucide-react";
 
@@ -21,8 +22,9 @@ export default function Reminders() {
   const medMap = Object.fromEntries(meds.map((m) => [m.id, m]));
   const [open, setOpen] = useState(false);
 
-  const toggle = useMutation({ mutationFn: ({ id, r }) => updateReminder(id, r), onSuccess: () => qc.invalidateQueries({ queryKey: ["reminders"] }) });
-  const del = useMutation({ mutationFn: deleteReminder, onSuccess: () => { qc.invalidateQueries({ queryKey: ["reminders"] }); toast.success("Reminder removed"); } });
+  const resync = () => { qc.invalidateQueries({ queryKey: ["reminders"] }); scheduleAllReminders().catch(() => {}); };
+  const toggle = useMutation({ mutationFn: ({ id, r }) => updateReminder(id, r), onSuccess: resync });
+  const del = useMutation({ mutationFn: deleteReminder, onSuccess: () => { resync(); toast.success("Reminder removed"); } });
 
   return (
     <div>
@@ -48,7 +50,7 @@ export default function Reminders() {
           );
         })}
       </div>
-      <ReminderBuilder open={open} onClose={() => setOpen(false)} meds={meds} onCreated={() => { qc.invalidateQueries({ queryKey: ["reminders"] }); setOpen(false); }} />
+      <ReminderBuilder open={open} onClose={() => setOpen(false)} meds={meds} onCreated={() => { resync(); setOpen(false); }} />
     </div>
   );
 }
