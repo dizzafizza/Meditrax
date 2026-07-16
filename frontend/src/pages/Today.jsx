@@ -10,7 +10,7 @@ import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
 import { useUI } from "@/context/UIContext";
 import ProfileSwitcher from "@/components/ProfileSwitcher";
-import { getToday, getAnalytics, createLog, deleteLog, getCheckins } from "@/lib/api";
+import { getToday, getAnalytics, createLog, deleteLog, getLog, getCheckins } from "@/lib/api";
 import { greeting, fmtDate, fmtTime12, timeOfDay, doseLabel, depTone, riskTone } from "@/lib/format";
 import { localDateStr } from "@/lib/dates";
 import { Check, SkipForward, Clock, Pill, Flame, AlertTriangle, ChevronRight, Sparkles, Plus, Smile } from "lucide-react";
@@ -26,7 +26,7 @@ export default function Today() {
     queryFn: () => { const s = localDateStr(); return getCheckins({ start: s, end: s }); },
   });
 
-  const invalidate = () => ["today", "analytics", "inventory", "logs", "medications"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const invalidate = () => ["today", "analytics", "inventory", "logs", "medications", "medication"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const logMut = useMutation({
     mutationFn: ({ _name, ...payload }) => createLog(payload),
@@ -51,6 +51,20 @@ export default function Today() {
       dose_taken: status === "taken" && dose.strength != null ? dose.strength * quantity : null,
       unit: dose.unit, _name: dose.name,
     });
+  };
+
+  // Tapping a dose that's already logged opens the existing log for editing
+  // (previously this opened a blank sheet whose save dedup-overwrote the log,
+  // resetting its time to now and wiping notes/mood).
+  const openDose = async (d) => {
+    const medLike = { id: d.medication_id, name: d.name, color: d.color, strength: d.strength, unit: d.unit, is_prn: false, dose_quantity: d.dose_quantity || 1 };
+    if (d.log_id) {
+      try {
+        const log = await getLog(d.log_id);
+        if (log) return ui.openEditLog(log, medLike);
+      } catch {}
+    }
+    ui.openQuickLog(medLike, d.scheduled_time, d.strength);
   };
 
   const grouped = useMemo(() => {
@@ -153,7 +167,7 @@ export default function Today() {
           <div key={g}>
             <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{g}</p>
             <div className="space-y-2.5">
-              {grouped[g].map((d) => <DoseCard key={d.id} dose={d} onTake={() => quickLog(d, "taken")} onSkip={() => quickLog(d, "skipped")} onTap={() => ui.openQuickLog({ id: d.medication_id, name: d.name, color: d.color, strength: d.strength, unit: d.unit, is_prn: false, dose_quantity: d.dose_quantity || 1 }, d.scheduled_time, d.strength)} />)}
+              {grouped[g].map((d) => <DoseCard key={d.id} dose={d} onTake={() => quickLog(d, "taken")} onSkip={() => quickLog(d, "skipped")} onTap={() => openDose(d)} />)}
             </div>
           </div>
         ))}

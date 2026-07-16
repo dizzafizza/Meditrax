@@ -3,12 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createCheckin } from "@/lib/api";
+import { createCheckin, updateCheckin, deleteCheckin } from "@/lib/api";
+import { toDatetimeLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Trash2 } from "lucide-react";
 
 const MOODS = [
   { v: 5, e: "😊", l: "Great" },
@@ -28,29 +32,61 @@ const DIMENSIONS = [
 export default function CheckinSheet() {
   const ui = useUI();
   const qc = useQueryClient();
+  const editEntry = ui.checkinSheet.checkin; // present = editing an existing check-in
   const [mood, setMood] = useState(null);
   const [dims, setDims] = useState({});
   const [notes, setNotes] = useState("");
+  const [when, setWhen] = useState("");
+  const [whenTouched, setWhenTouched] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
-    if (ui.checkinSheet.open) { setMood(null); setDims({}); setNotes(""); setShowMore(false); }
-  }, [ui.checkinSheet.open]);
+    if (!ui.checkinSheet.open) return;
+    const c = ui.checkinSheet.checkin;
+    if (c) {
+      setMood(c.mood || null);
+      const d = {};
+      ["energy", "sleep", "pain", "anxiety"].forEach((k) => { if (c[k] != null) d[k] = c[k]; });
+      setDims(d);
+      setNotes(c.notes || "");
+      setWhen(toDatetimeLocal(c.timestamp));
+      setShowMore(!!(c.notes || Object.keys(d).length));
+    } else {
+      setMood(null); setDims({}); setNotes(""); setWhen(toDatetimeLocal()); setShowMore(false);
+    }
+    setWhenTouched(false);
+  }, [ui.checkinSheet.open]); // eslint-disable-line
+
+  const invalidate = () => ["checkins", "logs", "analytics"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const mutation = useMutation({
-    mutationFn: createCheckin,
+    mutationFn: (payload) => (editEntry ? updateCheckin(editEntry.id, payload) : createCheckin(payload)),
     onSuccess: () => {
-      ["checkins", "logs", "analytics"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      toast.success("Check-in saved");
+      invalidate();
+      toast.success(editEntry ? "Check-in updated" : "Check-in saved");
       ui.closeCheckin();
       if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
     },
-    onError: () => toast.error("Could not save check-in"),
+    onError: (err) => toast.error(err?.message || "Could not save check-in"),
+  });
+
+  const delMutation = useMutation({
+    mutationFn: () => deleteCheckin(editEntry.id),
+    onSuccess: () => { invalidate(); toast.success("Check-in deleted"); ui.closeCheckin(); },
+    onError: () => toast.error("Could not delete check-in"),
   });
 
   function save() {
     if (!mood) { toast.error("Pick a mood first"); return; }
-    mutation.mutate({ mood, notes: notes || null, ...dims });
+    const payload = { mood, notes: notes || null };
+    ["energy", "sleep", "pain", "anxiety"].forEach((k) => { payload[k] = dims[k] ?? null; });
+    if (editEntry || whenTouched) {
+      const d = new Date(when);
+      if (!when || isNaN(d.getTime())) { toast.error("Enter a valid date and time"); return; }
+      if (d.getTime() > Date.now() + 60000) { toast.error("Check-ins can't be in the future"); return; }
+      payload.timestamp = d.toISOString();
+    }
+    mutation.mutate(payload);
   }
 
   return (
@@ -58,7 +94,7 @@ export default function CheckinSheet() {
       <DrawerContent className="max-w-2xl mx-auto">
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-muted" />
         <DrawerHeader className="text-left">
-          <DrawerTitle className="font-display text-xl">How are you feeling?</DrawerTitle>
+          <DrawerTitle className="font-display text-xl">{editEntry ? "Edit check-in" : "How are you feeling?"}</DrawerTitle>
         </DrawerHeader>
 
         <div className="px-4 pb-2">
@@ -70,6 +106,18 @@ export default function CheckinSheet() {
                 <span className="block text-[10px] text-muted-foreground mt-0.5">{m.l}</span>
               </button>
             ))}
+          </div>
+
+          <div className="mt-4">
+            <Label className="text-xs text-muted-foreground">When</Label>
+            <Input
+              type="datetime-local"
+              value={when}
+              max={toDatetimeLocal()}
+              onChange={(e) => { setWhen(e.target.value); setWhenTouched(true); }}
+              className="h-11 rounded-xl mt-1"
+              data-testid="checkin-when-input"
+            />
           </div>
 
           <button onClick={() => setShowMore((s) => !s)} className="mt-4 text-sm font-medium text-primary">
@@ -96,10 +144,29 @@ export default function CheckinSheet() {
           )}
         </div>
 
-        <div className="p-4 safe-bottom">
+        <div className="p-4 safe-bottom space-y-2">
           <Button data-testid="checkin-save-button" className="w-full h-12 rounded-xl" onClick={save} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save check-in"}
+            {mutation.isPending ? "Saving…" : editEntry ? "Save changes" : "Save check-in"}
           </Button>
+          {editEntry && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" className="w-full text-destructive hover:text-destructive hover:bg-destructive/10" data-testid="checkin-delete-button">
+                  <Trash2 className="h-4 w-4 mr-2" />Delete this check-in
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this check-in?</AlertDialogTitle>
+                  <AlertDialogDescription>The entry is removed from your journal and trends. This cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => delMutation.mutate()} className="bg-destructive text-destructive-foreground" data-testid="checkin-confirm-delete">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </DrawerContent>
     </Drawer>

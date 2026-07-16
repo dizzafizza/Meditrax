@@ -87,7 +87,9 @@ export default function Effects() {
           <div key={date}>
             <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{fmtDate(date, "EEEE, MMM d")}</p>
             <div className="space-y-2.5">
-              {items.map((l) => (l._kind === "checkin" ? <CheckinRow key={l.id} entry={l} /> : <LogRow key={l.id} log={l} med={medMap[l.medication_id]} />))}
+              {items.map((l) => (l._kind === "checkin"
+                ? <CheckinRow key={l.id} entry={l} onTap={() => ui.openCheckin(l)} />
+                : <LogRow key={l.id} log={l} med={medMap[l.medication_id]} onTap={medMap[l.medication_id] ? () => ui.openEditLog(l, medMap[l.medication_id]) : undefined} />))}
             </div>
           </div>
         ))}
@@ -96,10 +98,10 @@ export default function Effects() {
   );
 }
 
-function CheckinRow({ entry }) {
+function CheckinRow({ entry, onTap }) {
   const dims = ["energy", "sleep", "pain", "anxiety"].filter((k) => entry[k] != null);
   return (
-    <div className="card-soft p-3" data-testid="checkin-entry">
+    <button onClick={onTap} className="card-soft p-3 w-full text-left pressable" data-testid="checkin-entry">
       <div className="flex items-center gap-3">
         <div className="h-[38px] w-[38px] rounded-full bg-primary/12 text-primary flex items-center justify-center"><Smile className="h-5 w-5" /></div>
         <div className="flex-1 min-w-0">
@@ -116,13 +118,14 @@ function CheckinRow({ entry }) {
         </div>
       )}
       {entry.notes && <p className="text-sm text-muted-foreground mt-2">{entry.notes}</p>}
-    </div>
+    </button>
   );
 }
 
-function LogRow({ log, med }) {
+function LogRow({ log, med, onTap }) {
+  const Tag = onTap ? "button" : "div";
   return (
-    <div className="card-soft p-3">
+    <Tag onClick={onTap} className={`card-soft p-3 w-full text-left ${onTap ? "pressable" : ""}`} data-testid="journal-log-entry">
       <div className="flex items-center gap-3">
         <MedColorDot color={med?.color} size={38} />
         <div className="flex-1 min-w-0">
@@ -135,6 +138,6 @@ function LogRow({ log, med }) {
         <div className="mt-2"><div className="flex justify-between text-xs text-muted-foreground mb-1"><span>Effectiveness</span><span>{log.effectiveness}/10</span></div><div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${log.effectiveness * 10}%` }} /></div></div>
       )}
       {log.notes && <p className="text-sm text-muted-foreground mt-2">{log.notes}</p>}
-    </div>
+    </Tag>
   );
 }

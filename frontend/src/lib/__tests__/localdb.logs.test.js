@@ -143,6 +143,115 @@ describe("deleteLog restores inventory (B1)", () => {
   });
 });
 
+describe("updateLog", () => {
+  test("timestamp-only edit rebuckets the day and never touches stock", async () => {
+    const med = await addMed();
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    expect(await stockOf(med.id)).toBe(28);
+    const yesterday = new Date(Date.now() - 24 * 3600000).toISOString();
+    const updated = await db.updateLog(log.id, { timestamp: yesterday });
+    expect(updated.timestamp).toBe(yesterday);
+    expect(updated.inventory_delta).toBe(2);
+    expect(await stockOf(med.id)).toBe(28);
+    // getLogs date filters see the new local day
+    const dayStr = new Date(Date.now() - 24 * 3600000);
+    const key = `${dayStr.getFullYear()}-${String(dayStr.getMonth() + 1).padStart(2, "0")}-${String(dayStr.getDate()).padStart(2, "0")}`;
+    const logs = await db.getLogs({ medication_id: med.id, start: key, end: key });
+    expect(logs).toHaveLength(1);
+  });
+
+  test("quantity edit adjusts stock by the difference", async () => {
+    const med = await addMed();
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    await db.updateLog(log.id, { quantity: 3 });
+    expect(await stockOf(med.id)).toBe(27); // one more consumed
+    await db.updateLog(log.id, { quantity: 1 });
+    expect(await stockOf(med.id)).toBe(29); // two refunded
+    expect((await db.getLog(log.id)).inventory_delta).toBe(1);
+  });
+
+  test("status taken→skipped refunds, skipped→taken decrements", async () => {
+    const med = await addMed();
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    await db.updateLog(log.id, { status: "skipped" });
+    expect(await stockOf(med.id)).toBe(30);
+    expect((await db.getLog(log.id)).inventory_delta).toBe(0);
+    await db.updateLog(log.id, { status: "taken" });
+    expect(await stockOf(med.id)).toBe(28);
+  });
+
+  test("quantity increase clamps to available stock and records what applied", async () => {
+    const med = await addMed({ inventory: { current_count: 3, unit: "tablets", units_per_dose: 2, refill_threshold: 10 } });
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    expect(await stockOf(med.id)).toBe(1);
+    await db.updateLog(log.id, { quantity: 5 }); // wants 3 more, only 1 available
+    expect(await stockOf(med.id)).toBe(0);
+    expect((await db.getLog(log.id)).inventory_delta).toBe(3);
+    // deleting afterwards restores exactly what was recorded
+    await db.deleteLog(log.id);
+    expect(await stockOf(med.id)).toBe(3);
+  });
+
+  test("moving onto a day that already has a log for the same slot throws", async () => {
+    const med = await addMed();
+    const yesterday = new Date(Date.now() - 24 * 3600000).toISOString();
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00", timestamp: yesterday });
+    const todayLog = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    await expect(db.updateLog(todayLog.id, { timestamp: yesterday })).rejects.toThrow(/already exists/);
+    // PRN logs (no scheduled_time) can always move
+    const prnMed = await addMed({ is_prn: true, times: [] });
+    const prn = await db.createLog({ medication_id: prnMed.id, status: "taken", quantity: 1 });
+    await expect(db.updateLog(prn.id, { timestamp: yesterday })).resolves.toBeTruthy();
+  });
+
+  test("invalid timestamp or negative quantity throws without side effects", async () => {
+    const med = await addMed();
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    await expect(db.updateLog(log.id, { timestamp: "not-a-date" })).rejects.toThrow(/timestamp/i);
+    await expect(db.updateLog(log.id, { quantity: -1 })).rejects.toThrow(/quantity/);
+    await expect(db.updateLog("missing-id", { notes: "x" })).rejects.toThrow(/not found/i);
+    expect(await stockOf(med.id)).toBe(28);
+  });
+
+  test("legacy consuming log (no inventory_delta) never moves stock on edit", async () => {
+    const med = await addMed();
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    expect(await stockOf(med.id)).toBe(28);
+    // Simulate a legacy record: the localforage mock stores objects by
+    // reference, so stripping the field here strips it in "storage" too.
+    const stored = await db.getLogs({ medication_id: med.id });
+    delete stored[0].inventory_delta;
+    await db.updateLog(log.id, { quantity: 3 });
+    expect(await stockOf(med.id)).toBe(28); // unknowable — no extra decrement
+    await db.updateLog(log.id, { status: "skipped" });
+    expect(await stockOf(med.id)).toBe(28); // and no over-restore
+  });
+
+  test("delta-0 opted-out log reconciles from zero on a real status change", async () => {
+    const med = await addMed();
+    const log = await db.createLog({ medication_id: med.id, status: "skipped", scheduled_time: "09:00" });
+    expect(log.inventory_delta).toBe(0);
+    await db.updateLog(log.id, { status: "taken", quantity: 2 });
+    expect(await stockOf(med.id)).toBe(28);
+    expect((await db.getLog(log.id)).inventory_delta).toBe(2);
+  });
+});
+
+describe("updateCheckin", () => {
+  test("edits mood, dimensions, notes and timestamp with clamping", async () => {
+    const c = await db.createCheckin({ mood: 4, energy: 3 });
+    const yesterday = new Date(Date.now() - 24 * 3600000).toISOString();
+    const updated = await db.updateCheckin(c.id, { mood: 9, pain: 2, energy: null, notes: "rough day", timestamp: yesterday });
+    expect(updated.mood).toBe(5); // clamped
+    expect(updated.pain).toBe(2);
+    expect(updated.energy).toBe(null);
+    expect(updated.notes).toBe("rough day");
+    expect(updated.timestamp).toBe(yesterday);
+    await expect(db.updateCheckin(c.id, { timestamp: "garbage" })).rejects.toThrow(/timestamp/i);
+    await expect(db.updateCheckin("nope", { mood: 3 })).rejects.toThrow(/not found/i);
+  });
+});
+
 describe("adjustInventory", () => {
   test("set/delta with clamping and units_per_dose sync to dose_quantity", async () => {
     const med = await addMed();

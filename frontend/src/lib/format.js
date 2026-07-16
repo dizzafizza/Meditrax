@@ -81,6 +81,16 @@ export function doseLabel(strength, unit) {
   return `${strength}${unit ? " " + unit : ""}`;
 }
 
+// ISO timestamp (or Date, or nothing = now) -> local "YYYY-MM-DDTHH:mm" for
+// <input type="datetime-local">. The reverse is just `new Date(value)` —
+// datetime strings (unlike date-only strings) parse in local time.
+export function toDatetimeLocal(iso) {
+  const d = iso ? (iso instanceof Date ? iso : new Date(iso)) : new Date();
+  if (isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
