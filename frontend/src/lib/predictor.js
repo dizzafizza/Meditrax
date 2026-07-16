@@ -133,12 +133,29 @@ function usageConfidence(logs, med, { days = 30, now = new Date() } = {}) {
   return "low";
 }
 
+// Where a taper record stands on a given local date. "finished" means the
+// schedule's window has fully elapsed (the last step's dose still applies —
+// doseOnDate holds it — but the plan is no longer stepping anywhere).
+export function taperState(taper, nowStr) {
+  if (!taper || taper.is_active === false || !taper.schedule) return "none";
+  if (taper.is_paused) return "paused";
+  const summary = taper.schedule.summary || {};
+  let end = summary.end_date || null;
+  if (!end && taper.start_date) {
+    const total = Number(taper.total_days ?? summary.total_days);
+    if (isFinite(total) && total > 0) end = addDaysStr(taper.start_date, total);
+  }
+  if (end && nowStr > end) return "finished";
+  return "running";
+}
+
 /**
  * Predict when a medication's inventory runs out.
  * @returns {{
  *   daily_rate: number, days_left: number|null,
  *   run_out_date: string|null, refill_by_date: string|null,
- *   confidence: "high"|"medium"|"low", method: "scheduled"|"blended"|"prn"|"taper"|"none",
+ *   confidence: "high"|"medium"|"low",
+ *   method: "scheduled"|"blended"|"prn"|"taper"|"taper-paused"|"taper-complete"|"none",
  * }}
  */
 export function predictRunOut({ med, logs = [], taper = null, settings = {}, now = new Date() }) {
@@ -160,24 +177,37 @@ export function predictRunOut({ med, logs = [], taper = null, settings = {}, now
     };
   };
 
-  // Active taper: simulate forward against the declining schedule.
-  const activeTaper = taper && taper.is_active !== false && taper.schedule ? taper : null;
-  if (activeTaper && !med.is_prn && Number(med.strength) > 0) {
+  // Taper-aware paths. The schedule only drives the prediction while it is
+  // actually driving the dose: a paused taper holds its frozen dose (and says
+  // so), and a taper that completed to zero predicts from observed usage
+  // instead of pretending the schedule still applies.
+  const state = taperState(taper, nowStr);
+  if (state !== "none" && !med.is_prn && Number(med.strength) > 0) {
+    const steps = taper.schedule.steps || [];
+    const finalDose = Number(taper.final_dose ?? steps[steps.length - 1]?.dose ?? 0);
+    if (state === "finished" && !(finalDose > 0)) {
+      // Tapered to zero and the window elapsed: the schedule predicts nothing.
+      // If doses are still being logged, the observed rate is the truth.
+      const rate = prnDailyRate(logs, med, { now });
+      if (rate <= 0) return { ...none, method: "taper-complete" };
+      return finish(rate, count / rate, "taper-complete", usageConfidence(logs, med, { now }));
+    }
     const adh = adherenceFactor(logs, med, { now });
     const times = (med.times && med.times.length) ? med.times : ["09:00"];
     const dows = med.days_of_week || WEEKDAYS;
+    const method = state === "paused" ? "taper-paused" : "taper";
     let remaining = count;
     for (let day = 0; day <= 365; day++) {
       const dstr = addDaysStr(nowStr, day);
       if (!dows.includes(weekdayKeyLocal(dstr))) continue;
-      const dose = taperDoseOnDate(activeTaper, dstr); // pause-aware
+      const dose = taperDoseOnDate(taper, dstr); // pause-aware
       const unitsPerDay = (dose / Number(med.strength)) * times.length * adh;
       if (unitsPerDay <= 0) continue; // taper reached 0 — stock stops draining
       remaining -= unitsPerDay;
-      if (remaining <= 0) return finish(unitsPerDay, day, "taper", usageConfidence(logs, med, { now }));
+      if (remaining <= 0) return finish(unitsPerDay, day, method, usageConfidence(logs, med, { now }));
     }
-    // Never runs out within a year (taper ends first)
-    return finish(0, null, "taper", usageConfidence(logs, med, { now }));
+    // Never runs out within a year (taper reaches zero first)
+    return finish(0, null, method, usageConfidence(logs, med, { now }));
   }
 
   // PRN: purely usage-based.

@@ -1,6 +1,6 @@
 import {
   doseQuantity, logQuantity, scheduledDailyQuantity,
-  adherenceFactor, prnDailyRate, predictRunOut, inventoryStatus,
+  adherenceFactor, prnDailyRate, predictRunOut, inventoryStatus, taperState,
 } from "../predictor";
 import { localDateStr, addDaysStr, diffDays } from "../dates";
 
@@ -189,6 +189,66 @@ describe("predictRunOut", () => {
     const p = predictRunOut({ med: m, logs: [], taper, now: NOW });
     expect(p.method).toBe("taper");
     expect(p.days_left).toBeNull();
+  });
+
+  test("paused taper holds the frozen dose and says so (method taper-paused)", () => {
+    const m = med({ strength: 100, inventory: { current_count: 20, units_per_dose: 1 } });
+    const start = addDaysStr(localDateStr(NOW), -20);
+    const steps = [0, 1, 2, 3, 4].map((i) => ({ step: i, dose: 100 - 25 * i, start_day: i * 10 }));
+    const taper = {
+      is_active: true, is_paused: true, paused_on: addDaysStr(localDateStr(NOW), -10),
+      start_date: start, total_days: 40,
+      schedule: { steps, summary: { step_interval_days: 10 } },
+    };
+    const p = predictRunOut({ med: m, logs: [], taper, now: NOW });
+    expect(p.method).toBe("taper-paused");
+    // frozen at day 10 → step 1 = 75 mg = 0.75 pills/day → 20 / 0.75 ≈ 26.7 days
+    expect(p.days_left).toBeGreaterThan(25);
+    expect(p.days_left).toBeLessThan(29);
+  });
+
+  test("taper completed to zero → observed usage drives the projection, not the schedule", () => {
+    const m = med({ strength: 100, inventory: { current_count: 30, units_per_dose: 1 } });
+    const start = addDaysStr(localDateStr(NOW), -60);
+    const taper = {
+      is_active: true, start_date: start, total_days: 30,
+      final_dose: 0,
+      schedule: { steps: [{ step: 0, dose: 100 }, { step: 1, dose: 0 }], summary: { step_interval_days: 15, end_date: addDaysStr(start, 30) } },
+    };
+    // No logs: nothing observed → no projection, honest method label.
+    const silent = predictRunOut({ med: m, logs: [], taper, now: NOW });
+    expect(silent.method).toBe("taper-complete");
+    expect(silent.days_left).toBeNull();
+    // Still taking 1/day despite the "finished" plan → usage-based projection.
+    const active = predictRunOut({ med: m, logs: takenLogs(m, { days: 14, perDay: 1 }), taper, now: NOW });
+    expect(active.method).toBe("taper-complete");
+    expect(active.days_left).toBeGreaterThan(20);
+    expect(active.days_left).toBeLessThan(40);
+  });
+
+  test("taper finished at a maintenance dose keeps simulating at the final dose", () => {
+    const m = med({ strength: 100, inventory: { current_count: 30, units_per_dose: 1 } });
+    const start = addDaysStr(localDateStr(NOW), -60);
+    const taper = {
+      is_active: true, start_date: start, total_days: 30, final_dose: 25,
+      schedule: { steps: [{ step: 0, dose: 100 }, { step: 1, dose: 25 }], summary: { step_interval_days: 15, end_date: addDaysStr(start, 30) } },
+    };
+    const p = predictRunOut({ med: m, logs: [], taper, now: NOW });
+    expect(p.method).toBe("taper");
+    // 0.25 pills/day → 30 / 0.25 = 120 days
+    expect(p.days_left).toBeGreaterThan(100);
+  });
+
+  test("taperState classifies running / paused / finished / none", () => {
+    const start = addDaysStr(localDateStr(NOW), -10);
+    const base = { is_active: true, start_date: start, total_days: 30, schedule: { steps: [{ dose: 1 }], summary: {} } };
+    expect(taperState(base, localDateStr(NOW))).toBe("running");
+    expect(taperState({ ...base, is_paused: true }, localDateStr(NOW))).toBe("paused");
+    expect(taperState({ ...base, total_days: 5 }, localDateStr(NOW))).toBe("finished");
+    expect(taperState({ ...base, is_active: false }, localDateStr(NOW))).toBe("none");
+    expect(taperState(null, localDateStr(NOW))).toBe("none");
+    // no derivable end → stays running rather than guessing
+    expect(taperState({ ...base, total_days: undefined }, localDateStr(NOW))).toBe("running");
   });
 });
 

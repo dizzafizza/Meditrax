@@ -43,7 +43,7 @@ export default function TaperDetail() {
 
   return (
     <div>
-      <PageHeader back title={t.medication?.name || "Taper plan"} subtitle={`${t.method} taper`}
+      <PageHeader back title={t.medication?.name || "Taper plan"} subtitle={`${t.method} taper${!t.is_active ? " — ended" : t.is_paused ? " — paused" : t.is_finished ? " — complete" : ""}`}
         right={
           <div className="flex items-center gap-1">
             <button onClick={() => setShareOpen(true)} data-testid="share-taper-button" aria-label="Share taper plan" className="pressable h-10 w-10 rounded-full hover:bg-muted flex items-center justify-center text-primary"><Share2 className="h-5 w-5" /></button>
@@ -70,12 +70,20 @@ export default function TaperDetail() {
           </div>
         )}
 
-        <div className="flex gap-3">
-          <Button variant="secondary" className="flex-1 h-11 rounded-xl" onClick={() => upd.mutate({ is_paused: !t.is_paused })} data-testid="taper-pause-button">
-            {t.is_paused ? <><Play className="h-4 w-4 mr-1" />Resume</> : <><Pause className="h-4 w-4 mr-1" />Pause</>}
-          </Button>
-          {t.is_active && <Button variant="secondary" className="flex-1 h-11 rounded-xl" onClick={() => upd.mutate({ is_active: false })}>End plan</Button>}
-        </div>
+        {!t.is_active && (
+          <div className="card-soft p-3 text-sm text-muted-foreground text-center">This plan has ended — it no longer affects doses or refill projections.</div>
+        )}
+        {t.is_active && (
+          <div className="flex gap-3">
+            <Button variant="secondary" className="flex-1 h-11 rounded-xl" onClick={() => upd.mutate({ is_paused: !t.is_paused })} data-testid="taper-pause-button">
+              {t.is_paused ? <><Play className="h-4 w-4 mr-1" />Resume</> : <><Pause className="h-4 w-4 mr-1" />Pause</>}
+            </Button>
+            <Button variant="secondary" className="flex-1 h-11 rounded-xl" onClick={() => upd.mutate({ is_active: false })}>End plan</Button>
+          </div>
+        )}
+        {t.is_active && t.is_paused && (
+          <div className="card-soft p-3 text-xs text-muted-foreground text-center">Paused — the dose holds at the current step. Resuming shifts the remaining schedule forward by the paused time.</div>
+        )}
 
         <div>
           <p className="px-1 font-display text-lg font-semibold mb-2">Schedule</p>

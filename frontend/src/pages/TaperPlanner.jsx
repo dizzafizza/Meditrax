@@ -53,7 +53,7 @@ export default function TaperPlanner() {
               <div className="flex items-center gap-3">
                 <MedColorDot color={t.medication_color} size={44} />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2"><p className="font-semibold truncate">{t.medication_name}</p>{!t.is_active && <span className="text-[11px] text-muted-foreground">ended</span>}{t.is_paused && <span className="text-[11px] text-[hsl(var(--warning))]">paused</span>}</div>
+                  <div className="flex items-center gap-2"><p className="font-semibold truncate">{t.medication_name}</p>{!t.is_active && <span className="text-[11px] text-muted-foreground">ended</span>}{t.is_active && t.is_paused && <span className="text-[11px] text-[hsl(var(--warning))]">paused</span>}{t.is_active && !t.is_paused && t.is_finished && <span className="text-[11px] text-[hsl(var(--success))]">complete</span>}</div>
                   <p className="text-xs text-muted-foreground capitalize">{t.method} · {t.initial_dose}→{t.final_dose} {t.unit} · {t.total_days} days</p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />

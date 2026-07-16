@@ -25,7 +25,9 @@ const CONFIDENCE = {
 function projectionLine(it) {
   if (it.days_left == null) {
     if (it.method === "prn") return "As needed — log doses to see a projection";
-    if (it.method === "taper") return "Taper ends before stock runs out";
+    if (it.method === "taper") return "Taper reaches zero before stock runs out";
+    if (it.method === "taper-paused") return "Taper paused — holding your current dose";
+    if (it.method === "taper-complete") return "Taper complete — log doses to see a usage-based projection";
     return "No projection yet";
   }
   const parts = [`~${it.days_left} days left`];
@@ -33,6 +35,15 @@ function projectionLine(it) {
   if (it.refill_by_date && it.status !== "out") parts.push(`refill by ${fmtDate(it.refill_by_date, "MMM d")}`);
   return parts.join(" · ");
 }
+
+const METHOD_COPY = {
+  prn: "based on your actual usage",
+  taper: "based on your taper schedule",
+  "taper-paused": "based on your paused taper — holding the current dose",
+  "taper-complete": "taper complete — based on your actual usage since",
+  blended: "based on schedule + your history",
+  scheduled: "based on your schedule",
+};
 
 export default function Inventory() {
   const qc = useQueryClient();
@@ -69,7 +80,7 @@ export default function Inventory() {
                   </p>
                   {conf && (
                     <p className="text-[10px] text-muted-foreground">
-                      {it.method === "prn" ? "based on your actual usage" : it.method === "taper" ? "based on your taper schedule" : it.method === "blended" ? "based on schedule + your history" : "based on your schedule"} · <span className={conf.c}>{conf.l}</span>
+                      {METHOD_COPY[it.method] || "based on your schedule"} · <span className={conf.c}>{conf.l}</span>
                     </p>
                   )}
                 </div>
