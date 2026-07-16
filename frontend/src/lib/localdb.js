@@ -3,6 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
+import { personalizedProfile, observationsFromSession, updateModel } from "./effectsEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus } from "./predictor";
 
@@ -12,7 +13,7 @@ export const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const PROFILE_COLORS = ["#2A767B", "#E08A3C", "#7A6FB0", "#3E7CB1", "#B0436F", "#5B8C5A"];
 // Every profile-scoped collection. Referenced by deleteProfile / export / import
 // so new collections can't be forgotten in one of the three places.
-export const PROFILE_COLLECTIONS = ["medications", "logs", "reminders", "tapers", "cyclic", "chat", "checkins", "insights"];
+export const PROFILE_COLLECTIONS = ["medications", "logs", "reminders", "tapers", "cyclic", "chat", "checkins", "insights", "effectSessions", "effectModels"];
 
 export function uid() {
   return (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
@@ -534,6 +535,153 @@ export async function deleteCheckin(id) {
   const items = await getArr(pkey("checkins"));
   await setArr(pkey("checkins"), items.filter((c) => c.id !== id));
   return { deleted: true };
+}
+
+// ---- active effects tracker ----
+// Sessions capture one dose's effect timeline; the per-med model learns the
+// user's personal onset/peak/duration from session feedback (effectsEngine).
+
+export async function getEffectModel(medication_id) {
+  await ensureInit();
+  return (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
+}
+
+async function saveEffectModel(model) {
+  const models = await getArr(pkey("effectModels"));
+  const idx = models.findIndex((m) => m.medication_id === model.medication_id);
+  if (idx >= 0) models[idx] = model; else models.push(model);
+  await setArr(pkey("effectModels"), models);
+  return model;
+}
+
+export async function startEffectSession({ medication_id, dose = null, unit = null, log_id = null, started_at = null }) {
+  await ensureInit();
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
+  if (!med) throw new Error("Medication not found");
+  const sessions = await getArr(pkey("effectSessions"));
+  // One active session per medication — starting again replaces silently
+  // confusing duplicates with a clean restart.
+  sessions.forEach((s) => { if (s.medication_id === medication_id && s.status === "active") { s.status = "discarded"; s.ended_at = nowIso(); } });
+  const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
+  const doc = {
+    id: uid(), medication_id, log_id,
+    dose: dose != null && isFinite(Number(dose)) ? Number(dose) : null,
+    unit: unit || med.unit || null,
+    started_at: started_at && !isNaN(new Date(started_at).getTime()) ? new Date(started_at).toISOString() : nowIso(),
+    ended_at: null, status: "active", events: [],
+    profile: personalizedProfile(med, model, dose), // snapshot used for this session
+    created_at: nowIso(),
+  };
+  sessions.push(doc);
+  await setArr(pkey("effectSessions"), sessions);
+  return doc;
+}
+
+// Edit an active session's start time ("I actually took it earlier") and/or
+// dose. A dose change re-derives the profile snapshot (dose scaling); a start
+// change re-anchors the whole curve, so predictions shift with it.
+export async function updateEffectSession(sessionId, patch = {}) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (s.status !== "active") throw new Error("Only active sessions can be edited");
+  if ("started_at" in patch) {
+    const d = new Date(patch.started_at);
+    if (!patch.started_at || isNaN(d.getTime())) throw new Error("Invalid start time");
+    if (d.getTime() > Date.now() + 60000) throw new Error("Start time can't be in the future");
+    s.started_at = d.toISOString();
+  }
+  if ("dose" in patch) {
+    const v = Number(patch.dose);
+    if (!isFinite(v) || v < 0) throw new Error("Invalid dose");
+    s.dose = v;
+    const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
+    const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === s.medication_id) || null;
+    s.profile = personalizedProfile(med, model, v);
+  }
+  s.updated_at = nowIso();
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
+}
+
+export async function addEffectEvent(sessionId, { kind, intensity = null, note = null }) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (s.status !== "active") throw new Error("Session is not active");
+  const KINDS = ["onset", "peak", "wearing_off", "gone", "intensity", "note"];
+  if (!KINDS.includes(kind)) throw new Error("Unknown event kind");
+  const v = Number(intensity);
+  s.events.push({ t: nowIso(), kind, intensity: isFinite(v) ? Math.min(10, Math.max(0, v)) : null, note: note || null });
+  // "gone" is terminal feedback — close and learn in the same step.
+  if (kind === "gone") return endEffectSessionInternal(sessions, s, { learn: true });
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
+}
+
+async function endEffectSessionInternal(sessions, s, { learn }) {
+  s.status = "completed";
+  s.ended_at = nowIso();
+  await setArr(pkey("effectSessions"), sessions);
+  if (learn) {
+    const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
+    const obs = observationsFromSession(s);
+    if (obs.onset_min != null || obs.peak_min != null || obs.end_min != null) {
+      const prev = await getEffectModel(s.medication_id);
+      const next = updateModel(prev, obs, s.dose, med);
+      next.medication_id = s.medication_id;
+      await saveEffectModel(next);
+    }
+  }
+  return s;
+}
+
+export async function endEffectSession(sessionId, { learn = true, discard = false } = {}) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (discard) {
+    s.status = "discarded";
+    s.ended_at = nowIso();
+    await setArr(pkey("effectSessions"), sessions);
+    return s;
+  }
+  return endEffectSessionInternal(sessions, s, { learn });
+}
+
+// Active sessions with their medication attached. Sessions long past their
+// predicted end (2× duration) auto-complete without learning — silence isn't
+// feedback.
+export async function getActiveEffectSessions() {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const meds = await getArr(pkey("medications"));
+  const now = Date.now();
+  let changed = false;
+  sessions.forEach((s) => {
+    if (s.status !== "active") return;
+    const dur = (s.profile?.duration_min || 360) * 60000;
+    if (now - new Date(s.started_at).getTime() > dur * 2) { s.status = "completed"; s.ended_at = nowIso(); changed = true; }
+  });
+  if (changed) await setArr(pkey("effectSessions"), sessions);
+  return sessions
+    .filter((s) => s.status === "active")
+    .sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""))
+    .map((s) => {
+      const m = meds.find((x) => x.id === s.medication_id);
+      return { ...s, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit };
+    });
+}
+
+export async function getEffectSessions({ medication_id, limit } = {}) {
+  await ensureInit();
+  let sessions = await getArr(pkey("effectSessions"));
+  if (medication_id) sessions = sessions.filter((s) => s.medication_id === medication_id);
+  sessions.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+  return limit ? sessions.slice(0, limit) : sessions;
 }
 
 // ---- AI insights cache (key-value per profile) ----

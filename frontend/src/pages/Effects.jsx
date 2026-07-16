@@ -10,6 +10,7 @@ import { timestampToLocalDate } from "@/lib/dates";
 import { relativeTime, fmtDate } from "@/lib/format";
 import { useUI } from "@/context/UIContext";
 import { Activity, Smile, TrendingUp, TrendingDown, Minus as MinusIcon, Plus } from "lucide-react";
+import { ActiveEffectsDetail } from "@/components/ActiveEffects";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 
 const MOOD_WORD_EMOJI = { great: "😊", good: "🙂", okay: "😐", low: "😕", bad: "😟" };
@@ -50,6 +51,9 @@ export default function Effects() {
       <PageHeader title="Effects & Journal" subtitle="Mood, effectiveness & notes"
         right={<Button size="sm" className="rounded-xl" onClick={ui.openCheckin} data-testid="effects-checkin-button"><Plus className="h-4 w-4 mr-1" />Check in</Button>} />
       <div className="px-4 space-y-4">
+        {/* Active effects tracker (detailed) */}
+        <ActiveEffectsDetail />
+
         {/* 14-day mood trend */}
         {trend.n > 0 && (
           <div className="card-soft p-4" data-testid="mood-trend-card">

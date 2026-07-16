@@ -25,7 +25,7 @@ const DOCS = {
       {
         h: "What data the app stores locally",
         p: [
-          "Medications and schedules, dose logs (including amounts, times, mood, effectiveness ratings and notes), mood check-ins, inventory counts, taper and cyclic dosing plans, family profiles and health details you enter (allergies, conditions, emergency contacts), app settings, AI assistant configuration (including your API key), and AI chat history. All of it stays in IndexedDB on this device.",
+          "Medications and schedules, dose logs (including amounts, times, mood, effectiveness ratings and notes), mood check-ins, effect-tracking sessions and the per-medication timing models learned from them, inventory counts, taper and cyclic dosing plans, family profiles and health details you enter (allergies, conditions, emergency contacts), app settings, AI assistant configuration (including your API key), and AI chat history. All of it stays in IndexedDB on this device.",
           "Because storage is local, clearing your browser data, uninstalling the app, or losing the device deletes your data. Use Settings → Export to make your own backups — the backup file is created on your device and saved wherever you choose.",
         ],
       },

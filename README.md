@@ -16,6 +16,11 @@ Your data stays on your device.
   status, amount, mood, effectiveness, notes) or deleted with exact inventory
   restore; doses can be logged retroactively via a date/time picker, and mood
   check-ins are editable the same way from the journal.
+- **Active effects tracker** — start tracking when you log a dose and watch the
+  predicted onset → peak → wear-off curve live: a compact card on the home screen,
+  a detailed curve with feedback controls on the Effects page. A fully on-device
+  model learns your personal onset/peak/duration per medication from your
+  feedback and adapts future predictions to your metabolism.
 - **Medications** — strength, form, schedule, category, risk level and dependency-risk
   category per medication; multi-pill dosing (pills-per-dose, tracked independent of
   inventory) with a pill-count stepper when logging.

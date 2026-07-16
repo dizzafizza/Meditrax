@@ -8,6 +8,7 @@ import { MED_COLORS, FREQUENCY_TIMES, WEEKDAYS } from "@/lib/format";
 import { suggestTaperParams } from "@/lib/taperEngine";
 import { analyzeMedication, analyzeAll, SAFETY_COPY } from "@/lib/behavior";
 import { unifyMoodEntries, moodDailySeries, moodTrend } from "@/lib/moodAnalytics";
+import { intensityAt, phaseAt, fmtMins } from "@/lib/effectsEngine";
 
 const AIToolsContext = createContext(null);
 export const useAITools = () => useContext(AIToolsContext);
@@ -38,6 +39,7 @@ export const TOOL_SCHEMA = [
   { type: "function", function: { name: "get_behavior_analysis", description: "Get the deterministic usage-pattern / dependency-signal analysis for the user's medications (educational, not diagnostic). Omit medication for all applicable meds.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name (optional)" } } } } },
   { type: "function", function: { name: "log_mood_checkin", description: "Save a standalone mood check-in for the user (mood 1=bad … 5=great; optional 1-5 dimensions).", parameters: { type: "object", properties: { mood: { type: "number", description: "1-5" }, energy: { type: "number" }, sleep: { type: "number" }, pain: { type: "number" }, anxiety: { type: "number" }, notes: { type: "string" } }, required: ["mood"] } } },
   { type: "function", function: { name: "get_mood_trends", description: "Get the user's mood trend (average, direction, recent daily values) from check-ins and dose logs.", parameters: { type: "object", properties: { days: { type: "number", description: "Window in days, default 30" } } } } },
+  { type: "function", function: { name: "get_active_effects", description: "Get the user's active effect-tracking sessions: current phase (onset/peak/wearing off), intensity %, and predicted onset/peak/end times based on their personalized model.", parameters: { type: "object", properties: {} } } },
 ];
 
 export function AIToolsProvider({ children }) {
@@ -237,6 +239,26 @@ export function AIToolsProvider({ children }) {
         const series = moodDailySeries(unifyMoodEntries(checkins, logs), { days });
         const trend = moodTrend(series);
         return { days, average: trend.avg, direction: trend.direction, days_with_data: trend.n, last_14_days: series.slice(-14).map((p) => ({ date: p.date, mood: p.mood })) };
+      }
+      case "get_active_effects": {
+        const sessions = await db.getActiveEffectSessions();
+        const now = Date.now();
+        return {
+          active_sessions: sessions.map((s) => {
+            const t = Math.max(0, (now - new Date(s.started_at).getTime()) / 60000);
+            const p = s.profile;
+            const startMs = new Date(s.started_at).getTime();
+            const at = (mins) => new Date(startMs + mins * 60000).toISOString();
+            return {
+              medication: s.medication_name, dose: s.dose, unit: s.unit,
+              started_at: s.started_at, elapsed: fmtMins(t),
+              phase: phaseAt(t, p).label,
+              intensity_pct: Math.round(intensityAt(t, p) * (p.intensity_scale || 1)),
+              predicted: { onset_at: at(p.onset_min), peak_at: at(p.peak_min), ends_at: at(p.duration_min) },
+              personalized: p.learned ? `from ${p.samples} sessions (${p.confidence} confidence)` : "typical values (no personal data yet)",
+            };
+          }),
+        };
       }
       default:
         return { error: `Unknown tool: ${name}` };
