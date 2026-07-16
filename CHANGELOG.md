@@ -3,6 +3,42 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-16 — Editable logs & journal quality-of-life
+
+### Added
+- **Edit any dose log** — time & date, status, pill count, total amount, mood,
+  effectiveness and notes. Open a log by tapping a completed dose on Today, a row
+  in the new **History** card on the medication detail page, or a journal entry on
+  Effects. Deleting from the edit sheet restores exactly the inventory the log
+  consumed. Inventory reconciliation on edit is difference-based (`updateLog` in
+  `src/lib/localdb.js`): a timestamp/notes edit never moves stock, quantity/status
+  changes adjust by the delta with the same clamp-at-zero guarantees as
+  create/undo, and legacy logs with unknowable decrements are left untouched.
+- **Retroactive logging** — the dose-log sheet now has a "When" date/time field
+  (defaults to now, capped at now), so a dose taken hours ago can be logged at the
+  right time. The AI assistant's `log_dose` tool gained an optional `when`
+  parameter for the same purpose.
+- **Edit & delete mood check-ins** — tap a check-in in the Effects journal to
+  change its mood, dimensions, notes or time, or delete it.
+- **History card on medication detail** — the 8 most recent logs, tap to edit.
+
+### Fixed
+- Tapping an already-logged dose on Today used to open a blank log sheet whose
+  save dedup-overwrote the existing log — resetting its time to "now" and wiping
+  any notes/mood. It now opens the actual log in edit mode.
+- Editing or undoing a log now also refreshes the medication-detail query, so its
+  inventory count no longer goes stale.
+- Moving a scheduled dose log onto a day that already has a log for the same slot
+  is blocked with a clear error instead of silently creating a duplicate that the
+  dedup guard could never merge.
+- **`datetime-local` inputs overflowing their container on iOS Safari** — WebKit
+  sizes the native date/time widget to its own intrinsic content width and can
+  ignore `width: 100%` on narrow viewports, so the new "When" picker rendered
+  wider than the screen instead of shrinking to fit. Fixed with a global rule
+  constraining `date`/`time`/`datetime-local` inputs to their container
+  (`box-sizing: border-box`, `width`/`max-width: 100%`, `min-width: 0`), plus
+  `overflow-x: hidden` on `html`/`body` as a defensive backstop.
+
 ## 2026-07-15 — International data-compliance pass
 
 ### Fixed
