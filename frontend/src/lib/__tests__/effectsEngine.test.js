@@ -144,4 +144,27 @@ describe("session lifecycle in localdb", () => {
     expect(fmtMins(95)).toBe("1 h 35 m");
     expect(fmtMins(120)).toBe("2 h");
   });
+
+  test("updateEffectSession edits start time and dose, re-deriving the profile", async () => {
+    const med = await db.createMedication({ name: "EditFxMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    // Seed a model so dose scaling has a reference to work against.
+    let m = null;
+    m = (await import("../effectsEngine")).updateModel(m, { onset_min: 30, peak_min: 90, end_min: 240 }, 10, med);
+    const s0 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const earlier = new Date(Date.now() - 2 * 3600000).toISOString();
+    const edited = await db.updateEffectSession(s0.id, { started_at: earlier, dose: 20 });
+    expect(edited.started_at).toBe(earlier);
+    expect(edited.dose).toBe(20);
+    // dose changed → profile snapshot re-derived (still a valid ordered profile)
+    expect(edited.profile.onset_min).toBeLessThan(edited.profile.peak_min);
+    expect(edited.profile.peak_min).toBeLessThan(edited.profile.duration_min);
+
+    await expect(db.updateEffectSession(s0.id, { started_at: "garbage" })).rejects.toThrow(/start time/i);
+    await expect(db.updateEffectSession(s0.id, { started_at: new Date(Date.now() + 3600000).toISOString() })).rejects.toThrow(/future/i);
+    await expect(db.updateEffectSession(s0.id, { dose: -5 })).rejects.toThrow(/dose/i);
+    await expect(db.updateEffectSession("missing", { dose: 5 })).rejects.toThrow(/not found/i);
+
+    await db.endEffectSession(s0.id, { discard: true });
+    await expect(db.updateEffectSession(s0.id, { dose: 5 })).rejects.toThrow(/active/i);
+  });
 });

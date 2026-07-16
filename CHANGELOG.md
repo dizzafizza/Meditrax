@@ -23,6 +23,13 @@ Notable changes to Meditrax. Format loosely follows
   auto-expire without learning when abandoned — silence isn't feedback.
 - **Assistant integration** — a `get_active_effects` tool so the AI can answer
   "when will this wear off?" from the personalized model.
+- **Session editing** — a pencil button on the detailed card edits the start
+  time ("I actually took it earlier") and dose of a running session; moving the
+  start re-anchors the whole curve, and a dose change re-derives the profile.
+- **Detailed chart** — hourly gridlines and tick labels (denser for short
+  curves), a 0–100% intensity axis, dashed markers at predicted onset/peak/end,
+  a labelled "now" line, and the user's own feedback events plotted where they
+  happened (intensity reports at the strength actually felt).
 - Effect sessions and learned models are profile-scoped, included in
   export/import/delete, and listed in the Privacy Policy's stored-data section.
 

@@ -577,6 +577,34 @@ export async function startEffectSession({ medication_id, dose = null, unit = nu
   return doc;
 }
 
+// Edit an active session's start time ("I actually took it earlier") and/or
+// dose. A dose change re-derives the profile snapshot (dose scaling); a start
+// change re-anchors the whole curve, so predictions shift with it.
+export async function updateEffectSession(sessionId, patch = {}) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (s.status !== "active") throw new Error("Only active sessions can be edited");
+  if ("started_at" in patch) {
+    const d = new Date(patch.started_at);
+    if (!patch.started_at || isNaN(d.getTime())) throw new Error("Invalid start time");
+    if (d.getTime() > Date.now() + 60000) throw new Error("Start time can't be in the future");
+    s.started_at = d.toISOString();
+  }
+  if ("dose" in patch) {
+    const v = Number(patch.dose);
+    if (!isFinite(v) || v < 0) throw new Error("Invalid dose");
+    s.dose = v;
+    const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
+    const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === s.medication_id) || null;
+    s.profile = personalizedProfile(med, model, v);
+  }
+  s.updated_at = nowIso();
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
+}
+
 export async function addEffectEvent(sessionId, { kind, intensity = null, note = null }) {
   await ensureInit();
   const sessions = await getArr(pkey("effectSessions"));
