@@ -3,6 +3,36 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-16 — Correct dose defaults for tapers & cycles; reminders that actually fire
+
+### Fixed
+- **Taper doses now flow into logging** — every log entry point (one-tap take on
+  Today, the log sheet from any page, the AI assistant's `log_dose`) used the
+  medication's base strength even when an active taper said today's dose was
+  lower. A shared `effectiveDoseInfo`/`logDefaultsForMed` helper now computes the
+  taper- and cycle-aware amount **and** the matching pill count (quarter-pill
+  precision), so inventory decrements correctly too.
+- **Cyclic dosing plans were completely inert** — creating an on/off cycle changed
+  nothing: off days still scheduled full doses, and dose multipliers (e.g.
+  "4 days full / 3 days half") never applied anywhere. Cycles now drive the
+  schedule: off days drop the dose from Today/adherence/analytics, and
+  fractional phases scale the default dose, the dose-card label ("50 mg (on)"),
+  and reminder text.
+- **Pausing a taper did nothing** — the dose kept stepping down by calendar date
+  while "paused". Pausing now freezes progress at the current step (dose, step
+  marker, and refill prediction all hold), and resuming shifts the remaining
+  schedule forward by the paused duration so it picks up exactly where it left
+  off, with step dates regenerated to match.
+- **Custom reminders never fired** — reminders created on the Reminders page were
+  stored but never scheduled (only today's dose schedule was). They now schedule
+  alongside dose reminders, deduplicated against doses at the same time.
+- **Dead notification settings are now real** — `lead_minutes` ("remind me
+  early") and quiet hours existed in stored settings but were ignored and had no
+  UI. Both now have Settings controls and are honored by the scheduler
+  (including overnight quiet windows like 22:00–07:00).
+- Logging a dose now reschedules pending reminders, so a dose taken early no
+  longer notifies at its original time.
+
 ## 2026-07-16 — Editable logs & journal quality-of-life
 
 ### Added

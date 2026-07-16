@@ -127,6 +127,21 @@ export function doseOnDate(schedule, onDate, startDate) {
   return steps[idx].dose;
 }
 
+// Pause-aware dose lookup for a stored taper record. While a taper is paused
+// its progress freezes: the dose holds at whatever step was current when it
+// was paused (paused_on), instead of silently continuing to step down by
+// calendar date. Falls back to the query date for legacy paused tapers that
+// predate paused_on.
+export function taperDoseOnDate(taper, onDate) {
+  if (!taper?.schedule) return 0;
+  let effectiveDate = isoDate(onDate);
+  if (taper.is_paused) {
+    const frozen = taper.paused_on ? isoDate(taper.paused_on) : effectiveDate;
+    if (frozen < effectiveDate) effectiveDate = frozen;
+  }
+  return doseOnDate(taper.schedule, effectiveDate, taper.start_date);
+}
+
 export function suggestTaperParams(med) {
   const dep = (med || {}).dependency_risk_category || "none";
   const risk = (med || {}).risk_level || "low";

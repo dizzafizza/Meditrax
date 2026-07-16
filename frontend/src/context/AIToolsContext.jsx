@@ -142,9 +142,16 @@ export function AIToolsProvider({ children }) {
           if (d.getTime() > Date.now() + 60000) return { error: "'when' cannot be in the future" };
           timestamp = d.toISOString();
         }
-        await db.createLog({ medication_id: med.id, status, dose_taken: args.dose != null ? Number(args.dose) : med.strength, unit: med.unit, scheduled_time: args.time || null, ...(timestamp ? { timestamp } : {}) });
+        // Default the amount to what's actually due (taper/cyclic-aware), not base strength.
+        const defaults = await db.logDefaultsForMed(med.id).catch(() => null);
+        const strength = Number(med.strength);
+        const doseTaken = args.dose != null ? Number(args.dose) : (defaults?.dose ?? med.strength);
+        const quantity = args.dose != null && isFinite(strength) && strength > 0
+          ? Math.max(0, Math.round((Number(args.dose) / strength) * 4) / 4)
+          : defaults?.quantity;
+        await db.createLog({ medication_id: med.id, status, dose_taken: doseTaken, unit: med.unit, scheduled_time: args.time || null, ...(quantity != null ? { quantity } : {}), ...(timestamp ? { timestamp } : {}) });
         invalidateAll();
-        return { ok: true, logged: med.name, status, ...(timestamp ? { at: timestamp } : {}) };
+        return { ok: true, logged: med.name, status, dose: doseTaken, ...(timestamp ? { at: timestamp } : {}) };
       }
       case "create_taper_plan": {
         const med = await resolveMed(args.medication || args.name);

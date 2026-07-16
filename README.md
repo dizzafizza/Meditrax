@@ -38,8 +38,12 @@ Your data stays on your device.
   diagnosis, with crisis resources surfaced when appropriate.
 - **Taper Planner** — linear / exponential / hyperbolic / custom taper schedules,
   always monotonic and reaching the target dose, with an integrated safety framing
-  based on the medication's dependency-risk category.
-- **Cyclic Dosing** — on/off dosing cycles (e.g. stimulant holidays).
+  based on the medication's dependency-risk category. Today's taper dose drives the
+  default when logging (amount and pill count), and pausing a plan freezes progress
+  until you resume — the remaining schedule shifts forward to match.
+- **Cyclic Dosing** — on/off dosing cycles (e.g. stimulant holidays) that actually
+  drive the schedule: off days drop doses from Today and adherence, and fractional
+  phases (e.g. half-dose maintenance) scale the default logged dose.
 - **Knowledge Base** — an offline, curated medication reference library plus
   AI-assisted lookups for medications not in the catalog.
 - **AI Assistant** — a chat assistant that can also *act* in the app (switch profiles,

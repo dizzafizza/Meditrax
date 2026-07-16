@@ -82,27 +82,65 @@ export function clearScheduled() {
   timers = [];
 }
 
+// "HH:MM" is inside the quiet window? Handles overnight windows (22:00–07:00).
+function inQuietHours(date, quiet) {
+  if (!quiet?.enabled || !quiet.start || !quiet.end) return false;
+  const p = (n) => String(n).padStart(2, "0");
+  const hm = `${p(date.getHours())}:${p(date.getMinutes())}`;
+  return quiet.start <= quiet.end
+    ? hm >= quiet.start && hm < quiet.end
+    : hm >= quiet.start || hm < quiet.end;
+}
+
 export async function scheduleAllReminders() {
   clearScheduled();
   if (!pushSupported() || Notification.permission !== "granted" || !notifEnabledFlag()) return 0;
-  let today;
-  try { today = await db.getToday(); } catch (e) { return 0; }
+  let today, settings, reminders, meds;
+  try {
+    [today, settings, reminders, meds] = await Promise.all([
+      db.getToday(), db.getSettings(), db.getReminders(), db.getMedications(),
+    ]);
+  } catch (e) { return 0; }
   const now = new Date();
   const HORIZON_MS = 16 * 60 * 60 * 1000; // setTimeout reliability window
+  const leadMin = Math.max(0, Number(settings?.notifications?.lead_minutes) || 0);
+  const quiet = settings?.quiet_hours;
   let scheduled = 0;
+
+  const scheduleAt = (when, title, body, tag) => {
+    const delay = when - now;
+    if (delay <= 0 || delay > HORIZON_MS) return false;
+    if (inQuietHours(when, quiet)) return false;
+    timers.push(setTimeout(() => showLocalNotification(title, body, { tag, url: "/" }), delay));
+    scheduled++;
+    return true;
+  };
+
+  // Scheduled doses still pending today (lead time applies here).
   (today.doses || []).forEach((dose) => {
     if (dose.status !== "pending" || !dose.time) return;
     const [h, m] = dose.time.split(":").map(Number);
     const when = new Date();
-    when.setHours(h, m, 0, 0);
-    const delay = when - now;
-    if (delay <= 0 || delay > HORIZON_MS) return;
-    const id = setTimeout(() => {
-      const label = dose.strength ? `${dose.name} · ${dose.strength} ${dose.unit || ""}`.trim() : dose.name;
-      showLocalNotification("Time for your medication", label, { tag: `dose-${dose.id}`, url: "/" });
-    }, delay);
-    timers.push(id);
-    scheduled++;
+    when.setHours(h, m - leadMin, 0, 0);
+    const amount = dose.effective_dose ?? dose.strength; // taper/cyclic-aware
+    const label = amount ? `${dose.name} · ${amount} ${dose.unit || ""}`.trim() : dose.name;
+    scheduleAt(when, "Time for your medication", label, `dose-${dose.id}`);
   });
+
+  // User-created reminders (Reminders page) matching today's weekday.
+  const wd = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][now.getDay()];
+  (reminders || []).forEach((r) => {
+    if (r.is_active === false || !r.time) return;
+    if (r.days_of_week?.length && !r.days_of_week.includes(wd)) return;
+    // A pending dose at the same time already notifies — don't double up.
+    const dupe = (today.doses || []).some((d) => d.medication_id === r.medication_id && d.time === r.time);
+    if (dupe) return;
+    const [h, m] = r.time.split(":").map(Number);
+    const when = new Date();
+    when.setHours(h, m, 0, 0);
+    const med = (meds || []).find((x) => x.id === r.medication_id);
+    scheduleAt(when, "Medication reminder", med?.name || "Time for your medication", `rem-${r.id}`);
+  });
+
   return scheduled;
 }

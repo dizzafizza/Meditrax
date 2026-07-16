@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getSettings, updateSettings, exportData, importData, testPush, getAiConfig, updateAiConfig } from "@/lib/api";
 import { testConnection, CURATED_MODELS, TASK_TIER_DEFAULTS, TIER_LABELS } from "@/lib/ai";
 import { useTheme } from "@/context/ThemeContext";
-import { pushStatus, enablePush, disablePush, isIOS, isStandalone, showLocalNotification } from "@/lib/push";
+import { pushStatus, enablePush, disablePush, isIOS, isStandalone, showLocalNotification, scheduleAllReminders } from "@/lib/push";
 import { cn } from "@/lib/utils";
 import { Bell, Sun, Moon, Monitor, Download, Upload, ShieldCheck, Smartphone, Send, Sparkles, KeyRound, Eye, EyeOff, Bot, Wand2, CheckCircle2 } from "lucide-react";
 
@@ -52,6 +52,15 @@ export default function Settings() {
   const saveAi = useMutation({
     mutationFn: () => updateAiConfig(ai),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["aiConfig"] }); toast.success("Assistant settings saved"); },
+    onError: () => toast.error("Could not save settings"),
+  });
+
+  const saveSettings = useMutation({
+    mutationFn: (patch) => updateSettings(patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      scheduleAllReminders().catch(() => {}); // apply lead time / quiet hours now
+    },
     onError: () => toast.error("Could not save settings"),
   });
 
@@ -237,6 +246,43 @@ export default function Settings() {
             <div><p className="text-sm font-medium">Dose reminders</p><p className="text-xs text-muted-foreground">{!push.supported ? "Not supported on this browser" : push.permission === "denied" ? "Blocked in browser settings" : push.subscribed ? "On — scheduled while app is open" : "Off"}</p></div>
             <Switch checked={push.subscribed} disabled={!push.supported || push.permission === "denied"} onCheckedChange={togglePush} data-testid="push-enable-cta" />
           </div>
+
+          {/* Lead time */}
+          <div className="flex items-center justify-between mt-3">
+            <div><p className="text-sm font-medium">Remind me early</p><p className="text-xs text-muted-foreground">Fire dose reminders ahead of time</p></div>
+            <Select
+              value={String(settings?.notifications?.lead_minutes ?? 0)}
+              onValueChange={(v) => saveSettings.mutate({ notifications: { ...(settings?.notifications || {}), lead_minutes: Number(v) } })}
+            >
+              <SelectTrigger className="h-10 w-32 rounded-xl" data-testid="notif-lead-select"><SelectValue /></SelectTrigger>
+              <SelectContent>{[[0, "On time"], [5, "5 min"], [10, "10 min"], [15, "15 min"], [30, "30 min"]].map(([v, l]) => <SelectItem key={v} value={String(v)}>{l}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          {/* Quiet hours */}
+          <div className="mt-3">
+            <div className="flex items-center justify-between">
+              <div><p className="text-sm font-medium">Quiet hours</p><p className="text-xs text-muted-foreground">No reminders during this window</p></div>
+              <Switch
+                checked={!!settings?.quiet_hours?.enabled}
+                onCheckedChange={(v) => saveSettings.mutate({ quiet_hours: { ...(settings?.quiet_hours || { start: "22:00", end: "07:00" }), enabled: v } })}
+                data-testid="quiet-hours-switch"
+              />
+            </div>
+            {settings?.quiet_hours?.enabled && (
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">From</Label>
+                  <Input type="time" value={settings.quiet_hours.start || "22:00"} onChange={(e) => saveSettings.mutate({ quiet_hours: { ...settings.quiet_hours, start: e.target.value } })} className="h-10 rounded-xl mt-1" data-testid="quiet-start-input" />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">To</Label>
+                  <Input type="time" value={settings.quiet_hours.end || "07:00"} onChange={(e) => saveSettings.mutate({ quiet_hours: { ...settings.quiet_hours, end: e.target.value } })} className="h-10 rounded-xl mt-1" data-testid="quiet-end-input" />
+                </div>
+              </div>
+            )}
+          </div>
+
           <Button variant="secondary" className="w-full rounded-xl mt-3" onClick={sendTest} data-testid="push-test-button"><Send className="h-4 w-4 mr-1" />Send test notification</Button>
           <p className="text-[11px] text-muted-foreground mt-2">Reminders fire while the app is open or installed. Background delivery varies by device (especially on iOS).</p>
         </div>
