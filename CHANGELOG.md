@@ -3,6 +3,29 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-16 — Active effects tracker that learns your metabolism
+
+### Added
+- **Active effects tracker** (`src/lib/effectsEngine.js`, `src/components/ActiveEffects.jsx`)
+  — start tracking when logging a dose (a "Track effects" switch in the log sheet)
+  or from a recent dose on the Effects page (backdated to when it was taken).
+  While a session runs, the **home screen shows a simplified card** (current
+  phase, live intensity %, progress bar, time remaining) and the **Effects page
+  shows the detailed view**: the full predicted intensity curve with a "now"
+  marker, predicted onset/peak/end clock times, one-tap feedback ("Feeling it",
+  "Peaking", "Wearing off", "Gone"), and a 0–10 intensity slider.
+- **On-device learning** — each medication gets a personal timing model
+  (onset/peak/duration + reference dose) updated from your feedback via a
+  bounded exponentially-weighted average, entirely offline and inspectable
+  ("Personalized from N tracked sessions, medium confidence"). Predictions
+  start from category/form-typical pharmacokinetic priors and adapt to your
+  metabolism; dose is scaled sub-linearly against your usual dose. Sessions
+  auto-expire without learning when abandoned — silence isn't feedback.
+- **Assistant integration** — a `get_active_effects` tool so the AI can answer
+  "when will this wear off?" from the personalized model.
+- Effect sessions and learned models are profile-scoped, included in
+  export/import/delete, and listed in the Privacy Policy's stored-data section.
+
 ## 2026-07-16 — Correct dose defaults for tapers & cycles; reminders that actually fire
 
 ### Fixed

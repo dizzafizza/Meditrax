@@ -10,6 +10,7 @@ import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
 import { useUI } from "@/context/UIContext";
 import ProfileSwitcher from "@/components/ProfileSwitcher";
+import { ActiveEffectsSimple } from "@/components/ActiveEffects";
 import { getToday, getAnalytics, createLog, deleteLog, getLog, getCheckins } from "@/lib/api";
 import { scheduleAllReminders } from "@/lib/push";
 import { greeting, fmtDate, fmtTime12, timeOfDay, doseLabel, depTone, riskTone } from "@/lib/format";
@@ -131,6 +132,9 @@ export default function Today() {
             </div>
           </div>
         </div>
+
+        {/* Active effects (simplified) */}
+        <ActiveEffectsSimple />
 
         {/* Refill alerts */}
         {(data?.refill_alerts || []).length > 0 && (

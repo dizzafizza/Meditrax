@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog, updateLog, deleteLog, logDefaultsForMed } from "@/lib/api";
+import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession } from "@/lib/api";
 import { scheduleAllReminders } from "@/lib/push";
+import { Switch } from "@/components/ui/switch";
 import MedColorDot from "@/components/MedColorDot";
 import { doseLabel, fmtTime12, toDatetimeLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ export default function QuickLogSheet() {
   const [mood, setMood] = useState(null);
   const [effectiveness, setEffectiveness] = useState([7]);
   const [showMore, setShowMore] = useState(false);
+  const [trackEffects, setTrackEffects] = useState(false);
   // While true, the dose/quantity fields track the computed taper/cyclic-aware
   // default; any manual change hands control to the user.
   const [autoDefault, setAutoDefault] = useState(true);
@@ -91,6 +93,7 @@ export default function QuickLogSheet() {
       setWhen(toDatetimeLocal());
       setNotes(""); setMood(null); setEffectiveness([7]); setShowMore(false);
     }
+    setTrackEffects(false);
     setWhenTouched(false);
   }, [ui.logSheet.open]); // eslint-disable-line
 
@@ -112,10 +115,16 @@ export default function QuickLogSheet() {
 
   const mutation = useMutation({
     mutationFn: (payload) => (editLog ? updateLog(editLog.id, payload) : createLog(payload)),
-    onSuccess: () => {
+    onSuccess: async (log, payload) => {
+      if (!editLog && trackEffects && ["taken", "partial"].includes(payload.status)) {
+        try {
+          await startEffectSession({ medication_id: med.id, dose: payload.dose_taken, unit: med.unit, log_id: log.id, started_at: log.timestamp });
+          qc.invalidateQueries({ queryKey: ["effectSessions"] });
+        } catch { toast.error("Could not start effects tracking"); }
+      }
       invalidate();
       scheduleAllReminders().catch(() => {}); // don't notify for doses just logged
-      toast.success(editLog ? "Log updated" : "Dose logged");
+      toast.success(editLog ? "Log updated" : trackEffects ? "Dose logged — tracking effects" : "Dose logged");
       ui.closeQuickLog();
       if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
     },
@@ -220,6 +229,16 @@ export default function QuickLogSheet() {
                   <span className="text-sm text-muted-foreground w-12">{med.unit}</span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {!editLog && (status === "taken" || status === "partial") && (
+            <div className="mt-4 flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Track effects</p>
+                <p className="text-xs text-muted-foreground">Live onset → peak → wear-off curve that learns your metabolism</p>
+              </div>
+              <Switch checked={trackEffects} onCheckedChange={setTrackEffects} data-testid="quick-log-track-effects" />
             </div>
           )}
 
