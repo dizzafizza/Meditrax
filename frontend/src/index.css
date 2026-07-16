@@ -108,7 +108,7 @@
 
 @layer base {
   * { @apply border-border; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
@@ -116,9 +116,21 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-y: none;
+    overflow-x: hidden;
     text-rendering: optimizeLegibility;
   }
   h1, h2, h3, .font-display { font-family: var(--font-display); }
+
+  /* iOS Safari sizes the native date/time widget to its own intrinsic content
+     width and ignores `width: 100%` on the element, letting it overflow a
+     narrow container (visible as the input's right edge running off-screen).
+     Forcing box-sizing + min-width: 0 makes it respect the parent instead. */
+  input[type="date"], input[type="time"], input[type="datetime-local"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 
 @layer utilities {
