@@ -28,7 +28,7 @@ export const TOOL_SCHEMA = [
   { type: "function", function: { name: "add_medication", description: "Add a medication to the active profile.", parameters: { type: "object", properties: { name: { type: "string" }, strength: { type: "number" }, unit: { type: "string" }, frequency: { type: "string", enum: ["once_daily", "twice_daily", "three_times_daily", "four_times_daily", "every_other_day", "weekly", "as_needed"] }, times: { type: "array", items: { type: "string" }, description: "24h HH:MM times" }, is_prn: { type: "boolean" }, category: { type: "string" }, instructions: { type: "string" } }, required: ["name"] } } },
   { type: "function", function: { name: "update_medication", description: "Update an existing medication (resolve by name or id).", parameters: { type: "object", properties: { name: { type: "string" }, id: { type: "string" }, strength: { type: "number" }, unit: { type: "string" }, frequency: { type: "string" }, times: { type: "array", items: { type: "string" } }, instructions: { type: "string" }, notes: { type: "string" } }, required: [] } } },
   { type: "function", function: { name: "delete_medication", description: "Delete a medication and its logs/plans (resolve by name or id).", parameters: { type: "object", properties: { name: { type: "string" }, id: { type: "string" } }, required: [] } } },
-  { type: "function", function: { name: "log_dose", description: "Log a dose for a medication.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name" }, status: { type: "string", enum: ["taken", "skipped", "missed", "partial"] }, dose: { type: "number" }, time: { type: "string", description: "scheduled time HH:MM (optional)" } }, required: ["medication"] } } },
+  { type: "function", function: { name: "log_dose", description: "Log a dose for a medication. Supports retroactive logging via 'when'.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name" }, status: { type: "string", enum: ["taken", "skipped", "missed", "partial"] }, dose: { type: "number" }, time: { type: "string", description: "scheduled time HH:MM (optional)" }, when: { type: "string", description: "when the dose was actually taken, local datetime like 2026-07-15T21:30 (optional, defaults to now, must not be in the future)" } }, required: ["medication"] } } },
   { type: "function", function: { name: "create_taper_plan", description: "Create a tapering plan for a medication.", parameters: { type: "object", properties: { medication: { type: "string" }, method: { type: "string", enum: ["linear", "exponential", "hyperbolic"] }, initial_dose: { type: "number" }, final_dose: { type: "number" }, total_days: { type: "number" }, step_interval_days: { type: "number" } }, required: ["medication"] } } },
   { type: "function", function: { name: "get_today", description: "Get today's dose schedule and adherence summary for the active profile.", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "get_inventory", description: "Get inventory / refill projections for the active profile.", parameters: { type: "object", properties: {} } } },
@@ -135,9 +135,16 @@ export function AIToolsProvider({ children }) {
         const med = await resolveMed(args.medication || args.name);
         if (!med) return { error: "medication not found" };
         const status = ["taken", "skipped", "missed", "partial"].includes(args.status) ? args.status : "taken";
-        await db.createLog({ medication_id: med.id, status, dose_taken: args.dose != null ? Number(args.dose) : med.strength, unit: med.unit, scheduled_time: args.time || null });
+        let timestamp;
+        if (args.when) {
+          const d = new Date(args.when); // local datetime strings parse in local time
+          if (isNaN(d.getTime())) return { error: "invalid 'when' datetime" };
+          if (d.getTime() > Date.now() + 60000) return { error: "'when' cannot be in the future" };
+          timestamp = d.toISOString();
+        }
+        await db.createLog({ medication_id: med.id, status, dose_taken: args.dose != null ? Number(args.dose) : med.strength, unit: med.unit, scheduled_time: args.time || null, ...(timestamp ? { timestamp } : {}) });
         invalidateAll();
-        return { ok: true, logged: med.name, status };
+        return { ok: true, logged: med.name, status, ...(timestamp ? { at: timestamp } : {}) };
       }
       case "create_taper_plan": {
         const med = await resolveMed(args.medication || args.name);

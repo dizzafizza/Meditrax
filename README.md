@@ -12,6 +12,10 @@ Your data stays on your device.
 
 - **Today dashboard** — the day's scheduled doses and PRN meds, one-tap logging with
   undo, adherence streak, refill alerts with projected run-out dates.
+- **Editable logs** — every dose log can be edited after the fact (date & time,
+  status, amount, mood, effectiveness, notes) or deleted with exact inventory
+  restore; doses can be logged retroactively via a date/time picker, and mood
+  check-ins are editable the same way from the journal.
 - **Medications** — strength, form, schedule, category, risk level and dependency-risk
   category per medication; multi-pill dosing (pills-per-dose, tracked independent of
   inventory) with a pill-count stepper when logging.

@@ -6,21 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Slider } from "@/components/ui/slider";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog } from "@/lib/api";
+import { createLog, updateLog, deleteLog } from "@/lib/api";
 import MedColorDot from "@/components/MedColorDot";
-import { doseLabel, fmtTime12 } from "@/lib/format";
+import { doseLabel, fmtTime12, toDatetimeLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { Check, X, SkipForward, MinusCircle, PlusCircle } from "lucide-react";
+import { Check, X, SkipForward, MinusCircle, PlusCircle, Trash2 } from "lucide-react";
 
 const MOODS = [
-  { v: "great", e: "\uD83D\uDE0A", l: "Great" },
-  { v: "good", e: "\uD83D\uDE42", l: "Good" },
-  { v: "okay", e: "\uD83D\uDE10", l: "Okay" },
-  { v: "low", e: "\uD83D\uDE15", l: "Low" },
-  { v: "bad", e: "\uD83D\uDE1F", l: "Bad" },
+  { v: "great", e: "😊", l: "Great" },
+  { v: "good", e: "🙂", l: "Good" },
+  { v: "okay", e: "😐", l: "Okay" },
+  { v: "low", e: "😕", l: "Low" },
+  { v: "bad", e: "😟", l: "Bad" },
 ];
 
 const STATUSES = [
@@ -34,26 +34,43 @@ export default function QuickLogSheet() {
   const ui = useUI();
   const qc = useQueryClient();
   const med = ui.logSheet.med;
+  const editLog = ui.logSheet.log; // present = editing an existing log
   const perDose = Number(med?.dose_quantity ?? med?.inventory?.units_per_dose ?? 1) || 1;
   const [status, setStatus] = useState("taken");
   const [quantity, setQuantity] = useState(1);
   const [dose, setDose] = useState("");
   const [doseTouched, setDoseTouched] = useState(false);
+  const [when, setWhen] = useState("");
+  const [whenTouched, setWhenTouched] = useState(false);
   const [notes, setNotes] = useState("");
   const [mood, setMood] = useState(null);
   const [effectiveness, setEffectiveness] = useState([7]);
   const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
-    if (ui.logSheet.open) {
-      const m = ui.logSheet.med;
-      const per = Number(m?.dose_quantity ?? m?.inventory?.units_per_dose ?? 1) || 1;
+    if (!ui.logSheet.open) return;
+    const m = ui.logSheet.med;
+    const per = Number(m?.dose_quantity ?? m?.inventory?.units_per_dose ?? 1) || 1;
+    const lg = ui.logSheet.log;
+    if (lg) {
+      setStatus(lg.status || "taken");
+      setQuantity(Number(lg.quantity ?? per) || 0);
+      setDose(lg.dose_taken != null ? lg.dose_taken : (m?.strength != null ? m.strength * (Number(lg.quantity ?? per) || 0) : ""));
+      setDoseTouched(lg.dose_taken != null);
+      setWhen(toDatetimeLocal(lg.timestamp));
+      setNotes(lg.notes || "");
+      setMood(lg.mood || null);
+      setEffectiveness([lg.effectiveness != null ? lg.effectiveness : 7]);
+      setShowMore(!!(lg.notes || lg.mood || lg.effectiveness != null));
+    } else {
       setStatus("taken");
       setQuantity(per);
-      setDose(ui.logSheet.med?.strength != null ? ui.logSheet.med.strength * per : (ui.logSheet.dose ?? ""));
+      setDose(m?.strength != null ? m.strength * per : (ui.logSheet.dose ?? ""));
       setDoseTouched(false);
+      setWhen(toDatetimeLocal());
       setNotes(""); setMood(null); setEffectiveness([7]); setShowMore(false);
     }
+    setWhenTouched(false);
   }, [ui.logSheet.open]); // eslint-disable-line
 
   // Keep the total-amount field derived from the pill count unless the user
@@ -69,32 +86,55 @@ export default function QuickLogSheet() {
     if (s === "taken" && quantity === perDose / 2) changeQuantity(perDose);
   };
 
+  const invalidate = () => ["today", "logs", "analytics", "inventory", "medications", "medication"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+
   const mutation = useMutation({
-    mutationFn: (payload) => createLog(payload),
+    mutationFn: (payload) => (editLog ? updateLog(editLog.id, payload) : createLog(payload)),
     onSuccess: () => {
-      ["today", "logs", "analytics", "inventory", "medications"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      toast.success("Dose logged");
+      invalidate();
+      toast.success(editLog ? "Log updated" : "Dose logged");
       ui.closeQuickLog();
       if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
     },
-    onError: () => toast.error("Could not log dose"),
+    onError: (err) => toast.error(err?.message || "Could not save log"),
+  });
+
+  const delMutation = useMutation({
+    mutationFn: () => deleteLog(editLog.id),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Log deleted");
+      ui.closeQuickLog();
+    },
+    onError: () => toast.error("Could not delete log"),
   });
 
   if (!med) return null;
 
   function save() {
     const consuming = status === "taken" || status === "partial";
-    mutation.mutate({
-      medication_id: med.id,
-      scheduled_time: ui.logSheet.time || null,
+    let timestamp;
+    if (editLog || whenTouched) {
+      const d = new Date(when);
+      if (!when || isNaN(d.getTime())) { toast.error("Enter a valid date and time"); return; }
+      if (d.getTime() > Date.now() + 60000) { toast.error("Logs can't be in the future"); return; }
+      timestamp = d.toISOString();
+    }
+    const payload = {
       status,
       quantity: consuming ? quantity : 0,
       dose_taken: dose === "" ? null : Number(dose),
       unit: med.unit,
       notes: notes || null,
       mood,
-      effectiveness: med.is_prn ? effectiveness[0] : null,
-    });
+      effectiveness: med.is_prn || editLog?.effectiveness != null ? effectiveness[0] : null,
+    };
+    if (timestamp) payload.timestamp = timestamp;
+    if (!editLog) {
+      payload.medication_id = med.id;
+      payload.scheduled_time = ui.logSheet.time || null;
+    }
+    mutation.mutate(payload);
   }
 
   return (
@@ -105,7 +145,7 @@ export default function QuickLogSheet() {
           <DrawerTitle className="flex items-center gap-3">
             <MedColorDot color={med.color} size={42} />
             <div>
-              <p className="font-display text-xl leading-tight">{med.name}</p>
+              <p className="font-display text-xl leading-tight">{editLog ? `Edit log · ${med.name}` : med.name}</p>
               <p className="text-sm text-muted-foreground font-normal">
                 {doseLabel(med.strength, med.unit)}{ui.logSheet.time ? ` · ${fmtTime12(ui.logSheet.time)}` : ""}
               </p>
@@ -125,6 +165,18 @@ export default function QuickLogSheet() {
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-4">
+            <Label className="text-xs text-muted-foreground">When</Label>
+            <Input
+              type="datetime-local"
+              value={when}
+              max={toDatetimeLocal()}
+              onChange={(e) => { setWhen(e.target.value); setWhenTouched(true); }}
+              className="h-11 rounded-xl mt-1"
+              data-testid="quick-log-when-input"
+            />
           </div>
 
           {(status === "taken" || status === "partial") && (
@@ -165,7 +217,7 @@ export default function QuickLogSheet() {
                   ))}
                 </div>
               </div>
-              {med.is_prn && (
+              {(med.is_prn || editLog?.effectiveness != null) && (
                 <div>
                   <Label className="text-xs text-muted-foreground">Effectiveness: {effectiveness[0]}/10</Label>
                   <Slider value={effectiveness} onValueChange={setEffectiveness} min={1} max={10} step={1} className="mt-3" />
@@ -179,10 +231,29 @@ export default function QuickLogSheet() {
           )}
         </div>
 
-        <div className="p-4 safe-bottom">
+        <div className="p-4 safe-bottom space-y-2">
           <Button data-testid="quick-log-save-button" className="w-full h-12 rounded-xl" onClick={save} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save log"}
+            {mutation.isPending ? "Saving…" : editLog ? "Save changes" : "Save log"}
           </Button>
+          {editLog && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" className="w-full text-destructive hover:text-destructive hover:bg-destructive/10" data-testid="quick-log-delete-button">
+                  <Trash2 className="h-4 w-4 mr-2" />Delete this log
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this log?</AlertDialogTitle>
+                  <AlertDialogDescription>The entry is removed and any inventory it consumed is restored. This cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => delMutation.mutate()} className="bg-destructive text-destructive-foreground" data-testid="quick-log-confirm-delete">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </DrawerContent>
     </Drawer>

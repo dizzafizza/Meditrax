@@ -225,6 +225,22 @@ export async function adjustInventory(id, payload) {
 }
 
 // ---- logs ----
+// delta > 0 consumes stock, delta < 0 restores it. Returns the amount actually
+// applied (consumption is clamped to available stock so a later undo or edit
+// restores exactly what was taken out, never more).
+function applyStockDelta(med, delta) {
+  if (!med?.inventory || !delta) return 0;
+  const count = Number(med.inventory.current_count || 0);
+  const applied = delta > 0 ? Math.min(delta, count) : delta;
+  med.inventory.current_count = Math.max(0, count - applied);
+  med.inventory.last_updated = nowIso();
+  return applied;
+}
+const LOG_CONSUMING_STATUSES = ["taken", "partial"];
+function logConsumption(log) {
+  return LOG_CONSUMING_STATUSES.includes(log.status) ? Math.max(0, Number(log.quantity || 0)) : 0;
+}
+
 export async function getLogs(params = {}) {
   await ensureInit();
   let logs = await getArr(pkey("logs"));
@@ -249,7 +265,7 @@ export async function createLog(data) {
   let quantity = doc.quantity != null && isFinite(Number(doc.quantity)) ? Math.max(0, Number(doc.quantity)) : (doc.status === "partial" ? perDose / 2 : perDose);
   doc.quantity = quantity;
 
-  const consumes = ["taken", "partial"].includes(doc.status);
+  const consumes = LOG_CONSUMING_STATUSES.includes(doc.status);
   const wanted = decrement && consumes && med.inventory ? quantity : 0;
 
   // Dedup guard: a second log for the same med + scheduled slot + local day
@@ -260,31 +276,76 @@ export async function createLog(data) {
     existing = logs.find((l) => l.medication_id === doc.medication_id && l.scheduled_time === doc.scheduled_time && timestampToLocalDate(l.timestamp) === day);
   }
 
-  const applyStockDelta = (delta) => {
-    // delta > 0 consumes stock; returns the amount actually applied (stock is clamped at 0,
-    // so undo restores exactly what was taken out, never more).
-    if (!med.inventory || delta === 0) return 0;
-    const count = Number(med.inventory.current_count || 0);
-    const applied = delta > 0 ? Math.min(delta, count) : delta;
-    med.inventory.current_count = Math.max(0, count - applied);
-    med.inventory.last_updated = nowIso();
-    return applied;
-  };
-
   let saved;
   if (existing) {
     const prevDelta = Number(existing.inventory_delta || 0);
-    const appliedNet = applyStockDelta(wanted - prevDelta);
+    const appliedNet = applyStockDelta(med, wanted - prevDelta);
     saved = { ...existing, ...doc, id: existing.id, created_at: existing.created_at, inventory_delta: prevDelta + appliedNet, updated_at: nowIso() };
     logs[logs.findIndex((l) => l.id === existing.id)] = saved;
   } else {
-    doc.inventory_delta = applyStockDelta(wanted);
+    doc.inventory_delta = applyStockDelta(med, wanted);
     logs.push(doc);
     saved = doc;
   }
   await setArr(pkey("logs"), logs);
   if (med.inventory) await setArr(pkey("medications"), meds);
   return existing ? { ...saved, deduped: true } : saved;
+}
+export async function getLog(id) {
+  await ensureInit();
+  return (await getArr(pkey("logs"))).find((l) => l.id === id) || null;
+}
+export async function updateLog(id, patch) {
+  await ensureInit();
+  const logs = await getArr(pkey("logs"));
+  const idx = logs.findIndex((l) => l.id === id);
+  if (idx === -1) throw new Error("Log not found");
+  const log = logs[idx];
+  const meds = await getArr(pkey("medications"));
+  const med = meds.find((m) => m.id === log.medication_id);
+
+  const next = { ...log };
+  ["status", "notes", "mood", "effectiveness", "dose_taken", "unit", "side_effects"].forEach((k) => { if (k in patch) next[k] = patch[k]; });
+  if ("quantity" in patch) {
+    const q = Number(patch.quantity);
+    if (!isFinite(q) || q < 0) throw new Error("quantity must be a non-negative number");
+    next.quantity = q;
+  }
+  if ("timestamp" in patch) {
+    const d = new Date(patch.timestamp);
+    if (!patch.timestamp || isNaN(d.getTime())) throw new Error("Invalid timestamp");
+    next.timestamp = d.toISOString();
+  }
+
+  // Moving a scheduled dose onto a day that already holds a log for the same
+  // slot would create a duplicate the createLog dedup guard can never merge.
+  if (next.scheduled_time && next.timestamp !== log.timestamp) {
+    const day = timestampToLocalDate(next.timestamp);
+    const clash = logs.find((l) => l.id !== id && l.medication_id === log.medication_id && l.scheduled_time === next.scheduled_time && timestampToLocalDate(l.timestamp) === day);
+    if (clash) throw new Error("A log for this dose already exists on that day");
+  }
+
+  // Reconcile stock only when the consumed amount actually changed — a
+  // timestamp/notes edit must never move inventory. The recorded
+  // inventory_delta is the ground truth of what this log took out (it can be
+  // less than quantity when stock clamped at 0, and 0 for legacy logs), so
+  // adjust relative to it: undo/edit can never restore more than was taken.
+  const oldWanted = logConsumption(log);
+  const newWanted = logConsumption(next);
+  // Legacy consuming logs (pre-inventory_delta) decremented an unknowable
+  // amount — leave stock alone for them, like deleteLog does.
+  const legacyUnknowable = log.inventory_delta === undefined && oldWanted > 0;
+  if (med?.inventory && newWanted !== oldWanted && !legacyUnknowable) {
+    const prevDelta = Number(log.inventory_delta || 0);
+    const applied = applyStockDelta(med, newWanted - prevDelta);
+    next.inventory_delta = prevDelta + applied;
+    await setArr(pkey("medications"), meds);
+  }
+
+  next.updated_at = nowIso();
+  logs[idx] = next;
+  await setArr(pkey("logs"), logs);
+  return next;
 }
 export async function deleteLog(id) {
   await ensureInit();
@@ -416,6 +477,33 @@ export async function createCheckin(data) {
   items.push(doc);
   await setArr(pkey("checkins"), items);
   return doc;
+}
+export async function updateCheckin(id, patch) {
+  await ensureInit();
+  const items = await getArr(pkey("checkins"));
+  const idx = items.findIndex((c) => c.id === id);
+  if (idx === -1) throw new Error("Check-in not found");
+  const next = { ...items[idx] };
+  if ("mood" in patch) {
+    const mood = Math.min(5, Math.max(1, Math.round(Number(patch.mood))));
+    if (!isFinite(mood)) throw new Error("mood (1-5) is required");
+    next.mood = mood;
+  }
+  if ("notes" in patch) next.notes = patch.notes || null;
+  ["energy", "sleep", "pain", "anxiety"].forEach((k) => {
+    if (!(k in patch)) return;
+    const v = Number(patch[k]);
+    next[k] = isFinite(v) && patch[k] != null ? Math.min(5, Math.max(1, Math.round(v))) : null;
+  });
+  if ("timestamp" in patch) {
+    const d = new Date(patch.timestamp);
+    if (!patch.timestamp || isNaN(d.getTime())) throw new Error("Invalid timestamp");
+    next.timestamp = d.toISOString();
+  }
+  next.updated_at = nowIso();
+  items[idx] = next;
+  await setArr(pkey("checkins"), items);
+  return next;
 }
 export async function deleteCheckin(id) {
   await ensureInit();

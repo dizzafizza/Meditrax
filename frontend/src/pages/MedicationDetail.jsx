@@ -13,8 +13,8 @@ import { useUI } from "@/context/UIContext";
 import { getMedication, deleteMedication, adjustInventory, getLogs, getCheckins, getSettings, getKnowledge } from "@/lib/api";
 import { predictRunOut } from "@/lib/predictor";
 import { analyzeMedication, SAFETY_COPY } from "@/lib/behavior";
-import { doseLabel, FREQUENCY_LABELS, CATEGORY_LABELS, fmtTime12, fmtDate, riskTone, depTone, WEEKDAY_LABELS } from "@/lib/format";
-import { Pencil, Trash2, Clock, Package, Pill, TrendingDown, Minus, Plus, ClipboardList, ChevronRight, RefreshCw, Share2, ShieldAlert } from "lucide-react";
+import { doseLabel, FREQUENCY_LABELS, CATEGORY_LABELS, fmtTime12, fmtDate, riskTone, depTone, WEEKDAY_LABELS, relativeTime } from "@/lib/format";
+import { Pencil, Trash2, Clock, Package, Pill, TrendingDown, Minus, Plus, ClipboardList, ChevronRight, RefreshCw, Share2, ShieldAlert, History, Check, X, SkipForward, MinusCircle } from "lucide-react";
 
 export default function MedicationDetail() {
   const { id } = useParams();
@@ -147,6 +147,19 @@ export default function MedicationDetail() {
           </div>
         )}
 
+        {/* Recent history — tap a log to edit its time, amount, status or notes */}
+        {logs.length > 0 && (
+          <div className="card-soft p-4" data-testid="log-history-card">
+            <div className="flex items-center gap-2 mb-3"><History className="h-4 w-4 text-primary" /><p className="font-semibold">History</p>
+              <span className="ml-auto text-[11px] text-muted-foreground">tap to edit</span>
+            </div>
+            <div className="divide-y divide-border -mx-1">
+              {logs.slice(0, 8).map((l) => <LogHistoryRow key={l.id} log={l} med={med} onTap={() => ui.openEditLog(l, med)} />)}
+            </div>
+            {logs.length > 8 && <p className="text-[11px] text-muted-foreground text-center mt-2">Showing the 8 most recent of {logs.length} logs</p>}
+          </div>
+        )}
+
         {/* Active taper */}
         {med.active_taper && (
           <Link to={`/taper/${med.active_taper.id}`} className="block card-soft p-4 pressable">
@@ -192,6 +205,31 @@ export default function MedicationDetail() {
         <MedicationShareCard med={med} />
       </ShareDialog>
     </div>
+  );
+}
+
+const LOG_STATUS_META = {
+  taken: { icon: Check, cls: "text-[hsl(var(--success))]" },
+  partial: { icon: MinusCircle, cls: "text-[hsl(var(--warning))]" },
+  skipped: { icon: SkipForward, cls: "text-muted-foreground" },
+  missed: { icon: X, cls: "text-destructive" },
+};
+
+function LogHistoryRow({ log, med, onTap }) {
+  const meta = LOG_STATUS_META[log.status] || LOG_STATUS_META.taken;
+  const Icon = meta.icon;
+  const amount = log.dose_taken != null ? doseLabel(log.dose_taken, log.unit || med.unit) : (log.quantity ? `${log.quantity} ${med.form === "capsule" ? "caps" : "pills"}` : null);
+  return (
+    <button onClick={onTap} data-testid="log-history-row" className="w-full flex items-center gap-3 px-1 py-2.5 text-left pressable">
+      <span className={meta.cls}><Icon className="h-4 w-4" /></span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm">{relativeTime(log.timestamp)}</p>
+        <p className="text-xs text-muted-foreground">
+          <span className="capitalize">{log.status}</span>{amount ? ` · ${amount}` : ""}{log.scheduled_time ? ` · ${fmtTime12(log.scheduled_time)} dose` : ""}{log.notes ? " · 📝" : ""}
+        </p>
+      </div>
+      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+    </button>
   );
 }
 
