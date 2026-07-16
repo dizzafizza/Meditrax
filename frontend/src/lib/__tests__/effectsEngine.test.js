@@ -167,4 +167,22 @@ describe("session lifecycle in localdb", () => {
     await db.endEffectSession(s0.id, { discard: true });
     await expect(db.updateEffectSession(s0.id, { dose: 5 })).rejects.toThrow(/active/i);
   });
+
+  test("resetEffectModel forgets learning and re-derives active session curves", async () => {
+    const med = await db.createMedication({ name: "ResetMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    // Train a model via one completed session with feedback.
+    const s1 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s1.id, { kind: "onset" });
+    await db.addEffectEvent(s1.id, { kind: "gone" });
+    expect((await db.getEffectModel(med.id)).samples).toBe(1);
+    // A new active session uses the learned profile...
+    const s2 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    expect(s2.profile.learned).toBe(true);
+    // ...until the model is reset: model gone, active curve back to defaults.
+    await db.resetEffectModel(med.id);
+    expect(await db.getEffectModel(med.id)).toBe(null);
+    const active = (await db.getActiveEffectSessions()).find((x) => x.id === s2.id);
+    expect(active.profile.learned).toBe(false);
+    expect(active.profile.onset_min).toBe(40); // stimulant default again
+  });
 });

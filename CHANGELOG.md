@@ -30,6 +30,17 @@ Notable changes to Meditrax. Format loosely follows
   curves), a 0–100% intensity axis, dashed markers at predicted onset/peak/end,
   a labelled "now" line, and the user's own feedback events plotted where they
   happened (intensity reports at the strength actually felt).
+- **Reset button** — the personalization line on the detail card gains a Reset
+  control (with confirm) that forgets everything learned about a medication's
+  timing; active sessions immediately fall back to the typical curve and future
+  feedback starts teaching the model from scratch.
+
+### Fixed
+- Effects-tracker layout at narrow widths: the chart's "100%" axis label was
+  clipped to "00%" (axis too narrow), the header squeezed "started …" onto a
+  wrapped line next to the pencil and phase chip (the chip now sits on its own
+  row), and the "now" label collided with the top axis tick when a session had
+  just started (suppressed until the line clears the left edge).
 - Effect sessions and learned models are profile-scoped, included in
   export/import/delete, and listed in the Privacy Policy's stored-data section.
 

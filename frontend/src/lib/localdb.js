@@ -554,6 +554,26 @@ async function saveEffectModel(model) {
   return model;
 }
 
+// Forget everything learned about a medication's timing and fall back to the
+// typical profile. Active sessions for that med re-derive their curve too.
+export async function resetEffectModel(medication_id) {
+  await ensureInit();
+  const models = await getArr(pkey("effectModels"));
+  await setArr(pkey("effectModels"), models.filter((m) => m.medication_id !== medication_id));
+  const sessions = await getArr(pkey("effectSessions"));
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id) || {};
+  let changed = false;
+  sessions.forEach((s) => {
+    if (s.medication_id === medication_id && s.status === "active") {
+      s.profile = personalizedProfile(med, null, s.dose);
+      s.updated_at = nowIso();
+      changed = true;
+    }
+  });
+  if (changed) await setArr(pkey("effectSessions"), sessions);
+  return { reset: true };
+}
+
 export async function startEffectSession({ medication_id, dose = null, unit = null, log_id = null, started_at = null }) {
   await ensureInit();
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
