@@ -121,15 +121,28 @@
   }
   h1, h2, h3, .font-display { font-family: var(--font-display); }
 
-  /* iOS Safari sizes the native date/time widget to its own intrinsic content
-     width and ignores `width: 100%` on the element, letting it overflow a
-     narrow container (visible as the input's right edge running off-screen).
-     Forcing box-sizing + min-width: 0 makes it respect the parent instead. */
+  /* iOS Safari renders date/time inputs as a native widget that keeps its
+     intrinsic width and ignores `width`/`max-width` — especially when the
+     element's display is overridden (our Input component applies `flex`) —
+     so the control runs off the right edge of the screen. WebKit only starts
+     honouring CSS sizing on these controls once -webkit-appearance is
+     disabled and the display is put back to a block box. */
   input[type="date"], input[type="time"], input[type="datetime-local"] {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     max-width: 100%;
+  }
+  /* iOS-only shadow part holding the value; iOS centers it and adds margin,
+     which looks off once the control is styled like our other inputs. */
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="time"]::-webkit-date-and-time-value,
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    text-align: left;
+    margin: 0;
   }
 }
 
