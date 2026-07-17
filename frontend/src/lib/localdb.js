@@ -5,7 +5,7 @@ import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
 import { personalizedProfile, observationsFromSession, updateModel } from "./effectsEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
-import { doseQuantity, predictRunOut, inventoryStatus } from "./predictor";
+import { doseQuantity, predictRunOut, inventoryStatus, taperState } from "./predictor";
 
 const store = localforage.createInstance({ name: "meditrax", storeName: "meditrax_v1" });
 
@@ -389,7 +389,7 @@ export async function getTapers() {
   const meds = await getArr(pkey("medications"));
   return tapers.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")).map((t) => {
     const m = meds.find((x) => x.id === t.medication_id);
-    return { ...t, medication_name: m?.name || "Unknown", medication_color: m?.color || "#2A767B" };
+    return { ...t, medication_name: m?.name || "Unknown", medication_color: m?.color || "#2A767B", is_finished: taperState(t, todayStr()) === "finished" };
   });
 }
 export async function createTaper(p) {
@@ -415,7 +415,12 @@ export async function getTaper(id) {
   const effToday = t.is_paused && t.paused_on && t.paused_on < todayStr() ? t.paused_on : todayStr();
   const day = diffDays(t.start_date, effToday);
   const interval = t.step_interval_days || 7;
-  return { ...t, medication: med, current_dose: taperDoseOnDate(t, todayStr()), current_step: day >= 0 ? Math.max(0, Math.min(t.schedule.steps.length - 1, Math.floor(day / interval))) : 0 };
+  return {
+    ...t, medication: med,
+    current_dose: taperDoseOnDate(t, todayStr()),
+    current_step: day >= 0 ? Math.max(0, Math.min(t.schedule.steps.length - 1, Math.floor(day / interval))) : 0,
+    is_finished: taperState(t, todayStr()) === "finished",
+  };
 }
 export async function updateTaper(id, patch) {
   await ensureInit();
@@ -552,6 +557,26 @@ async function saveEffectModel(model) {
   if (idx >= 0) models[idx] = model; else models.push(model);
   await setArr(pkey("effectModels"), models);
   return model;
+}
+
+// Forget everything learned about a medication's timing and fall back to the
+// typical profile. Active sessions for that med re-derive their curve too.
+export async function resetEffectModel(medication_id) {
+  await ensureInit();
+  const models = await getArr(pkey("effectModels"));
+  await setArr(pkey("effectModels"), models.filter((m) => m.medication_id !== medication_id));
+  const sessions = await getArr(pkey("effectSessions"));
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id) || {};
+  let changed = false;
+  sessions.forEach((s) => {
+    if (s.medication_id === medication_id && s.status === "active") {
+      s.profile = personalizedProfile(med, null, s.dose);
+      s.updated_at = nowIso();
+      changed = true;
+    }
+  });
+  if (changed) await setArr(pkey("effectSessions"), sessions);
+  return { reset: true };
 }
 
 export async function startEffectSession({ medication_id, dose = null, unit = null, log_id = null, started_at = null }) {
@@ -776,6 +801,7 @@ function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []
         id: `${med.id}_${t}`, medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status: lg ? lg.status : "pending", instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: eff.quantity,
         effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier,
         taper_dose: eff.taper_dose != null ? eff.taper_dose : undefined, taper_unit: eff.taper_dose != null ? (taper?.unit || med.unit) : undefined,
+        taper_paused: eff.taper_dose != null && taper?.is_paused ? true : undefined,
       });
     });
   });

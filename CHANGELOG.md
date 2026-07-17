@@ -3,6 +3,26 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-16 — Honest taper-state labels across the UI
+
+### Fixed
+- **Inventory said "based on your taper schedule" even when the taper was paused
+  or long finished.** The predictor now classifies the taper's state
+  (`taperState`: running / paused / finished) and reports it: paused tapers
+  predict from the frozen dose and say "based on your paused taper — holding the
+  current dose"; a taper that completed **to zero** stops pretending the schedule
+  predicts anything and projects from observed usage instead ("taper complete —
+  based on your actual usage"); a taper finished at a maintenance dose keeps
+  simulating at that final dose. Ended plans already fell back to schedule-based
+  projections.
+- **Ended taper plans looked alive** — the detail page still offered a working
+  Pause/Resume button and nothing said the plan was over. It now shows a clear
+  "This plan has ended" notice, drops the pause controls, and the subtitle
+  reflects the state (— ended / — paused / — complete); the planner list gains a
+  "complete" chip for plans past their end date.
+- **Today's dose card** now tags a frozen dose as "(taper paused)" instead of
+  presenting it as an actively stepping taper.
+
 ## 2026-07-16 — Active effects tracker that learns your metabolism
 
 ### Added
@@ -30,6 +50,17 @@ Notable changes to Meditrax. Format loosely follows
   curves), a 0–100% intensity axis, dashed markers at predicted onset/peak/end,
   a labelled "now" line, and the user's own feedback events plotted where they
   happened (intensity reports at the strength actually felt).
+- **Reset button** — the personalization line on the detail card gains a Reset
+  control (with confirm) that forgets everything learned about a medication's
+  timing; active sessions immediately fall back to the typical curve and future
+  feedback starts teaching the model from scratch.
+
+### Fixed
+- Effects-tracker layout at narrow widths: the chart's "100%" axis label was
+  clipped to "00%" (axis too narrow), the header squeezed "started …" onto a
+  wrapped line next to the pencil and phase chip (the chip now sits on its own
+  row), and the "now" label collided with the top axis tick when a session had
+  just started (suppressed until the line clears the left edge).
 - Effect sessions and learned models are profile-scoped, included in
   export/import/delete, and listed in the Privacy Policy's stored-data section.
 

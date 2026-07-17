@@ -219,7 +219,7 @@ export default function Today() {
 function doseText(dose) {
   const adjusted = dose.taper_dose != null || (dose.cyclic_multiplier ?? 1) !== 1;
   if (dose.effective_dose != null && adjusted) {
-    const tag = dose.taper_dose != null ? "taper" : (dose.cyclic_phase || "cycle");
+    const tag = dose.taper_dose != null ? (dose.taper_paused ? "taper paused" : "taper") : (dose.cyclic_phase || "cycle");
     return `${dose.effective_dose} ${dose.taper_unit || dose.unit || ""} (${tag})`.trim();
   }
   return doseLabel(dose.strength, dose.unit);

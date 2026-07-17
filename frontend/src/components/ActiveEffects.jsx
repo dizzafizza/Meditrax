@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { getActiveEffectSessions, addEffectEvent, endEffectSession, startEffectSession, updateEffectSession, getLogs, getMedications } from "@/lib/api";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { getActiveEffectSessions, addEffectEvent, endEffectSession, startEffectSession, updateEffectSession, resetEffectModel, getLogs, getMedications } from "@/lib/api";
 import { intensityAt, phaseAt, curveSeries, fmtMins } from "@/lib/effectsEngine";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal } from "@/lib/format";
 import { Activity, ChevronRight, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil } from "lucide-react";
@@ -138,6 +139,11 @@ function SessionDetail({ session, now }) {
     onSuccess: () => { invalidate(); setEditing(false); toast.success("Session updated"); },
     onError: (e) => toast.error(e?.message || "Could not update session"),
   });
+  const reset = useMutation({
+    mutationFn: () => resetEffectModel(session.medication_id),
+    onSuccess: () => { invalidate(); toast.success("Model reset — back to typical values"); },
+    onError: () => toast.error("Could not reset the model"),
+  });
 
   const openEdit = () => {
     setEditWhen(toDatetimeLocal(session.started_at));
@@ -159,16 +165,20 @@ function SessionDetail({ session, now }) {
 
   return (
     <div className="card-soft p-4" data-testid="effect-session-detail">
+      {/* Header: title row, then the live phase chip on its own row so the
+          subtitle never wraps mid-time on narrow screens. */}
       <div className="flex items-center gap-3">
         <MedColorDot color={session.medication_color} size={44} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold truncate">{session.medication_name}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground truncate">
             {session.dose != null ? `${doseLabel(session.dose, session.unit)} · ` : ""}started {relativeTime(session.started_at)}
           </p>
         </div>
         <button onClick={openEdit} aria-label="Edit session" data-testid="effect-edit-button" className="pressable h-9 w-9 rounded-full hover:bg-muted flex items-center justify-center text-primary shrink-0"><Pencil className="h-4 w-4" /></button>
-        <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2 py-1 font-medium shrink-0"><Zap className="h-3 w-3" />{phase.label} · {intensity}%</span>
+      </div>
+      <div className="mt-2">
+        <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2.5 py-1 font-medium"><Zap className="h-3 w-3" />{phase.label} · {intensity}% intensity</span>
       </div>
 
       {editing && (
@@ -202,7 +212,7 @@ function SessionDetail({ session, now }) {
             </defs>
             <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={[25, 50, 75, 100]} verticalValues={hourTicks} />
             <XAxis dataKey="t" type="number" domain={[0, "dataMax"]} ticks={hourTicks} interval={0} tickFormatter={(m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-            <YAxis domain={[0, 105]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={30} tickLine={false} axisLine={false} />
+            <YAxis domain={[0, 105]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} />
             <Tooltip
               contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
               formatter={(v) => [`${Math.round(v * (p.intensity_scale || 1))}%`, "Intensity"]}
@@ -217,7 +227,9 @@ function SessionDetail({ session, now }) {
             {eventDots.map((d) => (
               <ReferenceDot key={d.key} x={d.x} y={d.y} r={4} fill={d.kind === "intensity" ? "hsl(var(--warning))" : "hsl(var(--primary))"} stroke="hsl(var(--card))" strokeWidth={1.5} />
             ))}
-            <ReferenceLine x={Math.round(t)} stroke="hsl(var(--warning))" strokeDasharray="4 3" strokeWidth={2} label={{ value: "now", position: "insideTopRight", fontSize: 9, fill: "hsl(var(--warning))" }} />
+            {/* label suppressed while the line hugs the left edge, where it
+                would collide with the 100% axis tick */}
+            <ReferenceLine x={Math.round(t)} stroke="hsl(var(--warning))" strokeDasharray="4 3" strokeWidth={2} label={t > chartEnd * 0.08 ? { value: "now", position: "insideTopRight", fontSize: 9, fill: "hsl(var(--warning))" } : undefined} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -228,11 +240,32 @@ function SessionDetail({ session, now }) {
         <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Ends</p><p className="text-xs font-medium">~{clockAt(p.duration_min)}</p></div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground mt-2">
-        {p.learned
-          ? `Personalized from ${p.samples} tracked ${p.samples === 1 ? "session" : "sessions"} (${p.confidence} confidence).`
-          : "Using typical values for now — your feedback below teaches the tracker your metabolism."}
-      </p>
+      <div className="flex items-center justify-between gap-2 mt-2">
+        <p className="text-[11px] text-muted-foreground">
+          {p.learned
+            ? `Personalized from ${p.samples} tracked ${p.samples === 1 ? "session" : "sessions"} (${p.confidence} confidence).`
+            : "Using typical values for now — your feedback below teaches the tracker your metabolism."}
+        </p>
+        {p.learned && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button className="text-[11px] font-medium text-primary shrink-0" data-testid="effect-reset-model-button">Reset</button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset the learned model for {session.medication_name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Everything the tracker has learned about your onset, peak and duration for this medication is forgotten, and predictions go back to typical values. Future feedback starts teaching it again from scratch.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => reset.mutate()} className="bg-destructive text-destructive-foreground" data-testid="effect-reset-model-confirm">Reset model</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
 
       <div className="mt-3 grid grid-cols-4 gap-2">
         {FEEDBACK.map((f) => {
