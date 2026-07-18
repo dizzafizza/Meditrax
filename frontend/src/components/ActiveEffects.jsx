@@ -96,11 +96,27 @@ function SessionDetail({ session, now }) {
   const t = elapsedMin(session, now);
   const p = session.profile;
   const phase = phaseAt(t, p);
-  const intensity = Math.round(intensityAt(t, p) * (p.intensity_scale || 1));
-  const series = useMemo(() => curveSeries(p), [p]);
+  // A larger-than-usual dose scales the curve above 100% ("your typical peak").
+  // The plotted curve, axis, gridlines, dots and the written numbers all use
+  // this same scaled percentage so the graph never disagrees with the label.
+  const scale = p.intensity_scale || 1;
+  const intensity = Math.round(intensityAt(t, p) * scale);
+  const series = useMemo(
+    () => curveSeries(p).map((pt) => ({ ...pt, intensity: Math.round(pt.intensity * scale) })),
+    [p, scale]
+  );
   const startMs = new Date(session.started_at).getTime();
   const clockAt = (mins) => fmtDate(new Date(startMs + mins * 60000), "h:mm a");
   const given = (kind) => session.events?.some((e) => e.kind === kind);
+
+  // Y-axis fits the scaled peak: 0–100% normally, extended in 25% steps up to
+  // 150% for a strong dose. 100% ("typical peak") always stays a labelled line.
+  const strong = scale > 1;
+  const yMax = strong ? Math.min(150, Math.ceil((100 * scale) / 25) * 25) : 100;
+  const yTicks = strong
+    ? Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b)
+    : [0, 25, 50, 75, 100];
+  const yGrid = yTicks.filter((v) => v > 0);
 
   // Hourly gridline positions across the curve (denser for short sessions).
   const chartEnd = p.duration_min * 1.25;
@@ -112,13 +128,13 @@ function SessionDetail({ session, now }) {
   }, [chartEnd]);
 
   // Feedback events plotted on the chart: phase reports sit on the curve,
-  // intensity reports at the strength the user actually felt.
+  // intensity reports at the strength the user actually felt (0-10 → 0-100%).
   const eventDots = useMemo(() => (session.events || []).map((e, i) => {
     const m = Math.max(0, (new Date(e.t).getTime() - startMs) / 60000);
     if (m > chartEnd) return null;
-    const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : intensityAt(m, p);
-    return { key: `${e.kind}-${i}`, x: Math.round(m), y, kind: e.kind };
-  }).filter(Boolean), [session.events, startMs, chartEnd, p]);
+    const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : intensityAt(m, p) * scale;
+    return { key: `${e.kind}-${i}`, x: Math.round(m), y: Math.round(y), kind: e.kind };
+  }).filter(Boolean), [session.events, startMs, chartEnd, p, scale]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["effectSessions"] });
   const feedback = useMutation({
@@ -210,12 +226,12 @@ function SessionDetail({ session, now }) {
                 <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={[25, 50, 75, 100]} verticalValues={hourTicks} />
+            <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={yGrid} verticalValues={hourTicks} />
             <XAxis dataKey="t" type="number" domain={[0, "dataMax"]} ticks={hourTicks} interval={0} tickFormatter={(m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-            <YAxis domain={[0, 105]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} />
+            <YAxis domain={[0, yMax + 5]} ticks={yTicks} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} />
             <Tooltip
               contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
-              formatter={(v) => [`${Math.round(v * (p.intensity_scale || 1))}%`, "Intensity"]}
+              formatter={(v) => [`${Math.round(v)}%`, "Intensity"]}
               labelFormatter={(m) => `${fmtMins(m)} after dose · ${clockAt(m)}`}
             />
             {/* predicted phase boundaries */}
