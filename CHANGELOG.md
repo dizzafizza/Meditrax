@@ -3,6 +3,18 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-17 — Effects graph scale fix
+
+### Fixed
+- **Effects curve went off-scale from the written percentage.** For a
+  larger-than-usual dose the header/tooltip multiply intensity by the dose
+  scale (e.g. a slightly bigger dose reads "110%", a double dose "150%"), but
+  the plotted curve used the raw 0–100% value and capped at the 100% gridline —
+  so the number disagreed with the graph. The plotted curve now uses the same
+  scaled percentage, and the Y-axis grows in 25% steps up to 150% to fit it
+  (with 100% kept as a labelled "typical peak" line). Axis, gridlines, curve,
+  feedback dots, and the written numbers now always agree.
+
 ## 2026-07-16 — Honest taper-state labels across the UI
 
 ### Fixed
