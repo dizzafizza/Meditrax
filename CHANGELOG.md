@@ -3,6 +3,38 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-17 — Undo & edit effects-tracker feedback
+
+### Added
+- **Undo and per-event editing for the effects tracker.** Previously, a wrong
+  tap (or a mistaken "Gone" that closed the session and trained the model on
+  bad data) had no fix short of Reset, which wipes the medication's *entire*
+  learned history, not just the mistake.
+  - **"Your feedback" list** on the active session card shows every recorded
+    event (most recent first) with a × to remove any specific one — fixes a
+    fat-fingered entry buried under later correct ones without touching them.
+  - **"Undo last"** removes the most recent event in one tap.
+  - **Ending a session** (via "Gone", "End session", or "Discard") now shows
+    an **Undo** action on its confirmation toast, matching the pattern
+    already used for dose logs elsewhere in the app. Undo reactivates the
+    session and, if nothing else has touched the model since, reverts the
+    training that completion triggered to the exact prior state — not a
+    blanket reset, a precise rollback of just that one mistake.
+  - Undo is safely refused (with a clear reason) if a *newer* session has
+    since trained the model, or if the model was explicitly Reset in the
+    meantime — reverting then would silently erase real, unrelated learning.
+    A per-medication version counter (independent of whether a model
+    currently exists, so it survives Reset) makes this check exact rather
+    than time-based guesswork.
+
+### Fixed
+- `addEffectEvent` stored `intensity: 0` instead of `null` on plain phase
+  events (onset/peak/wearing off/gone) that never carried a value —
+  `Number(null)` coerces to `0`, which passed the `isFinite` check.
+- `deleteMedication` never cleaned up that medication's effect-tracker
+  sessions, learned model, or version counter, leaving orphaned rows behind
+  after deletion.
+
 ## 2026-07-17 — Effects graph scale fix
 
 ### Fixed

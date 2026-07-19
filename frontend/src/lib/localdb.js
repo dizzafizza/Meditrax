@@ -13,7 +13,7 @@ export const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const PROFILE_COLORS = ["#2A767B", "#E08A3C", "#7A6FB0", "#3E7CB1", "#B0436F", "#5B8C5A"];
 // Every profile-scoped collection. Referenced by deleteProfile / export / import
 // so new collections can't be forgotten in one of the three places.
-export const PROFILE_COLLECTIONS = ["medications", "logs", "reminders", "tapers", "cyclic", "chat", "checkins", "insights", "effectSessions", "effectModels"];
+export const PROFILE_COLLECTIONS = ["medications", "logs", "reminders", "tapers", "cyclic", "chat", "checkins", "insights", "effectSessions", "effectModels", "effectVersions"];
 
 export function uid() {
   return (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
@@ -203,7 +203,7 @@ export async function updateMedication(id, data) {
 }
 export async function deleteMedication(id) {
   await ensureInit();
-  for (const coll of ["medications", "logs", "reminders", "tapers", "cyclic"]) {
+  for (const coll of ["medications", "logs", "reminders", "tapers", "cyclic", "effectSessions", "effectModels", "effectVersions"]) {
     let arr = await getArr(pkey(coll));
     arr = coll === "medications" ? arr.filter((x) => x.id !== id) : arr.filter((x) => x.medication_id !== id);
     await setArr(pkey(coll), arr);
@@ -559,12 +559,35 @@ async function saveEffectModel(model) {
   return model;
 }
 
+// A monotonic per-medication counter, independent of whether a model
+// currently exists. Sessions record the version they produced when they
+// trained the model (model_after_version); undoing a session checks the
+// counter hasn't moved since — i.e. nothing newer (another session, or a
+// Reset) has touched the model — before it's safe to roll back to the
+// exact pre-session snapshot. The counter itself is never rolled back, so
+// version numbers are never reused even across a reset.
+async function getEffectModelVersion(medication_id) {
+  const versions = await getArr(pkey("effectVersions"));
+  return versions.find((v) => v.medication_id === medication_id)?.version || 0;
+}
+async function bumpEffectModelVersion(medication_id) {
+  const versions = await getArr(pkey("effectVersions"));
+  const idx = versions.findIndex((v) => v.medication_id === medication_id);
+  const next = (idx >= 0 ? versions[idx].version : 0) + 1;
+  if (idx >= 0) versions[idx].version = next; else versions.push({ medication_id, version: next });
+  await setArr(pkey("effectVersions"), versions);
+  return next;
+}
+
 // Forget everything learned about a medication's timing and fall back to the
 // typical profile. Active sessions for that med re-derive their curve too.
+// Bumps the version counter so no earlier session can later "undo" past this
+// point — a Reset is a deliberate, permanent forget.
 export async function resetEffectModel(medication_id) {
   await ensureInit();
   const models = await getArr(pkey("effectModels"));
   await setArr(pkey("effectModels"), models.filter((m) => m.medication_id !== medication_id));
+  await bumpEffectModelVersion(medication_id);
   const sessions = await getArr(pkey("effectSessions"));
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id) || {};
   let changed = false;
@@ -638,10 +661,32 @@ export async function addEffectEvent(sessionId, { kind, intensity = null, note =
   if (s.status !== "active") throw new Error("Session is not active");
   const KINDS = ["onset", "peak", "wearing_off", "gone", "intensity", "note"];
   if (!KINDS.includes(kind)) throw new Error("Unknown event kind");
-  const v = Number(intensity);
-  s.events.push({ t: nowIso(), kind, intensity: isFinite(v) ? Math.min(10, Math.max(0, v)) : null, note: note || null });
+  // Number(null) coerces to 0 (finite!), which would wrongly store intensity:
+  // 0 on plain phase events (onset/peak/...) that never carried a value.
+  const v = intensity != null ? Number(intensity) : NaN;
+  s.events.push({ id: uid(), t: nowIso(), kind, intensity: isFinite(v) ? Math.min(10, Math.max(0, v)) : null, note: note || null });
   // "gone" is terminal feedback — close and learn in the same step.
   if (kind === "gone") return endEffectSessionInternal(sessions, s, { learn: true });
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
+}
+
+// Remove one recorded feedback event — the "editing" counterpart to Undo,
+// for fixing a specific wrong tap without discarding everything else.
+// Deleting the event that completed the session (kind "gone") is the same
+// as undoing the completion: hand off to reopenEffectSession, which also
+// reverts the model training that completion triggered (if still safe to).
+export async function deleteEffectEvent(sessionId, eventId) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  const idx = (s.events || []).findIndex((e) => e.id === eventId);
+  if (idx === -1) throw new Error("Event not found");
+  if (s.events[idx].kind === "gone") return reopenEffectSession(sessionId);
+  if (s.status !== "active") throw new Error("Only an active session's feedback can be edited");
+  s.events.splice(idx, 1);
+  s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
   return s;
 }
@@ -649,17 +694,20 @@ export async function addEffectEvent(sessionId, { kind, intensity = null, note =
 async function endEffectSessionInternal(sessions, s, { learn }) {
   s.status = "completed";
   s.ended_at = nowIso();
-  await setArr(pkey("effectSessions"), sessions);
   if (learn) {
     const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
     const obs = observationsFromSession(s);
     if (obs.onset_min != null || obs.peak_min != null || obs.end_min != null) {
+      // Snapshot the exact prior model so this training step can be undone.
       const prev = await getEffectModel(s.medication_id);
+      s.model_before = prev || null;
       const next = updateModel(prev, obs, s.dose, med);
       next.medication_id = s.medication_id;
       await saveEffectModel(next);
+      s.model_after_version = await bumpEffectModelVersion(s.medication_id);
     }
   }
+  await setArr(pkey("effectSessions"), sessions);
   return s;
 }
 
@@ -675,6 +723,48 @@ export async function endEffectSession(sessionId, { learn = true, discard = fals
     return s;
   }
   return endEffectSessionInternal(sessions, s, { learn });
+}
+
+// Undo a session's completion (via "Gone" feedback, "End session", or
+// "Discard"): reactivates it, strips the terminal event, and — only if
+// nothing has touched the medication's model since (checked via the version
+// counter) — rolls the model back to exactly what it was before this
+// session trained it. If a newer session (or a Reset) has since changed the
+// model, reverting would silently erase that newer, unrelated learning, so
+// it's refused with a clear reason instead.
+export async function reopenEffectSession(sessionId) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (s.status === "active") return s;
+  if (!["completed", "discarded"].includes(s.status)) throw new Error("This session can no longer be undone");
+  if (s.model_after_version != null) {
+    const current = await getEffectModelVersion(s.medication_id);
+    if (current !== s.model_after_version) {
+      throw new Error("Your medication's timing model has changed since this session completed — it can no longer be undone.");
+    }
+    const models = await getArr(pkey("effectModels"));
+    const idx = models.findIndex((m) => m.medication_id === s.medication_id);
+    if (s.model_before) { if (idx >= 0) models[idx] = s.model_before; else models.push(s.model_before); }
+    else if (idx >= 0) models.splice(idx, 1);
+    await setArr(pkey("effectModels"), models);
+  }
+  // Reactivating must preserve the one-active-session-per-medication rule.
+  sessions.forEach((other) => {
+    if (other.id !== s.id && other.medication_id === s.medication_id && other.status === "active") {
+      other.status = "discarded";
+      other.ended_at = nowIso();
+    }
+  });
+  s.events = (s.events || []).filter((e) => e.kind !== "gone");
+  s.status = "active";
+  s.ended_at = null;
+  delete s.model_before;
+  delete s.model_after_version;
+  s.updated_at = nowIso();
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
 }
 
 // Active sessions with their medication attached. Sessions long past their
