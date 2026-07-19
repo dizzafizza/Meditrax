@@ -186,3 +186,149 @@ describe("session lifecycle in localdb", () => {
     expect(active.profile.onset_min).toBe(40); // stimulant default again
   });
 });
+
+describe("deleteEffectEvent (editing a session's feedback)", () => {
+  test("removes a specific event without disturbing the others", async () => {
+    const med = await db.createMedication({ name: "EditEvMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s.id, { kind: "onset" });
+    const withIntensity = await db.addEffectEvent(s.id, { kind: "intensity", intensity: 9 }); // fat-fingered value
+    await db.addEffectEvent(s.id, { kind: "wearing_off" });
+    expect(withIntensity.events.map((e) => e.kind)).toEqual(["onset", "intensity", "wearing_off"]);
+    const badEvent = withIntensity.events.find((e) => e.kind === "intensity");
+
+    const fixed = await db.deleteEffectEvent(s.id, badEvent.id);
+    expect(fixed.events.map((e) => e.kind)).toEqual(["onset", "wearing_off"]);
+    // the freed-up phase button can be tapped again with the right value
+    const corrected = await db.addEffectEvent(s.id, { kind: "intensity", intensity: 4 });
+    expect(corrected.events.map((e) => `${e.kind}:${e.intensity ?? ""}`)).toEqual(["onset:", "wearing_off:", "intensity:4"]);
+  });
+
+  test("every event gets a stable id", async () => {
+    const med = await db.createMedication({ name: "IdMed", strength: 10, unit: "mg", category: "other", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const updated = await db.addEffectEvent(s.id, { kind: "onset" });
+    expect(typeof updated.events[0].id).toBe("string");
+    expect(updated.events[0].id.length).toBeGreaterThan(0);
+  });
+
+  test("errors: unknown event, unknown session, editing a non-active session", async () => {
+    const med = await db.createMedication({ name: "ErrMed", strength: 10, unit: "mg", category: "other", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const withOnset = await db.addEffectEvent(s.id, { kind: "onset" });
+    await expect(db.deleteEffectEvent(s.id, "nope")).rejects.toThrow(/event not found/i);
+    await expect(db.deleteEffectEvent("missing-session", withOnset.events[0].id)).rejects.toThrow(/session not found/i);
+    await db.endEffectSession(s.id, { discard: true });
+    await expect(db.deleteEffectEvent(s.id, withOnset.events[0].id)).rejects.toThrow(/active/i);
+  });
+});
+
+describe("reopenEffectSession (undo a completion)", () => {
+  test("undoing 'Gone' restores the exact prior model and reactivates the session", async () => {
+    const med = await db.createMedication({ name: "UndoMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    // First session trains a real baseline model.
+    const s1 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s1.id, { kind: "onset" });
+    await db.addEffectEvent(s1.id, { kind: "gone" });
+    const baseline = await db.getEffectModel(med.id);
+    expect(baseline.samples).toBe(1);
+
+    // Second session gets bad feedback (fat-fingered "gone" way too early), completes, mis-trains.
+    const s2 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const afterGone = await db.addEffectEvent(s2.id, { kind: "gone" });
+    expect(afterGone.status).toBe("completed");
+    const trained = await db.getEffectModel(med.id);
+    expect(trained.samples).toBe(2); // wrongly counted
+
+    // Undo: reactivates s2 and rolls the model back to exactly the pre-s2 baseline.
+    const reopened = await db.reopenEffectSession(s2.id);
+    expect(reopened.status).toBe("active");
+    expect(reopened.ended_at).toBe(null);
+    expect(reopened.events.some((e) => e.kind === "gone")).toBe(false); // terminal event stripped
+    const restored = await db.getEffectModel(med.id);
+    expect(restored).toEqual(baseline);
+
+    // The reopened session can now be completed correctly.
+    const redone = await db.addEffectEvent(s2.id, { kind: "gone" });
+    expect(redone.status).toBe("completed");
+    expect((await db.getEffectModel(med.id)).samples).toBe(2);
+  });
+
+  test("undo is refused once something newer has touched the model", async () => {
+    const med = await db.createMedication({ name: "StaleUndoMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s1 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s1.id, { kind: "gone" }); // trains v1
+
+    const s2 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s2.id, { kind: "gone" }); // trains v2 — supersedes s1's snapshot window
+
+    await expect(db.reopenEffectSession(s1.id)).rejects.toThrow(/model has changed/i);
+    // s2 is still the latest, so undoing IT works fine.
+    const reopened = await db.reopenEffectSession(s2.id);
+    expect(reopened.status).toBe("active");
+  });
+
+  test("undo is refused after a Reset, since Reset is a deliberate permanent forget", async () => {
+    const med = await db.createMedication({ name: "ResetUndoMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s1 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s1.id, { kind: "gone" });
+    await db.resetEffectModel(med.id);
+    await expect(db.reopenEffectSession(s1.id)).rejects.toThrow(/model has changed/i);
+  });
+
+  test("undoing a discarded session just reactivates it (no model to revert)", async () => {
+    const med = await db.createMedication({ name: "DiscardUndoMed", strength: 10, unit: "mg", category: "other", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.endEffectSession(s.id, { discard: true });
+    const reopened = await db.reopenEffectSession(s.id);
+    expect(reopened.status).toBe("active");
+  });
+
+  test("reopening discards any other currently-active session for the same medication", async () => {
+    const med = await db.createMedication({ name: "OneActiveMed", strength: 10, unit: "mg", category: "other", form: "tablet", times: [], is_prn: true });
+    const s1 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.endEffectSession(s1.id, { discard: true });
+    const s2 = await db.startEffectSession({ medication_id: med.id, dose: 10 }); // now the active one
+
+    const reopened = await db.reopenEffectSession(s1.id);
+    expect(reopened.status).toBe("active");
+    // Filter before indexing — other tests in this file leave their own
+    // active sessions lying around in the shared mock store.
+    const activeForMed = (await db.getActiveEffectSessions()).filter((x) => x.medication_id === med.id);
+    expect(activeForMed).toHaveLength(1);
+    expect(activeForMed[0].id).toBe(s1.id);
+    const s2Fresh = (await db.getEffectSessions({ medication_id: med.id })).find((x) => x.id === s2.id);
+    expect(s2Fresh.status).toBe("discarded");
+  });
+
+  test("reopening an already-active session is a harmless no-op; unknown/never-ended sessions error clearly", async () => {
+    const med = await db.createMedication({ name: "NoopMed", strength: 10, unit: "mg", category: "other", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const same = await db.reopenEffectSession(s.id);
+    expect(same.id).toBe(s.id);
+    expect(same.status).toBe("active");
+    await expect(db.reopenEffectSession("nonexistent")).rejects.toThrow(/not found/i);
+  });
+});
+
+describe("deleteMedication cleans up effect-tracker data (no orphaned models/sessions)", () => {
+  test("removes sessions, models and the version counter for the deleted medication", async () => {
+    const med = await db.createMedication({ name: "DoomedMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s.id, { kind: "gone" });
+    expect(await db.getEffectModel(med.id)).not.toBe(null);
+    expect(await db.getEffectSessions({ medication_id: med.id })).not.toHaveLength(0);
+
+    await db.deleteMedication(med.id);
+    expect(await db.getEffectModel(med.id)).toBe(null);
+    expect(await db.getEffectSessions({ medication_id: med.id })).toHaveLength(0);
+
+    // A medication reusing the same id space starts with a clean version
+    // counter too (no orphaned effectVersions row blocking future undos).
+    const med2 = await db.createMedication({ name: "FreshMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s2 = await db.startEffectSession({ medication_id: med2.id, dose: 10 });
+    const after = await db.addEffectEvent(s2.id, { kind: "gone" });
+    expect(after.status).toBe("completed");
+    expect((await db.getEffectModel(med2.id)).samples).toBe(1);
+  });
+});

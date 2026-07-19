@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getActiveEffectSessions, addEffectEvent, endEffectSession, startEffectSession, updateEffectSession, resetEffectModel, getLogs, getMedications } from "@/lib/api";
+import { getActiveEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, getLogs, getMedications } from "@/lib/api";
 import { intensityAt, phaseAt, curveSeries, fmtMins } from "@/lib/effectsEngine";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal } from "@/lib/format";
 import { Activity, ChevronRight, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil } from "lucide-react";
@@ -129,25 +129,44 @@ function SessionDetail({ session, now }) {
 
   // Feedback events plotted on the chart: phase reports sit on the curve,
   // intensity reports at the strength the user actually felt (0-10 → 0-100%).
-  const eventDots = useMemo(() => (session.events || []).map((e, i) => {
+  const eventDots = useMemo(() => (session.events || []).map((e) => {
     const m = Math.max(0, (new Date(e.t).getTime() - startMs) / 60000);
     if (m > chartEnd) return null;
     const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : intensityAt(m, p) * scale;
-    return { key: `${e.kind}-${i}`, x: Math.round(m), y: Math.round(y), kind: e.kind };
+    return { key: e.id, x: Math.round(m), y: Math.round(y), kind: e.kind };
   }).filter(Boolean), [session.events, startMs, chartEnd, p, scale]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["effectSessions"] });
+  // "Undo" on the toast reopens the session — reverses both the completion
+  // and (if nothing newer has touched the model since) the training it
+  // triggered. Wrapped so the error from a stale/unsafe undo surfaces clearly.
+  const undoComplete = () => reopenEffectSession(session.id).then(invalidate).catch((e) => toast.error(e?.message || "Could not undo"));
+
   const feedback = useMutation({
     mutationFn: (payload) => addEffectEvent(session.id, payload),
     onSuccess: (s, vars) => {
       invalidate();
-      toast.success(vars.kind === "gone" ? "Session complete — your model was updated" : "Noted — this tunes your personal curve");
+      if (vars.kind === "gone") {
+        toast.success("Session complete — your model was updated", { action: { label: "Undo", onClick: undoComplete } });
+      } else {
+        toast.success("Noted — this tunes your personal curve");
+      }
     },
     onError: (e) => toast.error(e?.message || "Could not record feedback"),
   });
+  // Removes one recorded event ("editing" a session mid-flight) — for
+  // anything but the very last tap, more precise than a full Undo.
+  const undoEvent = useMutation({
+    mutationFn: (eventId) => deleteEffectEvent(session.id, eventId),
+    onSuccess: () => { invalidate(); toast.success("Removed"); },
+    onError: (e) => toast.error(e?.message || "Could not remove"),
+  });
   const finish = useMutation({
     mutationFn: (opts) => endEffectSession(session.id, opts),
-    onSuccess: (_s, opts) => { invalidate(); toast.success(opts?.discard ? "Session discarded" : "Session ended"); },
+    onSuccess: (_s, opts) => {
+      invalidate();
+      toast.success(opts?.discard ? "Session discarded" : "Session ended", { action: { label: "Undo", onClick: undoComplete } });
+    },
     onError: () => toast.error("Could not end session"),
   });
   const edit = useMutation({
@@ -305,6 +324,45 @@ function SessionDetail({ session, now }) {
         <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>How strong does it feel?</span><span>{intensityInput[0]}/10</span></div>
         <Slider value={intensityInput} onValueChange={setIntensityInput} onValueCommit={(v) => feedback.mutate({ kind: "intensity", intensity: v[0] })} min={0} max={10} step={1} data-testid="effect-intensity-slider" />
       </div>
+
+      {/* Recorded feedback, most recent first — tap × to fix a specific wrong
+          entry, or "Undo last" for the common case of the last tap. */}
+      {session.events?.length > 0 && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs text-muted-foreground">Your feedback</p>
+            <button
+              onClick={() => undoEvent.mutate(session.events[session.events.length - 1].id)}
+              disabled={undoEvent.isPending}
+              data-testid="effect-undo-last-button"
+              className="text-[11px] font-medium text-primary"
+            >
+              Undo last
+            </button>
+          </div>
+          <div className="space-y-1">
+            {[...session.events].reverse().map((e) => {
+              const meta = FEEDBACK.find((f) => f.kind === e.kind);
+              const mins = Math.max(0, (new Date(e.t).getTime() - startMs) / 60000);
+              const label = e.kind === "intensity" ? `Intensity ${e.intensity}/10` : (meta?.label || e.kind);
+              return (
+                <div key={e.id} className="flex items-center justify-between rounded-lg bg-muted/30 pl-2.5 pr-1 py-1" data-testid="effect-event-row">
+                  <span className="text-xs">{label} <span className="text-muted-foreground">· {fmtMins(mins)} in</span></span>
+                  <button
+                    onClick={() => undoEvent.mutate(e.id)}
+                    disabled={undoEvent.isPending}
+                    aria-label={`Remove ${label}`}
+                    data-testid="effect-event-delete"
+                    className="pressable h-7 w-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mt-3 flex gap-2">
         <Button variant="secondary" size="sm" className="flex-1 rounded-xl" onClick={() => finish.mutate({ learn: true })} data-testid="effect-end-button">End session</Button>
