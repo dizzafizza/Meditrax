@@ -1,5 +1,5 @@
 import {
-  doseQuantity, logQuantity, scheduledDailyQuantity,
+  doseQuantity, logQuantity, pillsFromAmount, scheduledDailyQuantity,
   adherenceFactor, prnDailyRate, predictRunOut, inventoryStatus, taperState,
 } from "../predictor";
 import { localDateStr, addDaysStr, diffDays } from "../dates";
@@ -53,6 +53,20 @@ describe("doseQuantity / logQuantity", () => {
     expect(logQuantity({ status: "taken" }, m)).toBe(2);
     expect(logQuantity({ status: "partial" }, m)).toBe(1);
     expect(logQuantity({ quantity: "bogus", status: "taken" }, m)).toBe(2); // NaN guard
+  });
+
+  test("pillsFromAmount inverts amount = strength × pills (quarter-rounded)", () => {
+    // The inventory bug: logging 30 mg of a 10 mg med must decrement 3 pills.
+    expect(pillsFromAmount(30, 10)).toBe(3);
+    expect(pillsFromAmount(10, 10)).toBe(1);
+    expect(pillsFromAmount(25, 10)).toBe(2.5);
+    expect(pillsFromAmount(33, 10)).toBe(3.25); // snapped to nearest quarter
+    expect(pillsFromAmount(0, 10)).toBe(0);
+    // Unknown/invalid strength or amount → null so the caller keeps the count.
+    expect(pillsFromAmount(30, 0)).toBe(null);
+    expect(pillsFromAmount(30, null)).toBe(null);
+    expect(pillsFromAmount("", 10)).toBe(null);
+    expect(pillsFromAmount("abc", 10)).toBe(null);
   });
 });
 

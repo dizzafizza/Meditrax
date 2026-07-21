@@ -252,6 +252,91 @@ describe("updateCheckin", () => {
   });
 });
 
+describe("reconcileMedicationInventory (legacy under-decrement fix)", () => {
+  // The historical bug: the log sheet's "Total amount" field didn't update
+  // the pill count inventory decrements by, so createLog({quantity: 1,
+  // dose_taken: 150}) — a 3-pill dose recorded as if it were 1 — is exactly
+  // what old buggy versions saved. strength=50, so 150mg should be 3 pills.
+  test("corrects an under-decremented log: fixes stock, quantity, and inventory_delta", async () => {
+    const med = await addMed(); // strength 50, stock 30
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 1, dose_taken: 150, unit: "mg", scheduled_time: "09:00" });
+    expect(await stockOf(med.id)).toBe(29); // bug: only 1 pill decremented
+
+    const result = await db.reconcileMedicationInventory(med.id);
+    expect(result).toEqual({ fixed: 1, delta: 2 }); // 2 more pills owed
+    expect(await stockOf(med.id)).toBe(27); // 30 - 3, now correct
+
+    const fixed = await db.getLog(log.id);
+    expect(fixed.quantity).toBe(3);
+    expect(fixed.inventory_delta).toBe(3);
+  });
+
+  test("is idempotent — re-running finds nothing left to fix", async () => {
+    const med = await addMed();
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 1, dose_taken: 150, unit: "mg", scheduled_time: "09:00" });
+    await db.reconcileMedicationInventory(med.id);
+    const again = await db.reconcileMedicationInventory(med.id);
+    expect(again).toEqual({ fixed: 0, delta: 0 });
+    expect(await stockOf(med.id)).toBe(27);
+  });
+
+  test("skips logs whose unit no longer matches the medication's (can't safely infer)", async () => {
+    const med = await addMed();
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 1, dose_taken: 150, unit: "mcg", scheduled_time: "09:00" });
+    const result = await db.reconcileMedicationInventory(med.id);
+    expect(result).toEqual({ fixed: 0, delta: 0 });
+    expect(await stockOf(med.id)).toBe(29); // untouched, left as recorded
+  });
+
+  test("skips logs without a recorded dose_taken, and non-consuming statuses", async () => {
+    const med = await addMed();
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 1, scheduled_time: "09:00" }); // no dose_taken
+    await db.createLog({ medication_id: med.id, status: "skipped", dose_taken: 150, scheduled_time: "21:00" });
+    const result = await db.reconcileMedicationInventory(med.id);
+    expect(result).toEqual({ fixed: 0, delta: 0 });
+  });
+
+  test("also corrects partial-status logs", async () => {
+    const med = await addMed();
+    await db.createLog({ medication_id: med.id, status: "partial", quantity: 1, dose_taken: 100, unit: "mg", scheduled_time: "09:00" }); // should be 2 pills
+    const result = await db.reconcileMedicationInventory(med.id);
+    expect(result).toEqual({ fixed: 1, delta: 1 });
+    expect(await stockOf(med.id)).toBe(28); // 30 - 2
+  });
+
+  test("clamps to available stock when the correction exceeds what's left", async () => {
+    const med = await addMed({ inventory: { current_count: 2, unit: "tablets", units_per_dose: 2, refill_threshold: 10 } });
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 1, dose_taken: 250, unit: "mg", scheduled_time: "09:00" }); // implies 5 pills, only 1 was taken
+    expect(await stockOf(med.id)).toBe(1); // 2 - 1
+    const result = await db.reconcileMedicationInventory(med.id);
+    expect(result.fixed).toBe(1);
+    expect(await stockOf(med.id)).toBe(0); // clamped, can't go negative
+  });
+
+  test("no-op for meds without inventory tracking or without a strength", async () => {
+    const noInv = await addMed({ inventory: null });
+    expect(await db.reconcileMedicationInventory(noInv.id)).toEqual({ fixed: 0, delta: 0 });
+    const noStrength = await addMed({ strength: null });
+    expect(await db.reconcileMedicationInventory(noStrength.id)).toEqual({ fixed: 0, delta: 0 });
+  });
+});
+
+describe("reconcileAllInventory", () => {
+  test("fixes every inventory-tracked medication for the active profile and reports only the changed ones", async () => {
+    const broken = await addMed({ name: "Broken" });
+    await db.createLog({ medication_id: broken.id, status: "taken", quantity: 1, dose_taken: 150, unit: "mg", scheduled_time: "09:00" });
+    const fine = await addMed({ name: "Fine" });
+    await db.createLog({ medication_id: fine.id, status: "taken", quantity: 2, dose_taken: 100, unit: "mg", scheduled_time: "09:00" }); // already correct
+    await addMed({ name: "Untracked", inventory: null });
+
+    const results = await db.reconcileAllInventory();
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ medication_id: broken.id, name: "Broken", fixed: 1, delta: 2 });
+    expect(await stockOf(broken.id)).toBe(27);
+    expect(await stockOf(fine.id)).toBe(28); // unchanged, was already right
+  });
+});
+
 describe("adjustInventory", () => {
   test("set/delta with clamping and units_per_dose sync to dose_quantity", async () => {
     const med = await addMed();

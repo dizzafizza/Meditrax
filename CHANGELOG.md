@@ -3,6 +3,27 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-17 — Inventory under-decremented for doses above the default amount
+
+### Fixed
+- **Logging a dose higher than a medication's default only decremented one
+  pill's worth of stock.** The "Pills taken" stepper and "Total amount" field
+  in the log sheet were only synced one way — editing the amount didn't
+  update the pill count inventory actually decrements by, and once the
+  amount had been touched once, the stepper stopped syncing it back either.
+  Logging 100 mg of a 50 mg medication (2 pills) could decrement only 1 pill
+  from stock. Both fields now stay in sync in both directions, always, for
+  any medication with a known strength.
+- **Migration for existing users**: a new `reconcileMedicationInventory` /
+  `reconcileAllInventory` pass recomputes every past log's pill count from
+  its recorded total amount and the medication's strength, and applies the
+  shortfall to stock — so inventory that drifted under old versions self-
+  corrects to match the log history, not just new logs going forward. Runs
+  automatically once per profile (flagged so it never repeats), on first
+  load and on every profile switch. Skips logs whose unit no longer matches
+  the medication's (unsafe to infer) and logs without a recorded amount, and
+  clamps to available stock the same way normal decrements do.
+
 ## 2026-07-17 — Undo & edit effects-tracker feedback
 
 ### Added
