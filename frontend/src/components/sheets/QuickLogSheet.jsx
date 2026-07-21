@@ -14,6 +14,7 @@ import { scheduleAllReminders } from "@/lib/push";
 import { Switch } from "@/components/ui/switch";
 import MedColorDot from "@/components/MedColorDot";
 import { doseLabel, fmtTime12, toDatetimeLocal } from "@/lib/format";
+import { pillsFromAmount } from "@/lib/predictor";
 import { cn } from "@/lib/utils";
 import { Check, X, SkipForward, MinusCircle, PlusCircle, Trash2 } from "lucide-react";
 
@@ -41,7 +42,6 @@ export default function QuickLogSheet() {
   const [status, setStatus] = useState("taken");
   const [quantity, setQuantity] = useState(1);
   const [dose, setDose] = useState("");
-  const [doseTouched, setDoseTouched] = useState(false);
   const [when, setWhen] = useState("");
   const [whenTouched, setWhenTouched] = useState(false);
   const [notes, setNotes] = useState("");
@@ -79,7 +79,6 @@ export default function QuickLogSheet() {
       setStatus(lg.status || "taken");
       setQuantity(Number(lg.quantity ?? per) || 0);
       setDose(lg.dose_taken != null ? lg.dose_taken : (m?.strength != null ? m.strength * (Number(lg.quantity ?? per) || 0) : ""));
-      setDoseTouched(lg.dose_taken != null);
       setWhen(toDatetimeLocal(lg.timestamp));
       setNotes(lg.notes || "");
       setMood(lg.mood || null);
@@ -89,7 +88,6 @@ export default function QuickLogSheet() {
       setStatus("taken");
       setQuantity(per);
       setDose(m?.strength != null ? m.strength * per : (ui.logSheet.dose ?? ""));
-      setDoseTouched(false);
       setWhen(toDatetimeLocal());
       setNotes(""); setMood(null); setEffectiveness([7]); setShowMore(false);
     }
@@ -97,13 +95,22 @@ export default function QuickLogSheet() {
     setWhenTouched(false);
   }, [ui.logSheet.open]); // eslint-disable-line
 
-  // Keep the total-amount field derived from the pill count unless the user
-  // has manually overridden it.
+  // Pill count and total amount are two views of the same thing, kept in sync
+  // both ways so inventory (which decrements by pill count) always matches what
+  // the user entered. Editing the pill stepper updates the amount; editing the
+  // amount re-derives the pill count from the medication's per-unit strength.
   const changeQuantity = (q) => {
     setAutoDefault(false);
     const next = Math.max(0, Math.round(q * 4) / 4); // quarter-pill precision
     setQuantity(next);
-    if (!doseTouched && med?.strength != null) setDose(med.strength * next);
+    if (med?.strength != null) setDose(med.strength * next);
+  };
+  const changeDose = (v) => {
+    setAutoDefault(false);
+    setDose(v);
+    // Back-derive the pill count so inventory decrements the real amount taken.
+    const pills = pillsFromAmount(v, med?.strength);
+    if (pills != null) setQuantity(pills);
   };
   const selectStatus = (s) => {
     setStatus(s);
@@ -225,7 +232,7 @@ export default function QuickLogSheet() {
               <div>
                 <Label className="text-xs text-muted-foreground">Total amount</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Input type="number" value={dose} onChange={(e) => { setDose(e.target.value); setDoseTouched(true); setAutoDefault(false); }} className="h-11 rounded-xl" data-testid="quick-log-dose-input" />
+                  <Input type="number" value={dose} onChange={(e) => changeDose(e.target.value)} className="h-11 rounded-xl" data-testid="quick-log-dose-input" />
                   <span className="text-sm text-muted-foreground w-12">{med.unit}</span>
                 </div>
               </div>

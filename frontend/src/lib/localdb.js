@@ -5,7 +5,7 @@ import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
 import { personalizedProfile, observationsFromSession, updateModel } from "./effectsEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
-import { doseQuantity, predictRunOut, inventoryStatus, taperState } from "./predictor";
+import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
 
 const store = localforage.createInstance({ name: "meditrax", storeName: "meditrax_v1" });
 
@@ -76,6 +76,7 @@ async function ensureInit() {
     }
     if (!(await store.getItem("appSettings"))) await store.setItem("appSettings", DEFAULT_SETTINGS);
     if (!(await store.getItem("aiConfig"))) await store.setItem("aiConfig", DEFAULT_AI_CONFIG);
+    await autoReconcileInventoryOnce();
   })();
   return _initPromise;
 }
@@ -87,7 +88,11 @@ export async function getActiveProfileId() { await ensureInit(); return _activeI
 export async function setActiveProfile(id) {
   await ensureInit();
   const profiles = await getArr("profiles");
-  if (profiles.find((p) => p.id === id)) { _activeId = id; await store.setItem("activeProfileId", id); }
+  if (profiles.find((p) => p.id === id)) {
+    _activeId = id;
+    await store.setItem("activeProfileId", id);
+    await autoReconcileInventoryOnce(); // no-op once this profile has already been checked
+  }
   return _activeId;
 }
 export async function createProfile(data) {
@@ -240,6 +245,80 @@ function applyStockDelta(med, delta) {
 const LOG_CONSUMING_STATUSES = ["taken", "partial"];
 function logConsumption(log) {
   return LOG_CONSUMING_STATUSES.includes(log.status) ? Math.max(0, Number(log.quantity || 0)) : 0;
+}
+
+// ---- inventory reconciliation ----
+// Self-heals a historical bug: editing the "Total amount" field in the log
+// sheet didn't update the pill count inventory decrements by, so any dose
+// logged above the medication's default pill count under-decremented stock.
+// Recomputes each consuming log's pill quantity from its recorded dose_taken
+// and the medication's current strength, and applies the shortfall (or
+// excess) to stock. Idempotent — once a log's quantity matches what
+// dose_taken implies, re-running finds nothing left to fix.
+// Internal — assumes ensureInit() has already resolved. Split out so the
+// auto-heal hook inside ensureInit() itself can call this directly instead
+// of re-entering ensureInit() (which would deadlock: it would await the very
+// _initPromise it's currently running inside of).
+async function reconcileMedicationInventoryUnsafe(medication_id) {
+  const meds = await getArr(pkey("medications"));
+  const med = meds.find((m) => m.id === medication_id);
+  if (!med || !med.inventory || !(Number(med.strength) > 0)) return { fixed: 0, delta: 0 };
+  const logs = await getArr(pkey("logs"));
+  let totalDelta = 0, fixedCount = 0;
+  logs.forEach((log) => {
+    if (log.medication_id !== medication_id) return;
+    if (!LOG_CONSUMING_STATUSES.includes(log.status)) return;
+    if (log.dose_taken == null) return;
+    if (log.unit && med.unit && log.unit !== med.unit) return; // unit changed since — can't safely infer
+    const expected = pillsFromAmount(log.dose_taken, med.strength);
+    if (expected == null) return;
+    const recorded = Number(log.quantity || 0);
+    const diff = Math.round((expected - recorded) * 4) / 4;
+    if (Math.abs(diff) < 0.01) return; // already matches
+    const applied = applyStockDelta(med, diff);
+    log.quantity = expected;
+    log.inventory_delta = Math.round((Number(log.inventory_delta || 0) + applied) * 100) / 100;
+    log.updated_at = nowIso();
+    totalDelta += applied;
+    fixedCount++;
+  });
+  if (fixedCount > 0) {
+    await setArr(pkey("logs"), logs);
+    await setArr(pkey("medications"), meds);
+  }
+  return { fixed: fixedCount, delta: Math.round(totalDelta * 100) / 100 };
+}
+export async function reconcileMedicationInventory(medication_id) {
+  await ensureInit();
+  return reconcileMedicationInventoryUnsafe(medication_id);
+}
+
+async function reconcileAllInventoryUnsafe() {
+  const meds = await getArr(pkey("medications"));
+  const results = [];
+  for (const med of meds) {
+    if (!med.inventory) continue;
+    const r = await reconcileMedicationInventoryUnsafe(med.id);
+    if (r.fixed > 0) results.push({ medication_id: med.id, name: med.name, unit: med.inventory.unit, ...r });
+  }
+  return results;
+}
+// Runs reconciliation across every inventory-tracked medication for the
+// active profile. Safe to call repeatedly — a no-op once everything matches.
+export async function reconcileAllInventory() {
+  await ensureInit();
+  return reconcileAllInventoryUnsafe();
+}
+
+// Runs the fix at most once per profile (flagged in storage), so returning
+// users self-heal automatically the first time inventory data is touched
+// without repeating the log scan on every load.
+async function autoReconcileInventoryOnce() {
+  const key = pkey("inventoryReconciledV1");
+  if (await store.getItem(key)) return null;
+  const results = await reconcileAllInventoryUnsafe();
+  await store.setItem(key, true);
+  return results;
 }
 
 export async function getLogs(params = {}) {

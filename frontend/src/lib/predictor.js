@@ -17,6 +17,19 @@ export function doseQuantity(med) {
   return q > 0 ? q : 1;
 }
 
+// Pills (quarter-rounded) a given total amount represents at a med's per-unit
+// strength — the inverse of `amount = strength × pills`. Returns null when the
+// amount or strength can't give a meaningful pill count, so callers can leave
+// the pill count untouched. Inventory decrements by pills, so the dose-entry
+// UI uses this to keep the pill count honest when the amount is edited.
+export function pillsFromAmount(amount, strength) {
+  if (amount === "" || amount == null) return null; // Number("") is 0 — guard it
+  const a = Number(amount);
+  const s = Number(strength);
+  if (!isFinite(a) || !isFinite(s) || s <= 0) return null;
+  return Math.max(0, Math.round((a / s) * 4) / 4);
+}
+
 // Units consumed by a log. Legacy logs (no quantity) mirror the old decrement
 // behavior: full per-dose default, halved for "partial".
 export function logQuantity(log, med) {
