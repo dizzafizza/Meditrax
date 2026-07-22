@@ -109,6 +109,23 @@ describe("createLog dedup (B11)", () => {
     expect(await db.getLogs({ medication_id: med.id })).toHaveLength(2);
     expect(await stockOf(med.id)).toBe(28);
   });
+
+  // Regression: an ad-hoc "extra dose" log (no scheduled_time — the log
+  // sheet's UI-level entry points from MedicationDetail/QuickAdd must never
+  // pass the medication's scheduled time here) must decrement its own
+  // inventory independently of an already-logged scheduled dose for the same
+  // med+day, not silently merge into it and swallow the extra decrement.
+  test("an unscheduled 'extra dose' log never merges with an already-logged scheduled dose", async () => {
+    const med = await addMed(); // strength 50, dose_quantity 2, stock 30
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: "09:00" });
+    expect(await stockOf(med.id)).toBe(28); // scheduled dose decremented
+
+    await db.createLog({ medication_id: med.id, status: "taken", quantity: 2, scheduled_time: null });
+    expect(await stockOf(med.id)).toBe(26); // extra dose decremented too, not merged away
+
+    const logs = await db.getLogs({ medication_id: med.id });
+    expect(logs).toHaveLength(2); // two distinct entries, not one overwritten
+  });
 });
 
 describe("deleteLog restores inventory (B1)", () => {

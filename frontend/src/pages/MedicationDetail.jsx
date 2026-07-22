@@ -81,7 +81,12 @@ export default function MedicationDetail() {
 
         {/* Quick actions */}
         <div className="grid grid-cols-3 gap-3">
-          <ActionBtn icon={ClipboardList} label="Log dose" onClick={() => ui.openQuickLog(med, med.times?.[0] || null, med.strength)} testid="detail-log-dose" />
+          {/* Ad-hoc log, not tied to a scheduled slot — pass no scheduled_time so
+              it always creates its own entry and decrements its own inventory,
+              instead of dedup-merging into (and silently swallowing) today's
+              already-logged scheduled dose. Use the dose card on Today to log
+              a specific scheduled slot. */}
+          <ActionBtn icon={ClipboardList} label="Log dose" onClick={() => ui.openQuickLog(med, null, med.strength)} testid="detail-log-dose" />
           <ActionBtn icon={TrendingDown} label={med.is_tapering ? "View taper" : "Start taper"} onClick={() => navigate(`/taper?med=${med.id}`)} testid="detail-start-taper" />
           <ActionBtn icon={RefreshCw} label="Cyclic" onClick={() => navigate(`/cyclic?med=${med.id}`)} testid="detail-cyclic" />
         </div>

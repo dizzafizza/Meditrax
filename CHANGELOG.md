@@ -3,6 +3,32 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-18 — Extra/unscheduled doses silently skipped inventory
+
+### Fixed
+- **Logging an extra, unscheduled dose of a medication that has a schedule
+  didn't decrement inventory at all**, and silently overwrote the day's
+  already-logged scheduled dose instead of adding a second entry. The "Log
+  dose" button on a medication's detail page, and the per-medication "Log"
+  tile in the quick-actions sheet, both stamped every ad-hoc log with the
+  medication's *first scheduled time* — so if that scheduled dose had
+  already been taken today, the new log matched createLog's same-slot dedup
+  guard and merged into it (correct behavior when re-editing that exact
+  scheduled dose, wrong when logging something in addition to it): the
+  extra dose's amount replaced the original's instead of adding to it, and
+  the net inventory change was the *difference* between the two, not the
+  sum — for two equal doses, that's zero. Taking your normal dose, then an
+  extra one, could leave stock completely unchanged.
+  Both entry points now log with no scheduled_time, so an ad-hoc/extra dose
+  always creates its own entry and always decrements its own inventory,
+  regardless of whether a scheduled dose was already logged that day. (Tap
+  the actual dose card on Today to edit a specific scheduled slot instead.)
+- Verified the underlying decrement math (and the two fixes above) hold
+  identically across medication forms — tablet, capsule, liquid, and patch
+  all took a scheduled dose then an extra dose correctly, decrementing twice
+  and leaving two distinct log entries — confirming the inventory model is
+  form-agnostic rather than tablet-specific.
+
 ## 2026-07-17 — Inventory under-decremented for doses above the default amount
 
 ### Fixed
