@@ -270,16 +270,16 @@ export function buildSystemPrompt({ personality = {}, context = {}, toolsEnabled
 // ---- structured medication research (knowledge base autofill) ----
 export async function autofillMedicationAI(name, config) {
   const sys = "You are a clinical drug-information assistant. Return ONLY valid minified JSON (no markdown, no code fences) describing the requested medication.";
-  const schema = '{"name":string,"generic_name":string,"brand_names":string[],"drug_class":string,"category":one of ["antidepressant","benzodiazepine","opioid","stimulant","nsaid","antibiotic","sleep-aid","antihypertensive","diabetes","statin","ppi","antihistamine","thyroid","anticonvulsant","supplement","antipsychotic","muscle-relaxant","other"],"default_unit":string,"common_dosages":number[],"typical_dosing":string,"max_daily_dose":number|null,"common_side_effects":string[],"serious_side_effects":string[],"interactions":string[],"warnings":string[],"risk_level":one of ["minimal","low","moderate","high"],"dependency_risk_category":one of ["none","low","moderate","high","extreme"],"mechanism":string,"half_life":string,"content":string}';
+  const schema = '{"name":string,"generic_name":string,"brand_names":string[],"street_names":string[],"drug_class":string,"category":one of ["antidepressant","benzodiazepine","opioid","stimulant","stimulant-fast","nsaid","antibiotic","sleep-aid","antihypertensive","diabetes","statin","ppi","antihistamine","thyroid","anticonvulsant","supplement","antipsychotic","muscle-relaxant","psychedelic","empathogen","dissociative","cannabis","depressant","other"],"default_unit":string,"common_dosages":number[],"typical_dosing":string,"max_daily_dose":number|null,"common_side_effects":string[],"serious_side_effects":string[],"interactions":string[],"warnings":string[],"risk_level":one of ["minimal","low","moderate","high"],"dependency_risk_category":one of ["none","low","moderate","high","extreme"],"mechanism":string,"half_life":string,"content":string}';
   // Structured extraction — the "light" (cheapest) model tier is plenty.
   const { parsed } = await completeJSON({
     config, tier: "light", system: sys, temperature: 0.2,
-    user: `Provide accurate information for the medication "${name}". Respond with JSON exactly matching this schema: ${schema}. "content" should be a 2-3 sentence plain-language summary. If "${name}" is not a real medication, respond with {"error":"not_found"}.`,
+    user: `Provide accurate information for "${name}", which may be a prescription/OTC medication or a recreational/psychoactive substance. Respond with JSON exactly matching this schema: ${schema}. Use "street_names" for common slang names of recreational substances (leave empty for conventional medications). "content" should be a 2-3 sentence plain-language summary, and for recreational substances should include a harm-reduction framing (key risks, dangerous combinations) rather than encouragement to use. If "${name}" is not a real medication or substance, respond with {"error":"not_found"}.`,
   });
   if (parsed.error === "not_found" || !parsed.name) throw new Error(`Couldn't find reliable information for "${name}".`);
 
   parsed.common_dosages = Array.isArray(parsed.common_dosages) ? parsed.common_dosages.map(Number).filter((x) => !isNaN(x)) : [];
-  ["brand_names", "common_side_effects", "serious_side_effects", "interactions", "warnings"].forEach((k) => { if (!Array.isArray(parsed[k])) parsed[k] = []; });
+  ["brand_names", "street_names", "common_side_effects", "serious_side_effects", "interactions", "warnings"].forEach((k) => { if (!Array.isArray(parsed[k])) parsed[k] = []; });
   if (parsed.max_daily_dose != null && isNaN(Number(parsed.max_daily_dose))) parsed.max_daily_dose = null;
   return parsed;
 }

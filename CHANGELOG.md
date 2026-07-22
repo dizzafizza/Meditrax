@@ -3,6 +3,53 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-22 — Recreational/psychoactive substance templates for the effects tracker & knowledge base
+
+### Added
+- **10 new knowledge-base entries** for commonly-tracked recreational and
+  psychoactive substances — Alcohol, Cannabis (THC), Cocaine, GHB/GBL,
+  Ketamine, Kratom, LSD, MDMA, Methamphetamine, and Psilocybin mushrooms —
+  alongside the existing prescription/OTC catalog. Each follows the same
+  schema as every other entry (dosing, side effects, interactions, warnings,
+  risk level, dependency risk, mechanism, half-life) with harm-reduction
+  framing: dangerous combinations (e.g. depressants + alcohol/opioids,
+  MDMA/LSD + MAOIs), dosing/measurement precautions, and realistic risk
+  levels — consistent with how the app already treats controlled substances
+  like benzodiazepines and opioids. A new `street_names` field (e.g. "Molly",
+  "Acid", "Ice") is searchable alongside brand names and shown on the
+  knowledge article page.
+- **6 new effects-tracker categories** with dedicated pharmacokinetic
+  baselines — psychedelic (LSD/psilocybin), empathogen (MDMA), dissociative
+  (ketamine), cannabis, depressant (alcohol/GHB), and stimulant-fast
+  (cocaine) — so newly-tracked substances start from a realistic onset/peak/
+  duration curve instead of silently falling back to the generic "other"
+  default. Categories that intentionally have no dedicated curve (chronic
+  maintenance meds like blood pressure/diabetes/thyroid) continue to fall
+  back to "other" as before.
+- **3 new medication forms** — smoked/vaporized, insufflated, edible — so
+  routes with very different absorption speed (e.g. smoked vs. edible
+  cannabis) produce a correspondingly different default curve.
+- The AI-assisted "Research with AI" knowledge-base autofill now recognizes
+  the expanded category list and `street_names`, so substances outside the
+  curated seed get classified consistently and researched with harm-reduction
+  framing rather than encouragement to use.
+
+### Verified
+- New unit tests assert every `CATEGORY_PK` entry (existing and new) and
+  every `FORM_SPEED` combination produces a sanely-ordered profile
+  (onset < peak < duration), that the fast (cocaine/ketamine/cannabis) and
+  slow (psychedelic) baselines are meaningfully different, and that smoked
+  cannabis has a faster onset/shorter duration than edible.
+- A new catalog sanity test asserts every entry has a valid category,
+  risk level and dependency-risk level, no duplicate names, and that the
+  ten new entries each carry a non-minimal risk level and at least one
+  harm-reduction warning. Full suite: 189 tests passing.
+- Verified in-browser: searching "molly" surfaces MDMA via its street name,
+  the new category filter chips all render, and adding LSD from its
+  knowledge article then logging a dose renders a correctly-scaled 8-hour
+  effects curve (0-100%, hourly gridlines, no cutoff) — confirming the new
+  psychedelic PK profile flows end-to-end through the existing chart.
+
 ## 2026-07-18 — Extra/unscheduled doses silently skipped inventory
 
 ### Fixed

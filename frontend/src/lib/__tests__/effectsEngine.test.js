@@ -14,6 +14,7 @@ jest.mock("localforage", () => {
 import {
   defaultPkProfile, personalizedProfile, intensityAt, phaseAt, curveSeries,
   observationsFromSession, updateModel, modelConfidence, fmtMins,
+  CATEGORY_PK, FORM_SPEED,
 } from "../effectsEngine";
 import * as db from "../localdb";
 
@@ -26,6 +27,28 @@ describe("defaultPkProfile", () => {
     const unknown = defaultPkProfile({});
     expect(unknown.onset_min).toBeLessThan(unknown.peak_min);
     expect(unknown.peak_min).toBeLessThan(unknown.duration_min);
+  });
+
+  test("every category (incl. recreational/psychoactive ones) yields a sanely ordered profile in every form", () => {
+    for (const category of Object.keys(CATEGORY_PK)) {
+      for (const form of [...Object.keys(FORM_SPEED), undefined]) {
+        const p = defaultPkProfile({ category, form });
+        expect(p.onset_min).toBeGreaterThanOrEqual(2);
+        expect(p.onset_min).toBeLessThan(p.peak_min);
+        expect(p.peak_min).toBeLessThan(p.duration_min);
+      }
+    }
+  });
+
+  test("recreational categories cover fast (stimulant-fast, dissociative, cannabis) through slow (psychedelic) baselines", () => {
+    const fast = defaultPkProfile({ category: "stimulant-fast", form: "tablet" });
+    const slow = defaultPkProfile({ category: "psychedelic", form: "tablet" });
+    expect(fast.duration_min).toBeLessThan(slow.duration_min);
+    // Smoked/vaporized route should be meaningfully faster onset than an oral default for the same substance.
+    const smokedCannabis = defaultPkProfile({ category: "cannabis", form: "smoked/vaporized" });
+    const edibleCannabis = defaultPkProfile({ category: "cannabis", form: "edible" });
+    expect(smokedCannabis.onset_min).toBeLessThan(edibleCannabis.onset_min);
+    expect(smokedCannabis.duration_min).toBeLessThan(edibleCannabis.duration_min);
   });
 });
 

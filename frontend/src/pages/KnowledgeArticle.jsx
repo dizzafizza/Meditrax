@@ -36,6 +36,7 @@ export default function KnowledgeArticle() {
           </div>
           <p className="text-[15px] leading-7 mt-3">{it.content}</p>
           {it.brand_names?.length > 0 && <p className="text-xs text-muted-foreground mt-2">Brand names: {it.brand_names.join(", ")}</p>}
+          {it.street_names?.length > 0 && <p className="text-xs text-muted-foreground mt-2">Also known as: {it.street_names.join(", ")}</p>}
           <Button className="w-full rounded-xl mt-4" onClick={() => ui.openAddMed(it)} data-testid="kb-add-to-meds"><Plus className="h-4 w-4 mr-1" />Add to my medications</Button>
         </div>
 

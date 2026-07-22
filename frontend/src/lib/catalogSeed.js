@@ -1,5 +1,11 @@
 // Auto-generated curated medication catalog (offline knowledge base + add-medication prefill + RAG).
-// 48 entries.
+// 58 entries. Includes common recreational/psychoactive substances alongside
+// prescription and OTC medications — the app already tracks controlled
+// substances (benzodiazepines, opioids, stimulants) with harm-reduction
+// framing (dependency risk, tapering guidance), and these entries extend the
+// same treatment to substances used outside a prescription, so the effects
+// tracker and knowledge base can support real-world harm reduction rather
+// than only modeling prescribed use.
 export const CATALOG_SEED = [
 {
 "name": "Acetaminophen",
@@ -37,6 +43,51 @@ export const CATALOG_SEED = [
 "mechanism": "Central inhibition of prostaglandin synthesis (mechanism not fully understood).",
 "half_life": "2-3 hours",
 "content": "Acetaminophen relieves pain and fever without anti-inflammatory or GI effects. Overdose is the leading cause of acute liver failure; respect daily limits.",
+"source": "curated"
+},
+{
+"name": "Alcohol",
+"generic_name": "ethanol",
+"brand_names": [],
+"drug_class": "CNS depressant (sedative)",
+"category": "depressant",
+"default_unit": "units",
+"common_dosages": [
+1,
+2,
+3,
+4
+],
+"typical_dosing": "Effects are dose- and tolerance-dependent; roughly 1 standard drink (14 g / ~0.6 oz pure alcohol) raises blood alcohol by about 0.02-0.03%. Many jurisdictions set legal driving limits at 0.05-0.08% BAC.",
+"max_daily_dose": null,
+"common_side_effects": [
+"impaired coordination",
+"slowed reaction time",
+"nausea",
+"drowsiness"
+],
+"serious_side_effects": [
+"alcohol poisoning (vomiting, unresponsiveness, slow or irregular breathing)",
+"aspiration",
+"blackouts / memory loss",
+"life-threatening withdrawal (seizures, delirium tremens) after heavy regular use"
+],
+"interactions": [
+"benzodiazepines and other sedatives (respiratory depression)",
+"opioids (respiratory depression, often fatal in combination)",
+"acetaminophen (liver toxicity with regular heavy use)",
+"stimulants (masks intoxication, raises cardiovascular strain)"
+],
+"warnings": [
+"Never combine with opioids, benzodiazepines, GHB, or other sedatives — combined CNS/respiratory depression is a leading cause of overdose death.",
+"Withdrawal after heavy, regular use can be medically dangerous (seizures, delirium tremens); seek medical support to stop rather than quitting abruptly if you drink daily.",
+"Pace drinks and alternate with water; blood alcohol keeps rising for 30-60+ minutes after your last drink."
+],
+"risk_level": "high",
+"dependency_risk_category": "extreme",
+"mechanism": "Potentiates GABA-A receptor activity and inhibits NMDA glutamate receptors, producing broad CNS depression.",
+"half_life": "metabolized at a roughly constant rate (~1 standard drink/hour), not a fixed half-life",
+"content": "Alcohol is the most widely used psychoactive substance in the world and, despite its legality, carries some of the highest acute and chronic health risks in this catalog, including a well-documented and potentially fatal withdrawal syndrome. Tracking here is meant to support harm reduction — pacing, hydration, and recognizing your own tolerance.",
 "source": "curated"
 },
 {
@@ -422,6 +473,56 @@ export const CATALOG_SEED = [
 "source": "curated"
 },
 {
+"name": "Cannabis (THC)",
+"generic_name": "delta-9-tetrahydrocannabinol",
+"street_names": [
+"Weed",
+"Marijuana",
+"Pot",
+"Bud"
+],
+"drug_class": "Cannabinoid",
+"category": "cannabis",
+"default_unit": "mg THC",
+"common_dosages": [
+2.5,
+5,
+10,
+20
+],
+"typical_dosing": "Inhaled (smoked/vaporized): effects are felt within minutes, so it's easy to titrate — wait a few minutes between inhalations. Edibles: start with 2.5-5 mg THC and wait at least 2 hours before considering more; onset is slow and easy to over-shoot.",
+"max_daily_dose": null,
+"common_side_effects": [
+"dry mouth",
+"red eyes",
+"increased appetite",
+"impaired short-term memory and coordination",
+"anxiety at higher doses"
+],
+"serious_side_effects": [
+"panic attacks / acute anxiety, especially with high-THC edibles",
+"cannabinoid hyperemesis syndrome with prolonged heavy use",
+"psychosis risk in predisposed individuals, especially with high-potency products used young or frequently"
+],
+"interactions": [
+"sedatives/alcohol (added impairment)",
+"stimulants (masks perceived intoxication)",
+"many CYP450-metabolized medications (check specific drug interactions)"
+],
+"warnings": [
+"Edible onset can take 30-120+ minutes — the most common bad experience is redosing before the first dose has even peaked; wait it out.",
+"Set the medication's Form to 'smoked/vaporized' or 'edible' so the effects-tracker curve matches your actual route — the two absorb at very different speeds.",
+"Potency of illicit/unregulated products is often unknown; start low, especially with concentrates.",
+"Regular heavy use, especially starting in adolescence, is linked to elevated psychosis risk in susceptible individuals."
+],
+"risk_level": "moderate",
+"dependency_risk_category": "moderate",
+"mechanism": "THC is a partial agonist at CB1 cannabinoid receptors in the brain, altering dopamine, GABA and glutamate signaling.",
+"half_life": "~1-3 days (much longer with regular heavy use, due to fat storage)",
+"content": "Cannabis's psychoactive effects and duration differ enormously by route — smoked or vaporized cannabis acts within minutes and fades in 2-4 hours, while edibles take much longer to start and last considerably longer, which is the single most common cause of accidental overconsumption. About 1 in 10 regular users develop a diagnosable cannabis use disorder, with withdrawal (irritability, insomnia, appetite loss) more common than most people expect.",
+"source": "curated"
+},
+{
 "name": "Cetirizine",
 "generic_name": "cetirizine",
 "brand_names": [
@@ -499,6 +600,58 @@ export const CATALOG_SEED = [
 "mechanism": "Long-acting GABA-A modulator.",
 "half_life": "30-40 hours",
 "content": "Clonazepam is a longer-acting benzodiazepine for seizures and panic disorder. Its longer half-life makes tapering somewhat smoother than alprazolam, but dependence is still a major concern.",
+"source": "curated"
+},
+{
+"name": "Cocaine",
+"generic_name": "cocaine",
+"street_names": [
+"Coke",
+"Blow",
+"Crack (freebase form)"
+],
+"drug_class": "CNS stimulant (tropane alkaloid)",
+"category": "stimulant-fast",
+"default_unit": "mg",
+"common_dosages": [
+30,
+50,
+75
+],
+"typical_dosing": "Recreational insufflated ('snorted') lines are commonly reported around 20-40 mg, felt within a few minutes and fading over 30-60 minutes — the short duration strongly encourages redosing, which drives escalating cardiovascular strain.",
+"max_daily_dose": null,
+"common_side_effects": [
+"increased heart rate and blood pressure",
+"elevated body temperature",
+"reduced appetite",
+"increased alertness/energy",
+"jaw clenching",
+"nasal irritation (insufflated)"
+],
+"serious_side_effects": [
+"cardiac arrhythmia, chest pain, heart attack — possible even in young, healthy users",
+"stroke",
+"seizures",
+"hyperthermia",
+"severe anxiety, paranoia or psychosis with heavy or repeated use"
+],
+"interactions": [
+"alcohol (forms cocaethylene, more cardiotoxic than either drug alone and longer-lasting)",
+"other stimulants (compounded cardiovascular strain)",
+"MAOIs (dangerous hypertensive reaction)"
+],
+"warnings": [
+"Cardiac risk is present even in young, healthy, first-time users — chest pain or a racing/irregular heartbeat after use is a medical emergency.",
+"The short high strongly tempts redosing every 20-30 minutes; each redose compounds cardiovascular load rather than restoring the original effect.",
+"Avoid combining with alcohol — the cocaethylene produced is more toxic to the heart than cocaine alone.",
+"Illicit supply is frequently adulterated (including with fentanyl in some markets); fentanyl test strips are a minimal precaution where legally available.",
+"Set the medication's Form to 'insufflated' or 'smoked/vaporized' to match your route for a more accurate effects-tracker curve — smoked ('crack') hits faster and fades faster than snorted powder."
+],
+"risk_level": "high",
+"dependency_risk_category": "high",
+"mechanism": "Blocks reuptake of dopamine, norepinephrine and serotonin, causing a rapid surge in synaptic dopamine.",
+"half_life": "~1 hour (metabolite benzoylecgonine detectable much longer)",
+"content": "Cocaine produces a short, intense stimulant high with real cardiovascular risk at any dose and in any user — one reason it differs from prescription stimulants of similar pharmacology but longer, steadier profiles. Its brief duration is the main driver of binge redosing patterns, so tracking sessions here is meant to make that pattern visible rather than to normalize frequent use.",
 "source": "curated"
 },
 {
@@ -842,6 +995,55 @@ export const CATALOG_SEED = [
 "source": "curated"
 },
 {
+"name": "GHB / GBL",
+"generic_name": "gamma-hydroxybutyrate / gamma-butyrolactone",
+"street_names": [
+"G",
+"Liquid ecstasy",
+"Gina"
+],
+"drug_class": "CNS depressant (GABA-B agonist)",
+"category": "depressant",
+"default_unit": "ml",
+"common_dosages": [
+1,
+1.5,
+2
+],
+"typical_dosing": "The gap between a typical recreational dose and one that causes unconsciousness or fatal respiratory depression is unusually small, and concentration varies between batches — this is one of the least forgiving substances to dose by volume.",
+"max_daily_dose": null,
+"common_side_effects": [
+"euphoria",
+"relaxation/sedation",
+"reduced inhibition",
+"nausea",
+"dizziness"
+],
+"serious_side_effects": [
+"sudden loss of consciousness ('G-out')",
+"respiratory depression and death, especially combined with alcohol or other depressants",
+"severe, medically dangerous withdrawal (tremor, agitation, seizures, delirium) with regular frequent use"
+],
+"interactions": [
+"alcohol (sharply increased overdose/respiratory-depression risk — a leading cause of GHB deaths)",
+"other sedatives/depressants (opioids, benzodiazepines — compounded respiratory depression)",
+"stimulants (masks sedation, encourages redosing)"
+],
+"warnings": [
+"Measure doses precisely with a proper oral syringe, never by cap or 'swig' — the difference between a normal dose and an overdose can be less than 1 ml.",
+"Never combine with alcohol or other depressants; this combination is responsible for the large majority of GHB-related deaths.",
+"Wait at least 2-3 hours before any redose and never 'top up' to chase a fading effect — this is how overdoses happen.",
+"If someone is unresponsive but breathing after GHB, put them in the recovery position and monitor continuously; if breathing is slow, shallow, or they can't be woken, call emergency services.",
+"Regular use every few hours around the clock can create physical dependence with a withdrawal syndrome that is medically dangerous to stop unsupervised."
+],
+"risk_level": "high",
+"dependency_risk_category": "high",
+"mechanism": "Acts as a GABA-B receptor agonist (and is metabolized toward GABA-A activity), producing broad CNS depression with a steep dose-response curve.",
+"half_life": "~20-60 minutes",
+"content": "GHB (and its precursor GBL, which converts to GHB in the body) has one of the narrowest margins of safety of any commonly used recreational drug — a small increase in dose or combining with alcohol can be the difference between a pleasant evening and a life-threatening overdose. Tracking here is meant to support precise, spaced dosing and awareness of your own tolerance, not to suggest frequent use is safe.",
+"source": "curated"
+},
+{
 "name": "Ibuprofen",
 "generic_name": "ibuprofen",
 "brand_names": [
@@ -926,6 +1128,99 @@ export const CATALOG_SEED = [
 "mechanism": "Basal insulin providing steady glucose-lowering.",
 "half_life": "n/a (flat ~24 h profile)",
 "content": "Insulin glargine is a long-acting basal insulin giving a relatively flat 24-hour profile. Hypoglycemia is the main safety concern.",
+"source": "curated"
+},
+{
+"name": "Ketamine",
+"generic_name": "ketamine",
+"street_names": [
+"K",
+"Special K"
+],
+"drug_class": "Dissociative anesthetic (NMDA antagonist)",
+"category": "dissociative",
+"default_unit": "mg",
+"common_dosages": [
+20,
+40,
+75
+],
+"typical_dosing": "Insufflated 'bump' doses of roughly 15-30 mg produce mild dissociation; 75 mg+ risks a 'K-hole' (profound dissociation, immobility, and inability to respond) — the dose-response curve is steep and individually variable.",
+"max_daily_dose": null,
+"common_side_effects": [
+"dissociation / feeling detached from your body",
+"numbness",
+"impaired coordination and balance",
+"confusion",
+"increased blood pressure and heart rate",
+"nausea"
+],
+"serious_side_effects": [
+"complete immobility / inability to respond to danger while dissociated ('K-hole')",
+"vomiting while unable to protect the airway (aspiration risk)",
+"bladder and urinary tract damage (ketamine cystitis) with frequent, heavy use",
+"cognitive/memory problems with chronic heavy use"
+],
+"interactions": [
+"alcohol and other CNS depressants (compounded sedation, higher aspiration/immobility risk)",
+"stimulants (increased cardiovascular strain, may mask dissociation and encourage overuse)"
+],
+"warnings": [
+"Never use alone or near roads/water/stairs — the main danger is being unable to move or respond while dissociated, not the drug's direct toxicity.",
+"Always have a sober person present who knows what you've taken and can respond if you vomit or don't respond.",
+"Frequent, heavy use is strongly linked to painful bladder damage (ketamine cystitis) that can require surgery — this is dose- and frequency-dependent, not rare.",
+"Set the medication's Form to 'insufflated' for a more accurate effects-tracker curve if that's your route."
+],
+"risk_level": "high",
+"dependency_risk_category": "moderate",
+"mechanism": "Antagonizes NMDA glutamate receptors, producing dissociative anesthesia; also interacts with opioid and monoaminergic systems at higher doses.",
+"half_life": "~2.5-3 hours",
+"content": "Ketamine's central danger is behavioral rather than purely toxicological — the dissociation and immobility it produces make physical accidents and aspiration the leading real-world risks, which is why using with a sober, attentive companion matters more here than for most other substances in this catalog. Frequent heavy use also carries a well-documented risk of serious bladder damage.",
+"source": "curated"
+},
+{
+"name": "Kratom",
+"generic_name": "mitragynine (Mitragyna speciosa)",
+"brand_names": [],
+"drug_class": "Opioid receptor agonist (plant alkaloid)",
+"category": "opioid",
+"default_unit": "g",
+"common_dosages": [
+2,
+4,
+6
+],
+"typical_dosing": "Low doses (~1-5 g) are commonly reported as mildly stimulating; higher doses (~5-15 g) produce more sedating, opioid-like effects. Potency varies significantly between vendors and strains.",
+"max_daily_dose": null,
+"common_side_effects": [
+"nausea",
+"dizziness",
+"dry mouth",
+"constipation",
+"drowsiness at higher doses"
+],
+"serious_side_effects": [
+"respiratory depression, especially combined with other depressants",
+"liver toxicity (reported with regular heavy use)",
+"physical dependence and opioid-like withdrawal with frequent use",
+"seizures (rare, more often reported with adulterated products)"
+],
+"interactions": [
+"opioids and other CNS depressants (compounded respiratory depression)",
+"benzodiazepines/alcohol (compounded sedation)",
+"CYP450-metabolized medications (kratom affects several liver enzymes)"
+],
+"warnings": [
+"Regular daily use can produce genuine opioid-like physical dependence and withdrawal (aches, anxiety, insomnia) — treat it with the same tapering caution as a prescription opioid, not as a benign supplement.",
+"Potency and alkaloid content vary widely and are unregulated between vendors — start low with an unfamiliar product.",
+"Avoid combining with opioids, benzodiazepines or alcohol due to compounded sedation/respiratory-depression risk.",
+"Legal status varies by country and even by state/province — confirm local law."
+],
+"risk_level": "moderate",
+"dependency_risk_category": "high",
+"mechanism": "Mitragynine and 7-hydroxymitragynine act as partial agonists at mu-opioid receptors, with additional effects on other receptor systems at higher doses.",
+"half_life": "~3-9 hours",
+"content": "Kratom is a plant-derived substance often marketed as a natural supplement, but its dominant alkaloids act on the same opioid receptors as prescription opioids and it carries a real risk of physical dependence and opioid-like withdrawal with regular use. It sits in the 'opioid' category here deliberately, because that reflects its actual mechanism, not its legal status.",
 "source": "curated"
 },
 {
@@ -1196,6 +1491,57 @@ export const CATALOG_SEED = [
 "source": "curated"
 },
 {
+"name": "LSD",
+"generic_name": "lysergic acid diethylamide",
+"street_names": [
+"Acid",
+"Tabs",
+"Blotter"
+],
+"drug_class": "Classic psychedelic (lysergamide)",
+"category": "psychedelic",
+"default_unit": "mcg",
+"common_dosages": [
+50,
+100,
+150
+],
+"typical_dosing": "A 'microdose' is roughly 5-15 mcg; a common full recreational dose is 75-150 mcg. Actual blotter/tab content varies widely and is rarely known precisely.",
+"max_daily_dose": null,
+"common_side_effects": [
+"visual distortions",
+"altered sense of time",
+"dilated pupils",
+"elevated heart rate and blood pressure",
+"jaw tension",
+"nausea near onset"
+],
+"serious_side_effects": [
+"overwhelming anxiety or panic ('bad trip')",
+"psychosis in people predisposed to it",
+"risky behavior from impaired judgment",
+"rare prolonged perception changes (HPPD)"
+],
+"interactions": [
+"lithium (case reports of seizures — avoid combining)",
+"other serotonergic drugs / stimulants (added physiological load)",
+"tramadol (lowers seizure threshold)"
+],
+"warnings": [
+"No reagent kit confirms LSD dose or purity the way it can identify MDMA — start with a low dose if the source or blotter strength is unfamiliar.",
+"Effects last 8-12 hours and cannot be cut short chemically — do not redose mid-trip out of impatience.",
+"Use with a sober, trusted person present ('trip sitter') and in a calm, familiar setting, especially your first few times.",
+"Avoid if you or close family have a history of psychosis or bipolar disorder.",
+"Physiologically low acute toxicity, but psychological risk (panic, unsafe decisions) is real and dose-dependent."
+],
+"risk_level": "moderate",
+"dependency_risk_category": "none",
+"mechanism": "Partial agonist at serotonin 5-HT2A receptors (plus other serotonin/dopamine receptor activity), altering sensory processing and cortical connectivity.",
+"half_life": "~3-5 hours",
+"content": "LSD is a long-duration classic psychedelic with very low physiological toxicity but significant psychological variability — the same dose can feel completely different depending on mindset and environment ('set and setting'). Tolerance builds almost immediately with repeated use, which naturally limits daily use.",
+"source": "curated"
+},
+{
 "name": "Magnesium glycinate",
 "generic_name": "magnesium glycinate",
 "brand_names": [
@@ -1229,6 +1575,60 @@ export const CATALOG_SEED = [
 "mechanism": "Replenishes magnesium; cofactor in hundreds of enzymatic reactions.",
 "half_life": "n/a",
 "content": "Magnesium glycinate is a well-absorbed, gentle magnesium form used for deficiency, muscle cramps and sleep support.",
+"source": "curated"
+},
+{
+"name": "MDMA",
+"generic_name": "3,4-methylenedioxymethamphetamine",
+"street_names": [
+"Ecstasy",
+"Molly",
+"E",
+"X"
+],
+"drug_class": "Empathogen-entactogen (substituted amphetamine)",
+"category": "empathogen",
+"default_unit": "mg",
+"common_dosages": [
+75,
+100,
+125
+],
+"typical_dosing": "Commonly reported oral range is about 75-125 mg for a first dose, occasionally with a single smaller top-up (40-60 mg) after 90-120 min; redosing further raises neurotoxicity and comedown severity with little added euphoria.",
+"max_daily_dose": 150,
+"common_side_effects": [
+"jaw clenching / teeth grinding",
+"elevated heart rate and blood pressure",
+"sweating",
+"nausea",
+"loss of appetite",
+"difficulty regulating body temperature"
+],
+"serious_side_effects": [
+"hyperthermia / heatstroke",
+"hyponatremia (overhydration, especially with excess plain water)",
+"serotonin syndrome, especially combined with other serotonergic drugs",
+"cardiac arrhythmia",
+"severe mood dip / depression in the days after use ('comedown')"
+],
+"interactions": [
+"MAOIs (potentially fatal serotonin syndrome — never combine)",
+"SSRIs/SNRIs/other serotonergic drugs (serotonin syndrome risk; may also blunt MDMA's effects)",
+"stimulants (added cardiovascular strain)",
+"alcohol (increases dehydration and impairs judgment)"
+],
+"warnings": [
+"Purity and actual content of illicit tablets/powder are never guaranteed — use a reagent test kit and consider a fentanyl/adulterant test where available.",
+"Drink water only to thirst (roughly 250-500 ml/hour while active) — overhydration causes fatal hyponatremia, a bigger real-world risk than dehydration.",
+"Take breaks from dancing/exertion in warm environments to avoid overheating.",
+"Avoid redosing beyond one small top-up; more does not mean better and sharply raises risk.",
+"Space uses at least 4-6 weeks apart to reduce neurotoxicity and let serotonin stores recover."
+],
+"risk_level": "high",
+"dependency_risk_category": "moderate",
+"mechanism": "Triggers massive release of serotonin (and, to a lesser extent, dopamine and norepinephrine) from presynaptic neurons, with some reuptake inhibition.",
+"half_life": "~8 hours",
+"content": "MDMA produces strong feelings of empathy, emotional openness and euphoria. Its main acute dangers are overheating and overhydration rather than direct organ toxicity at typical doses, but illicit supply purity is highly unpredictable and serotonin-syndrome risk with other serotonergic drugs is serious. This entry supports harm-reduction tracking (dose, timing, comedown pattern), not endorsement of use.",
 "source": "curated"
 },
 {
@@ -1313,6 +1713,58 @@ export const CATALOG_SEED = [
 "mechanism": "Reduces hepatic glucose production and improves insulin sensitivity.",
 "half_life": "~6 hours",
 "content": "Metformin is the first-line drug for type 2 diabetes, improving glucose control without causing hypoglycemia or weight gain.",
+"source": "curated"
+},
+{
+"name": "Methamphetamine",
+"generic_name": "methamphetamine",
+"street_names": [
+"Meth",
+"Crystal",
+"Ice"
+],
+"drug_class": "CNS stimulant (substituted amphetamine)",
+"category": "stimulant",
+"default_unit": "mg",
+"common_dosages": [
+10,
+20,
+30
+],
+"typical_dosing": "Recreational doses are commonly reported in the 10-30 mg range; smoked or injected routes produce a much faster, more intense onset than oral or insufflated use of the same amount.",
+"max_daily_dose": null,
+"common_side_effects": [
+"increased heart rate and blood pressure",
+"reduced appetite",
+"insomnia",
+"jaw clenching / teeth grinding",
+"elevated body temperature",
+"anxiety"
+],
+"serious_side_effects": [
+"cardiac arrhythmia, hypertensive crisis, stroke",
+"hyperthermia",
+"psychosis (paranoia, hallucinations) with heavy or repeated use",
+"significant dental and skin damage with chronic use",
+"pronounced depression and fatigue during the 'crash' after use"
+],
+"interactions": [
+"other stimulants (compounded cardiovascular strain)",
+"MAOIs (dangerous hypertensive reaction)",
+"alcohol (masks intoxication, increases dehydration)"
+],
+"warnings": [
+"Much longer-acting than cocaine (hours rather than minutes), so redosing before the first dose has worn off compounds heavily and raises psychosis risk.",
+"Binge patterns (repeated dosing over hours or days without sleep or food) carry sharply higher cardiac and psychiatric risk than a single isolated dose.",
+"Illicit supply purity and actual content are unverified; consider testing where legally available.",
+"The post-use 'crash' (exhaustion, low mood, intense hunger) is a normal pharmacological rebound, not a sign something is uniquely wrong — but it is a common relapse trigger.",
+"Set the medication's Form to 'smoked/vaporized' or 'insufflated' if that's your route, for a more accurate effects-tracker curve."
+],
+"risk_level": "high",
+"dependency_risk_category": "extreme",
+"mechanism": "Releases and blocks reuptake of dopamine and norepinephrine, and inhibits monoamine oxidase, producing a stronger and longer dopamine surge than amphetamine.",
+"half_life": "~10-12 hours",
+"content": "Methamphetamine is pharmacologically similar to prescription amphetamines but is typically used at higher doses, via faster routes, and in binge patterns that carry substantially higher cardiovascular, psychiatric and dependence risk. Its long duration relative to cocaine means a single dose's effects — and any adverse cardiac symptoms — can persist for many hours.",
 "source": "curated"
 },
 {
@@ -1772,6 +2224,57 @@ export const CATALOG_SEED = [
 "mechanism": "Alpha-2-delta calcium channel ligand.",
 "half_life": "~6 hours",
 "content": "Pregabalin treats neuropathic pain, fibromyalgia and generalized anxiety. It has clearer abuse potential than gabapentin and should be tapered when stopping.",
+"source": "curated"
+},
+{
+"name": "Psilocybin mushrooms",
+"generic_name": "psilocybin / psilocin",
+"street_names": [
+"Mushrooms",
+"Shrooms",
+"Magic mushrooms"
+],
+"drug_class": "Classic psychedelic (tryptamine)",
+"category": "psychedelic",
+"default_unit": "g",
+"common_dosages": [
+1,
+1.5,
+2,
+3.5
+],
+"typical_dosing": "Dried mushroom doses are commonly described as: ~0.5-1 g microdose, ~1-2 g mild/'museum' dose, ~2-3.5 g common recreational dose, 3.5 g+ a strong dose. Potency varies enormously by species and growing conditions, so any gram figure is an estimate, not a guarantee.",
+"max_daily_dose": null,
+"common_side_effects": [
+"nausea near onset",
+"visual/perceptual changes",
+"altered sense of time",
+"yawning",
+"mild pupil dilation"
+],
+"serious_side_effects": [
+"overwhelming anxiety or panic ('bad trip')",
+"psychosis in people predisposed to it",
+"risky behavior from impaired judgment",
+"accidental ingestion of a misidentified toxic mushroom species"
+],
+"interactions": [
+"MAOIs / serotonergic antidepressants (unpredictable intensity and serotonin syndrome risk)",
+"lithium (case reports of seizures — avoid combining)",
+"stimulants (added physiological load)"
+],
+"warnings": [
+"Never forage or use unidentified wild mushrooms — toxic look-alikes can cause organ failure or death; sourcing certainty matters more than dose here.",
+"Potency is highly variable between species and even between batches of the same species — start low if the source/strain is unfamiliar.",
+"Use with a sober, trusted person present and in a calm setting, especially the first few times.",
+"Avoid if you or close family have a history of psychosis or bipolar disorder.",
+"Effects typically last 4-6 hours and build gradually — wait the full onset window before considering more."
+],
+"risk_level": "moderate",
+"dependency_risk_category": "none",
+"mechanism": "Psilocybin is dephosphorylated to psilocin, a serotonin 5-HT2A receptor partial agonist, producing psychedelic effects similar to LSD but shorter-acting.",
+"half_life": "psilocin ~2-3 hours",
+"content": "Psilocybin mushrooms produce a shorter, somewhat gentler psychedelic experience than LSD, with similarly low physiological toxicity and similar psychological risks. Species and growing conditions cause large potency swings, so dose tracking here is necessarily approximate — treat gram amounts as a rough guide, not a precise dose.",
 "source": "curated"
 },
 {
