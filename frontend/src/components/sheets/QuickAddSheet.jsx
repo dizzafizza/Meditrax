@@ -36,7 +36,10 @@ export default function QuickAddSheet() {
                 <button
                   key={m.id}
                   data-testid="quick-add-log-med"
-                  onClick={() => go(() => ui.openQuickLog(m, m.times?.[0] || null))}
+                  // Ad-hoc log, not tied to a scheduled slot — no scheduled_time,
+                  // so it always creates its own entry/inventory decrement
+                  // instead of dedup-merging into today's already-logged dose.
+                  onClick={() => go(() => ui.openQuickLog(m, null))}
                   className="pressable shrink-0 w-28 card-soft p-3 text-left"
                 >
                   <MedColorDot color={m.color} size={34} />
