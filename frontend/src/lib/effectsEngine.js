@@ -10,7 +10,7 @@
 // ---- baseline pharmacokinetic profiles (minutes) ----
 // Rough population-typical oral values per category; the personal model takes
 // over as the user reports real timings. These are UX priors, not medicine.
-const CATEGORY_PK = {
+export const CATEGORY_PK = {
   stimulant: { onset: 40, peak: 120, duration: 420 },
   benzodiazepine: { onset: 25, peak: 75, duration: 360 },
   opioid: { onset: 25, peak: 70, duration: 270 },
@@ -21,13 +21,25 @@ const CATEGORY_PK = {
   antipsychotic: { onset: 40, peak: 120, duration: 480 },
   anticonvulsant: { onset: 40, peak: 120, duration: 480 },
   antidepressant: { onset: 60, peak: 240, duration: 720 },
+  // Recreational / psychoactive baselines — population-typical oral (or, for
+  // cannabis, smoked/vaporized) values from harm-reduction literature. Same
+  // "UX prior, not medicine" caveat as above: wildly different substances can
+  // share a bucket (e.g. LSD vs. psilocybin) and personalization narrows it
+  // to the specific substance from the user's own reported timings.
+  psychedelic: { onset: 35, peak: 150, duration: 480 }, // LSD, psilocybin, mescaline
+  empathogen: { onset: 45, peak: 105, duration: 300 }, // MDMA and analogues
+  dissociative: { onset: 10, peak: 30, duration: 90 }, // ketamine
+  cannabis: { onset: 8, peak: 25, duration: 180 }, // smoked/vaporized baseline; edibles are much slower (see form)
+  depressant: { onset: 20, peak: 60, duration: 240 }, // alcohol, GHB/GBL
+  "stimulant-fast": { onset: 5, peak: 20, duration: 60 }, // cocaine
   other: { onset: 30, peak: 90, duration: 360 },
 };
 
 // Form modifies absorption speed relative to the category baseline.
-const FORM_SPEED = {
+export const FORM_SPEED = {
   liquid: 0.7, drops: 0.7, spray: 0.5, inhaler: 0.25, injection: 0.15,
   tablet: 1, capsule: 1.1, patch: 3, cream: 2, other: 1,
+  "smoked/vaporized": 0.15, insufflated: 0.35, edible: 2.5,
 };
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));

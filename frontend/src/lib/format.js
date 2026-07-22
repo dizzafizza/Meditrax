@@ -10,7 +10,10 @@ export const CATEGORY_LABELS = {
   stimulant: "Stimulant", nsaid: "NSAID", antibiotic: "Antibiotic", "sleep-aid": "Sleep aid",
   antihypertensive: "Blood pressure", diabetes: "Diabetes", statin: "Statin", ppi: "Acid reducer",
   antihistamine: "Antihistamine", thyroid: "Thyroid", anticonvulsant: "Anticonvulsant",
-  supplement: "Supplement", antipsychotic: "Antipsychotic", "muscle-relaxant": "Muscle relaxant", other: "Other",
+  supplement: "Supplement", antipsychotic: "Antipsychotic", "muscle-relaxant": "Muscle relaxant",
+  psychedelic: "Psychedelic", empathogen: "Empathogen", dissociative: "Dissociative",
+  cannabis: "Cannabis", depressant: "Depressant", "stimulant-fast": "Stimulant (fast-acting)",
+  other: "Other",
 };
 
 export const FREQUENCY_LABELS = {

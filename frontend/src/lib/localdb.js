@@ -135,7 +135,7 @@ export async function updateProfile(patch) { await ensureInit(); return updatePr
 
 // ---- catalog / knowledge ----
 function scoreDoc(d, terms) {
-  const hay = `${d.name} ${d.generic_name || ""} ${(d.brand_names || []).join(" ")} ${d.drug_class || ""} ${d.category || ""} ${d.content || ""}`.toLowerCase();
+  const hay = `${d.name} ${d.generic_name || ""} ${(d.brand_names || []).join(" ")} ${(d.street_names || []).join(" ")} ${d.drug_class || ""} ${d.category || ""} ${d.content || ""}`.toLowerCase();
   let score = 0;
   for (const t of terms) {
     if (!t) continue;
@@ -143,6 +143,7 @@ function scoreDoc(d, terms) {
     if (d.name_lower?.includes(t)) score += 8;
     if ((d.generic_name || "").toLowerCase().includes(t)) score += 6;
     if ((d.brand_names || []).some((b) => b.toLowerCase().includes(t))) score += 6;
+    if ((d.street_names || []).some((b) => b.toLowerCase().includes(t))) score += 6;
     if ((d.drug_class || "").toLowerCase().includes(t)) score += 3;
     if (hay.includes(t)) score += 1;
   }

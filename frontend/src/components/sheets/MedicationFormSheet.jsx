@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { Plus, X, Search, Check } from "lucide-react";
 
 const UNITS = ["mg", "mcg", "g", "ml", "units", "iu", "tablets", "capsules", "puffs", "drops", "patches", "mg THC", "mg CBD"];
-const FORMS = ["tablet", "capsule", "liquid", "injection", "patch", "drops", "spray", "inhaler", "cream", "other"];
+const FORMS = ["tablet", "capsule", "liquid", "injection", "patch", "drops", "spray", "inhaler", "cream", "smoked/vaporized", "insufflated", "edible", "other"];
 
 const empty = {
   name: "", generic_name: "", drug_class: "", category: "other", color: MED_COLORS[0],
