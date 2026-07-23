@@ -14,7 +14,7 @@ jest.mock("localforage", () => {
 import {
   defaultPkProfile, personalizedProfile, intensityAt, phaseAt, curveSeries,
   observationsFromSession, updateModel, modelConfidence, fmtMins,
-  CATEGORY_PK, FORM_SPEED,
+  CATEGORY_PK, FORM_SPEED, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries,
 } from "../effectsEngine";
 import * as db from "../localdb";
 
@@ -80,6 +80,54 @@ describe("intensity curve & phases", () => {
     expect(series[0]).toEqual({ t: 0, intensity: 0 });
     expect(series[series.length - 1].t).toBe(Math.round(300 * 1.25));
     expect(Math.max(...series.map((x) => x.intensity))).toBe(100);
+  });
+});
+
+describe("redosing (stacked dose curves)", () => {
+  const profile = { onset_min: 30, peak_min: 90, duration_min: 300, intensity_scale: 1 };
+  const base = "2026-07-23T12:00:00.000Z";
+  const plus = (min) => new Date(new Date(base).getTime() + min * 60000).toISOString();
+
+  test("a session with no redoses is a single primary dose at offset 0", () => {
+    const stack = sessionDoseStack({ started_at: base, dose: 10, profile });
+    expect(stack).toHaveLength(1);
+    expect(stack[0]).toEqual({ tOffset: 0, scale: 1 });
+    // stacked value equals the plain single-dose curve
+    expect(stackedIntensityAt(90, profile, stack)).toBe(intensityAt(90, profile));
+  });
+
+  test("a redose adds a shifted, dose-scaled copy of the curve", () => {
+    const session = {
+      started_at: base, dose: 10, profile,
+      redoses: [{ id: "r1", at: plus(120), amount: 5 }], // half dose, 2h later
+    };
+    const stack = sessionDoseStack(session);
+    expect(stack).toHaveLength(2);
+    expect(stack[1].tOffset).toBe(120);
+    expect(stack[1].scale).toBeCloseTo(0.5, 5); // half the primary amount
+    // At t=120 the primary is well past peak but still contributing; the
+    // redose has only just been taken (its own t=0 → 0), so the stacked value
+    // equals the primary's own value at 120.
+    expect(stackedIntensityAt(120, profile, stack)).toBeCloseTo(intensityAt(120, profile), 5);
+    // Later, both contribute and the sum exceeds either alone.
+    const at210 = stackedIntensityAt(210, profile, stack);
+    expect(at210).toBeGreaterThan(intensityAt(210, profile));
+    expect(at210).toBeCloseTo(intensityAt(210, profile) + intensityAt(90, profile) * 0.5, 1);
+  });
+
+  test("a redose of an unknown amount is assumed equal to the primary (same scale)", () => {
+    const stack = sessionDoseStack({ started_at: base, dose: null, profile, redoses: [{ id: "r1", at: plus(60), amount: null }] });
+    expect(stack[1].scale).toBe(1);
+  });
+
+  test("stackChartEnd and stackedCurveSeries extend past the last dose's tail", () => {
+    const session = { started_at: base, dose: 10, profile, redoses: [{ id: "r1", at: plus(180), amount: 10 }] };
+    const stack = sessionDoseStack(session);
+    expect(stackChartEnd(profile, stack)).toBe(180 + 300 * 1.25);
+    const series = stackedCurveSeries(profile, stack, 48);
+    expect(series[series.length - 1].t).toBe(Math.round(180 + 300 * 1.25));
+    // Two overlapping full doses can push the peak above 100%.
+    expect(Math.max(...series.map((pt) => pt.intensity))).toBeGreaterThan(100);
   });
 });
 
@@ -166,6 +214,45 @@ describe("session lifecycle in localdb", () => {
     expect(fmtMins(40)).toBe("40 min");
     expect(fmtMins(95)).toBe("1 h 35 m");
     expect(fmtMins(120)).toBe("2 h");
+  });
+
+  test("addEffectDose stacks a redose; validation and removal work; redosed sessions don't train the model", async () => {
+    const med = await db.createMedication({ name: "RedoseMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+
+    const withRedose = await db.addEffectDose(s.id, { amount: 5 });
+    expect(withRedose.redoses).toHaveLength(1);
+    expect(withRedose.redoses[0].amount).toBe(5);
+    expect(sessionDoseStack(withRedose)).toHaveLength(2);
+
+    // validation
+    await expect(db.addEffectDose(s.id, { amount: -1 })).rejects.toThrow(/dose/i);
+    await expect(db.addEffectDose(s.id, { at: new Date(Date.now() + 3600000).toISOString() })).rejects.toThrow(/future/i);
+    await expect(db.addEffectDose(s.id, { at: new Date(new Date(s.started_at).getTime() - 3600000).toISOString() })).rejects.toThrow(/before the session/i);
+    await expect(db.addEffectDose("missing", { amount: 5 })).rejects.toThrow(/not found/i);
+
+    // completing a redosed session must NOT train the model (stacked timing)
+    await db.addEffectEvent(s.id, { kind: "onset" });
+    await db.addEffectEvent(s.id, { kind: "gone" });
+    expect(await db.getEffectModel(med.id)).toBe(null);
+
+    // removal only allowed while active
+    const s2 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const r = await db.addEffectDose(s2.id, { amount: 10 });
+    const doseId = r.redoses[0].id;
+    const removed = await db.removeEffectDose(s2.id, doseId);
+    expect(removed.redoses).toHaveLength(0);
+    await expect(db.removeEffectDose(s2.id, "nope")).rejects.toThrow(/not found/i);
+    await db.endEffectSession(s2.id, { discard: true });
+    await expect(db.addEffectDose(s2.id, { amount: 5 })).rejects.toThrow(/active/i);
+  });
+
+  test("a non-redosed session still trains the model as before", async () => {
+    const med = await db.createMedication({ name: "PlainTrainMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s.id, { kind: "onset" });
+    await db.addEffectEvent(s.id, { kind: "gone" });
+    expect((await db.getEffectModel(med.id)).samples).toBe(1);
   });
 
   test("updateEffectSession edits start time and dose, re-deriving the profile", async () => {

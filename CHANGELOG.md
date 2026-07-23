@@ -3,6 +3,46 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-23 — Interaction checking, combined multi-drug effects graph, redosing & PWA catalog sync
+
+### Added
+- **Intelligent interaction checking** between concurrently-active effect
+  sessions. A new mechanism-based matrix flags risky combinations —
+  CNS/respiratory-depressant stacking (opioids + benzodiazepines + alcohol,
+  etc.), serotonin-syndrome risk (MDMA/psychedelics + antidepressants),
+  compounded cardiovascular strain (two stimulants), stimulant-masking-a-
+  depressant, and cannabis pairings — plus a few name-specific overrides
+  (cocaine + alcohol → cocaethylene; lithium + classic psychedelics →
+  seizure risk). Warnings appear at the top of the effects tracker only while
+  the substances are actually active together, each with a severity badge and
+  a plain-language reason, and a clear "harm-reduction heuristic, not a
+  clinical database" caveat.
+- **Combined multi-drug effects graph.** When two or more effect sessions are
+  active at once, a single "Combined view" chart overlays every substance's
+  curve on one shared wall-clock timeline (one colored line per substance,
+  with a legend), instead of only showing each in isolation. Colors that
+  collide (two meds sharing the default swatch) are automatically
+  de-conflicted so the lines stay distinguishable, and the y-axis scales to
+  fit stacked/strong-dose peaks above 100%.
+- **Redosing.** You can now add another dose to an active effect session
+  ("Add a dose") instead of starting a confusing separate one. The curve
+  sums the still-active tail of earlier doses with a fresh, dose-scaled curve
+  from the redose time; redoses are marked on the graph, listed with remove
+  buttons, and extend the session's timeline. Because stacked timings aren't a
+  clean single-dose reading, redosed sessions deliberately don't train your
+  personal timing model. Works in the home-screen summary and the combined
+  view too.
+
+### Fixed
+- **Existing installs (including the installed PWA) now receive new and
+  updated knowledge-base entries.** The curated catalog was only seeded on
+  first run, so anyone who had used an earlier version never saw later
+  additions — which is why the new recreational/psychoactive drugs didn't
+  show up. A version-gated merge migration now adds any missing curated
+  entries and refreshes still-curated ones on upgrade, while leaving your own
+  AI-researched or edited entries untouched and preserving entry ids so
+  existing links keep working.
+
 ## 2026-07-22 — Recreational/psychoactive substance templates for the effects tracker & knowledge base
 
 ### Added

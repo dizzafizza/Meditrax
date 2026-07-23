@@ -3,15 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import MedColorDot from "@/components/MedColorDot";
+import { RiskBadge } from "@/components/RiskBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getActiveEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, getLogs, getMedications } from "@/lib/api";
-import { intensityAt, phaseAt, curveSeries, fmtMins } from "@/lib/effectsEngine";
-import { fmtDate, doseLabel, relativeTime, toDatetimeLocal } from "@/lib/format";
-import { Activity, ChevronRight, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil } from "lucide-react";
+import { getActiveEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getLogs, getMedications } from "@/lib/api";
+import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries } from "@/lib/effectsEngine";
+import { checkInteractions, severityMeta } from "@/lib/interactions";
+import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
+import { Activity, AlertTriangle, ChevronRight, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceDot, CartesianGrid } from "recharts";
 
 // Re-render on a timer so curves/labels track the clock while a session runs.
@@ -45,10 +47,15 @@ export function ActiveEffectsSimple() {
       {sessions.map((s) => {
         const t = elapsedMin(s, now);
         const p = s.profile;
-        const phase = phaseAt(t, p);
-        const intensity = Math.round(intensityAt(t, p) * (p.intensity_scale || 1));
-        const pct = Math.min(100, (t / p.duration_min) * 100);
-        const remaining = Math.max(0, p.duration_min - t);
+        const stack = sessionDoseStack(s);
+        const lastOffset = stack[stack.length - 1].tOffset;
+        // Phase and remaining track the most recent dose so a redose is
+        // reflected as "coming up again" with time added back on.
+        const phase = phaseAt(t - lastOffset, p);
+        const intensity = Math.round(stackedIntensityAt(t, p, stack));
+        const chartEnd = lastOffset + p.duration_min;
+        const pct = Math.min(100, (t / chartEnd) * 100);
+        const remaining = Math.max(0, chartEnd - t);
         return (
           <button key={s.id} onClick={() => navigate("/effects")} data-testid="active-effects-card" className="w-full text-left card-soft p-3 pressable">
             <div className="flex items-center gap-3">
@@ -59,7 +66,7 @@ export function ActiveEffectsSimple() {
                   <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2 py-0.5 font-medium"><Zap className="h-3 w-3" />{phase.label}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {phase.key === "complete" ? "Effects complete" : phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - t))}` : `~${fmtMins(remaining)} left`}
+                  {phase.key === "complete" ? "Effects complete" : phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - (t - lastOffset)))}` : `~${fmtMins(remaining)} left`}
                   {s.dose != null ? ` · ${doseLabel(s.dose, s.unit)}` : ""}
                 </p>
                 <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
@@ -93,33 +100,39 @@ function SessionDetail({ session, now }) {
   const [editing, setEditing] = useState(false);
   const [editWhen, setEditWhen] = useState("");
   const [editDose, setEditDose] = useState("");
+  const [redosing, setRedosing] = useState(false);
+  const [redoseAmt, setRedoseAmt] = useState("");
+  const [redoseWhen, setRedoseWhen] = useState("");
   const t = elapsedMin(session, now);
   const p = session.profile;
-  const phase = phaseAt(t, p);
-  // A larger-than-usual dose scales the curve above 100% ("your typical peak").
-  // The plotted curve, axis, gridlines, dots and the written numbers all use
-  // this same scaled percentage so the graph never disagrees with the label.
-  const scale = p.intensity_scale || 1;
-  const intensity = Math.round(intensityAt(t, p) * scale);
-  const series = useMemo(
-    () => curveSeries(p).map((pt) => ({ ...pt, intensity: Math.round(pt.intensity * scale) })),
-    [p, scale]
-  );
+  // The session's effect is the sum of its primary dose and any redoses
+  // (stacked curves). tOffset 0 for the primary; a redose's curve is shifted
+  // to when it was taken and scaled by its amount vs. the primary.
+  const stack = useMemo(() => sessionDoseStack(session), [session]);
+  const redoses = session.redoses || [];
+  const lastOffset = stack[stack.length - 1].tOffset;
+  // Phase tracks the most recent dose so a redose reads as "coming up" again.
+  const phase = phaseAt(t - lastOffset, p);
+  // Plotted curve, axis, gridlines, dots and the written numbers all use this
+  // same stacked percentage so the graph never disagrees with the label.
+  const intensity = Math.round(stackedIntensityAt(t, p, stack));
+  const series = useMemo(() => stackedCurveSeries(p, stack), [p, stack]);
   const startMs = new Date(session.started_at).getTime();
   const clockAt = (mins) => fmtDate(new Date(startMs + mins * 60000), "h:mm a");
   const given = (kind) => session.events?.some((e) => e.kind === kind);
 
-  // Y-axis fits the scaled peak: 0–100% normally, extended in 25% steps up to
-  // 150% for a strong dose. 100% ("typical peak") always stays a labelled line.
-  const strong = scale > 1;
-  const yMax = strong ? Math.min(150, Math.ceil((100 * scale) / 25) * 25) : 100;
+  // Y-axis fits the highest point the stacked curve actually reaches (a strong
+  // dose, or overlapping redoses, can exceed 100% — "your typical peak").
+  const chartEnd = stackChartEnd(p, stack);
+  const seriesMax = Math.max(100, ...series.map((pt) => pt.intensity));
+  const strong = seriesMax > 100;
+  const yMax = strong ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
   const yTicks = strong
     ? Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b)
     : [0, 25, 50, 75, 100];
   const yGrid = yTicks.filter((v) => v > 0);
 
   // Hourly gridline positions across the curve (denser for short sessions).
-  const chartEnd = p.duration_min * 1.25;
   const hourTicks = useMemo(() => {
     const step = chartEnd <= 150 ? 30 : chartEnd > 720 ? 120 : 60;
     const out = [];
@@ -127,14 +140,17 @@ function SessionDetail({ session, now }) {
     return out;
   }, [chartEnd]);
 
-  // Feedback events plotted on the chart: phase reports sit on the curve,
-  // intensity reports at the strength the user actually felt (0-10 → 0-100%).
+  // Feedback events plotted on the chart: phase reports sit on the (stacked)
+  // curve, intensity reports at the strength the user actually felt (0-10 → 0-100%).
   const eventDots = useMemo(() => (session.events || []).map((e) => {
     const m = Math.max(0, (new Date(e.t).getTime() - startMs) / 60000);
     if (m > chartEnd) return null;
-    const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : intensityAt(m, p) * scale;
+    const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : stackedIntensityAt(m, p, stack);
     return { key: e.id, x: Math.round(m), y: Math.round(y), kind: e.kind };
-  }).filter(Boolean), [session.events, startMs, chartEnd, p, scale]);
+  }).filter(Boolean), [session.events, startMs, chartEnd, p, stack]);
+
+  // Vertical markers where each redose was taken (skip the primary at 0).
+  const redoseMarks = stack.slice(1).map((d) => Math.round(d.tOffset));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["effectSessions"] });
   // "Undo" on the toast reopens the session — reverses both the completion
@@ -179,6 +195,34 @@ function SessionDetail({ session, now }) {
     onSuccess: () => { invalidate(); toast.success("Model reset — back to typical values"); },
     onError: () => toast.error("Could not reset the model"),
   });
+  const redose = useMutation({
+    mutationFn: (payload) => addEffectDose(session.id, payload),
+    onSuccess: () => { invalidate(); setRedosing(false); setRedoseAmt(""); toast.success("Redose added — the curve now stacks it on"); },
+    onError: (e) => toast.error(e?.message || "Could not add redose"),
+  });
+  const removeDose = useMutation({
+    mutationFn: (doseId) => removeEffectDose(session.id, doseId),
+    onSuccess: () => { invalidate(); toast.success("Redose removed"); },
+    onError: (e) => toast.error(e?.message || "Could not remove redose"),
+  });
+
+  const openRedose = () => {
+    setRedoseAmt(session.dose != null ? String(session.dose) : "");
+    setRedoseWhen(toDatetimeLocal());
+    setRedosing(true);
+  };
+  const saveRedose = () => {
+    const when = new Date(redoseWhen);
+    if (!redoseWhen || isNaN(when.getTime())) { toast.error("Enter a valid date and time"); return; }
+    if (when.getTime() > Date.now() + 60000) { toast.error("Redose time can't be in the future"); return; }
+    const payload = { at: when.toISOString() };
+    if (redoseAmt !== "") {
+      const v = Number(redoseAmt);
+      if (!isFinite(v) || v < 0) { toast.error("Enter a valid dose"); return; }
+      payload.amount = v;
+    }
+    redose.mutate(payload);
+  };
 
   const openEdit = () => {
     setEditWhen(toDatetimeLocal(session.started_at));
@@ -257,6 +301,10 @@ function SessionDetail({ session, now }) {
             <ReferenceLine x={p.onset_min} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />
             <ReferenceLine x={p.peak_min} stroke="hsl(var(--success))" strokeOpacity={0.6} strokeDasharray="3 3" />
             <ReferenceLine x={p.duration_min} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />
+            {/* redose markers — where an additional dose was stacked on */}
+            {redoseMarks.map((m, i) => (
+              <ReferenceLine key={`rd-${i}`} x={m} stroke="hsl(var(--primary))" strokeOpacity={0.7} strokeDasharray="1 3" label={{ value: "+dose", position: "insideTopLeft", fontSize: 8, fill: "hsl(var(--primary))" }} />
+            ))}
             <Area type="monotone" dataKey="intensity" stroke="hsl(var(--primary))" strokeWidth={2.5} fill={`url(#fx-${session.id})`} dot={false} />
             {/* the user's own feedback, plotted where it happened */}
             {eventDots.map((d) => (
@@ -364,9 +412,174 @@ function SessionDetail({ session, now }) {
         </div>
       )}
 
+      {/* Redose — stack another dose onto this session instead of starting a
+          separate one. Taken doses are listed with remove buttons. */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Redose</p>
+          {!redosing && (
+            <button onClick={openRedose} data-testid="effect-redose-button" className="inline-flex items-center gap-1 text-[11px] font-medium text-primary">
+              <Plus className="h-3.5 w-3.5" />Add a dose
+            </button>
+          )}
+        </div>
+        {redoses.length > 0 && (
+          <div className="space-y-1 mt-1.5">
+            {redoses.map((r) => {
+              const mins = Math.max(0, (new Date(r.at).getTime() - startMs) / 60000);
+              return (
+                <div key={r.id} className="flex items-center justify-between rounded-lg bg-muted/30 pl-2.5 pr-1 py-1" data-testid="effect-redose-row">
+                  <span className="text-xs">{r.amount != null ? doseLabel(r.amount, r.unit || session.unit) : "Dose"} <span className="text-muted-foreground">· {fmtMins(mins)} in</span></span>
+                  <button onClick={() => removeDose.mutate(r.id)} disabled={removeDose.isPending} aria-label="Remove redose" data-testid="effect-redose-delete" className="pressable h-7 w-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {redosing && (
+          <div className="mt-2 rounded-xl border border-border p-3 animate-rise" data-testid="effect-redose-panel">
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Amount{session.unit ? ` (${session.unit})` : ""}</Label>
+                <Input type="number" value={redoseAmt} onChange={(e) => setRedoseAmt(e.target.value)} className="h-11 rounded-xl mt-1" data-testid="effect-redose-amount" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Taken at</Label>
+                <Input type="datetime-local" value={redoseWhen} max={toDatetimeLocal()} onChange={(e) => setRedoseWhen(e.target.value)} className="h-11 rounded-xl mt-1" data-testid="effect-redose-when" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Button size="sm" className="flex-1 rounded-xl" onClick={saveRedose} disabled={redose.isPending} data-testid="effect-redose-save">Add dose</Button>
+              <Button size="sm" variant="secondary" className="flex-1 rounded-xl" onClick={() => setRedosing(false)}>Cancel</Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">The redose stacks onto whatever is still active — the curve sums both. Redosed sessions don't train your timing model, since the stacked timing isn't a clean single-dose reading.</p>
+          </div>
+        )}
+      </div>
+
       <div className="mt-3 flex gap-2">
         <Button variant="secondary" size="sm" className="flex-1 rounded-xl" onClick={() => finish.mutate({ learn: true })} data-testid="effect-end-button">End session</Button>
         <Button variant="ghost" size="sm" className="rounded-xl text-muted-foreground" onClick={() => finish.mutate({ discard: true })} data-testid="effect-discard-button"><X className="h-4 w-4 mr-1" />Discard</Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- interaction warnings (concurrently active substances) ----
+function InteractionWarnings({ findings }) {
+  if (!findings.length) return null;
+  return (
+    <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4" data-testid="interaction-warnings">
+      <div className="flex gap-2 items-start">
+        <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+        <p className="font-semibold text-sm">Interaction check</p>
+      </div>
+      <div className="mt-2 space-y-2">
+        {findings.map((f, i) => {
+          const meta = severityMeta(f.severity);
+          return (
+            <div key={i} className="rounded-xl bg-card/60 p-2.5" data-testid="interaction-finding">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <RiskBadge tone={meta.tone} label={meta.label} />
+                <span className="text-xs font-medium">{f.aName} + {f.bName}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{f.reason}</p>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-2">Harm-reduction heuristic based on drug category, not a clinical interaction database — when in doubt, ask a pharmacist or use a dedicated interaction checker.</p>
+    </div>
+  );
+}
+
+// Medications keep whatever color the user picked, but two meds can easily
+// share the same (often default) swatch — illegible once their curves are
+// overlaid on one chart. Keep colors that are already distinct; only
+// reassign a fresh palette color to whichever sessions collide.
+function distinctSessionColors(sessions) {
+  const used = new Set();
+  return sessions.map((s) => {
+    let c = s.medication_color;
+    if (used.has(c)) c = MED_COLORS.find((mc) => !used.has(mc)) || c;
+    used.add(c);
+    return c;
+  });
+}
+
+// ---- combined chart (2+ concurrently active substances, one shared timeline) ----
+function CombinedEffectsChart({ sessions, now }) {
+  const colors = useMemo(() => distinctSessionColors(sessions), [sessions]);
+  const anchor = useMemo(() => Math.min(...sessions.map((s) => new Date(s.started_at).getTime())), [sessions]);
+  const offsets = useMemo(() => sessions.map((s) => (new Date(s.started_at).getTime() - anchor) / 60000), [sessions, anchor]);
+  // Each session's own (possibly redosed) dose stack, evaluated on the shared
+  // wall-clock timeline.
+  const stacks = useMemo(() => sessions.map((s) => sessionDoseStack(s)), [sessions]);
+  const chartEnd = useMemo(
+    () => Math.max(60, ...sessions.map((s, i) => offsets[i] + stackChartEnd(s.profile, stacks[i]))),
+    [sessions, offsets, stacks]
+  );
+  const hourStep = chartEnd <= 150 ? 30 : chartEnd > 720 ? 120 : 60;
+  const hourTicks = useMemo(() => {
+    const out = [];
+    for (let m = 0; m <= chartEnd; m += hourStep) out.push(m);
+    return out;
+  }, [chartEnd, hourStep]);
+  const sampleStep = Math.max(5, Math.round(chartEnd / 96 / 5) * 5);
+  const data = useMemo(() => {
+    const points = [];
+    for (let t = 0; t <= chartEnd; t += sampleStep) {
+      const row = { t: Math.round(t) };
+      sessions.forEach((s, i) => { row[s.id] = Math.round(stackedIntensityAt(t - offsets[i], s.profile, stacks[i])); });
+      points.push(row);
+    }
+    return points;
+  }, [sessions, offsets, stacks, chartEnd, sampleStep]);
+  // Fit the y-axis to the tallest curve actually drawn (redoses/strong doses
+  // can exceed 100%).
+  const yMax = useMemo(() => {
+    let mx = 100;
+    for (const row of data) for (const s of sessions) mx = Math.max(mx, row[s.id] || 0);
+    return Math.min(300, Math.ceil(mx / 25) * 25);
+  }, [data, sessions]);
+  const yTicks = useMemo(() => (yMax <= 100 ? [0, 25, 50, 75, 100] : Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b)), [yMax]);
+  const clockAt = (mins) => fmtDate(new Date(anchor + mins * 60000), "h:mm a");
+  const nowMin = (now - anchor) / 60000;
+
+  return (
+    <div className="card-soft p-4" data-testid="combined-effects-chart">
+      <div className="flex items-center gap-2 mb-2">
+        <Layers className="h-4 w-4 text-primary" />
+        <p className="font-semibold text-sm">Combined view</p>
+        <span className="text-xs text-muted-foreground">· {sessions.length} active</span>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-2">
+        {sessions.map((s, i) => (
+          <div key={s.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: colors[i] }} />
+            {s.medication_name}
+          </div>
+        ))}
+      </div>
+      <div className="-mx-1">
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={data} margin={{ left: 0, right: 8, top: 6, bottom: 0 }}>
+            <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={yTicks.filter((v) => v > 0)} verticalValues={hourTicks} />
+            <XAxis dataKey="t" type="number" domain={[0, chartEnd]} ticks={hourTicks} interval={0} tickFormatter={clockAt} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+            <YAxis domain={[0, yMax + 5]} ticks={yTicks} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} />
+            <Tooltip
+              contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+              formatter={(v, name) => [`${Math.round(v)}%`, sessions.find((s) => s.id === name)?.medication_name || name]}
+              labelFormatter={clockAt}
+            />
+            {sessions.map((s, i) => (
+              <Area key={s.id} type="monotone" dataKey={s.id} name={s.id} stroke={colors[i]} strokeWidth={2.5} fill={colors[i]} fillOpacity={0.12} dot={false} isAnimationActive={false} />
+            ))}
+            {nowMin >= 0 && nowMin <= chartEnd && (
+              <ReferenceLine x={Math.round(nowMin)} stroke="hsl(var(--warning))" strokeDasharray="4 3" strokeWidth={2} label={{ value: "now", position: "insideTopRight", fontSize: 9, fill: "hsl(var(--warning))" }} />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -400,12 +613,25 @@ export function ActiveEffectsDetail() {
     onError: (e) => toast.error(e?.message || "Could not start tracking"),
   });
 
+  // Cross-reference concurrently active substances against the interaction
+  // matrix — this is where it matters in real time, not the user's whole
+  // medication list, since risk depends on what's actually active together.
+  const interactionFindings = useMemo(() => {
+    const items = sessions.map((s) => {
+      const m = meds.find((x) => x.id === s.medication_id);
+      return { id: s.id, name: s.medication_name, generic_name: m?.generic_name, category: m?.category };
+    });
+    return checkInteractions(items);
+  }, [sessions, meds]);
+
   if (!sessions.length && !offers.length) return null;
   const medName = (id) => meds.find((m) => m.id === id)?.name || "Medication";
 
   return (
     <div className="space-y-3" data-testid="active-effects-detail">
       <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"><Activity className="h-3.5 w-3.5" />Active effects</p>
+      <InteractionWarnings findings={interactionFindings} />
+      {sessions.length > 1 && <CombinedEffectsChart sessions={sessions} now={now} />}
       {sessions.map((s) => <SessionDetail key={s.id} session={s} now={now} />)}
       {offers.map((l) => (
         <button key={l.id} onClick={() => start.mutate(l)} data-testid="effect-track-offer" className="w-full text-left card-soft p-3 pressable border-dashed">

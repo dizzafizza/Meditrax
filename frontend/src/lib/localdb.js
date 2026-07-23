@@ -9,6 +9,11 @@ import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmou
 
 const store = localforage.createInstance({ name: "meditrax", storeName: "meditrax_v1" });
 
+// Bump whenever CATALOG_SEED changes so existing installs pick up new/updated
+// curated entries. The catalog is seeded once on first run; without this,
+// users who installed an earlier version would never see later additions.
+const CATALOG_SEED_VERSION = 2;
+
 export const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const PROFILE_COLORS = ["#2A767B", "#E08A3C", "#7A6FB0", "#3E7CB1", "#B0436F", "#5B8C5A"];
 // Every profile-scoped collection. Referenced by deleteProfile / export / import
@@ -73,6 +78,9 @@ async function ensureInit() {
     if (!catalog || !catalog.length) {
       const seeded = CATALOG_SEED.map((c) => ({ ...c, id: uid(), name_lower: c.name.toLowerCase(), source: c.source || "curated", created_at: nowIso() }));
       await store.setItem("catalog", seeded);
+      await store.setItem("catalogSeedVersion", CATALOG_SEED_VERSION);
+    } else {
+      await reconcileCatalogSeed();
     }
     if (!(await store.getItem("appSettings"))) await store.setItem("appSettings", DEFAULT_SETTINGS);
     if (!(await store.getItem("aiConfig"))) await store.setItem("aiConfig", DEFAULT_AI_CONFIG);
@@ -134,6 +142,41 @@ export async function getProfile() { await ensureInit(); const profiles = await 
 export async function updateProfile(patch) { await ensureInit(); return updateProfileById(_activeId, patch); }
 
 // ---- catalog / knowledge ----
+// Merge the shipped CATALOG_SEED into an already-seeded catalog so existing
+// installs pick up new and updated curated entries. Idempotent and safe:
+//  • adds any seed entry the user doesn't have yet (matched by name);
+//  • refreshes entries that are still "curated" (curated entries are never
+//    user-editable, so a still-curated match hasn't been touched — refreshing
+//    propagates content fixes while preserving the entry's id, so knowledge
+//    links and any medication.catalog_id references stay valid);
+//  • never touches "ai"/user-sourced entries, or entries not in the seed.
+// Uses the raw store (not ensureInit) so it can run from inside ensureInit
+// without re-entrancy. Public callers should go through reconcileCatalogSeed().
+async function reconcileCatalogSeedUnsafe() {
+  if ((await store.getItem("catalogSeedVersion")) === CATALOG_SEED_VERSION) return { changed: false, added: 0 };
+  const catalog = (await store.getItem("catalog")) || [];
+  const byName = new Map(catalog.map((d) => [d.name_lower, d]));
+  let changed = false, added = 0;
+  for (const c of CATALOG_SEED) {
+    const nl = c.name.toLowerCase();
+    const existing = byName.get(nl);
+    if (!existing) {
+      catalog.push({ ...c, id: uid(), name_lower: nl, source: c.source || "curated", created_at: nowIso() });
+      changed = true; added++;
+    } else if ((existing.source || "curated") === "curated") {
+      const refreshed = { ...c, id: existing.id, name_lower: nl, source: c.source || "curated", created_at: existing.created_at || nowIso() };
+      if (JSON.stringify(refreshed) !== JSON.stringify(existing)) {
+        catalog[catalog.findIndex((d) => d.id === existing.id)] = refreshed;
+        changed = true;
+      }
+    }
+  }
+  if (changed) await store.setItem("catalog", catalog);
+  await store.setItem("catalogSeedVersion", CATALOG_SEED_VERSION);
+  return { changed, added };
+}
+async function reconcileCatalogSeed() { return reconcileCatalogSeedUnsafe(); }
+
 function scoreDoc(d, terms) {
   const hay = `${d.name} ${d.generic_name || ""} ${(d.brand_names || []).join(" ")} ${(d.street_names || []).join(" ")} ${d.drug_class || ""} ${d.category || ""} ${d.content || ""}`.toLowerCase();
   let score = 0;
@@ -733,6 +776,50 @@ export async function updateEffectSession(sessionId, patch = {}) {
   return s;
 }
 
+// Redose: add another dose of the same substance to an active session so its
+// effect stacks onto the still-active tail of earlier doses, instead of the
+// user having to start a confusing separate session. Stored as an entry in
+// `redoses`; the primary dose stays represented by started_at/dose.
+export async function addEffectDose(sessionId, { amount = null, at = null } = {}) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (s.status !== "active") throw new Error("Only an active session can be redosed");
+  const when = at && !isNaN(new Date(at).getTime()) ? new Date(at) : new Date();
+  if (when.getTime() > Date.now() + 60000) throw new Error("Redose time can't be in the future");
+  // Compare against the session-start minute, not the exact second — a redose
+  // entered as "now" via a minute-granularity datetime picker can otherwise
+  // land a few seconds before a session started moments ago.
+  const startMinute = Math.floor(new Date(s.started_at).getTime() / 60000) * 60000;
+  if (when.getTime() < startMinute) throw new Error("Redose can't be before the session started");
+  let amt = null;
+  if (amount != null && amount !== "") {
+    amt = Number(amount);
+    if (!isFinite(amt) || amt < 0) throw new Error("Invalid dose");
+  }
+  s.redoses = s.redoses || [];
+  s.redoses.push({ id: uid(), at: when.toISOString(), amount: amt, unit: s.unit || null });
+  s.redoses.sort((a, b) => a.at.localeCompare(b.at));
+  s.updated_at = nowIso();
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
+}
+
+export async function removeEffectDose(sessionId, doseId) {
+  await ensureInit();
+  const sessions = await getArr(pkey("effectSessions"));
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error("Session not found");
+  if (s.status !== "active") throw new Error("Only an active session's doses can be edited");
+  const before = (s.redoses || []).length;
+  s.redoses = (s.redoses || []).filter((r) => r.id !== doseId);
+  if (s.redoses.length === before) throw new Error("Dose not found");
+  s.updated_at = nowIso();
+  await setArr(pkey("effectSessions"), sessions);
+  return s;
+}
+
 export async function addEffectEvent(sessionId, { kind, intensity = null, note = null }) {
   await ensureInit();
   const sessions = await getArr(pkey("effectSessions"));
@@ -774,6 +861,10 @@ export async function deleteEffectEvent(sessionId, eventId) {
 async function endEffectSessionInternal(sessions, s, { learn }) {
   s.status = "completed";
   s.ended_at = nowIso();
+  // A redosed session's onset/peak/gone timings reflect stacked doses, not a
+  // single dose, so they'd corrupt the learned single-dose model — don't train
+  // from redosed sessions.
+  if (learn && (s.redoses || []).length) learn = false;
   if (learn) {
     const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
     const obs = observationsFromSession(s);
@@ -859,7 +950,10 @@ export async function getActiveEffectSessions() {
   sessions.forEach((s) => {
     if (s.status !== "active") return;
     const dur = (s.profile?.duration_min || 360) * 60000;
-    if (now - new Date(s.started_at).getTime() > dur * 2) { s.status = "completed"; s.ended_at = nowIso(); changed = true; }
+    // Measure staleness from the most recent dose, so a redose keeps a
+    // still-active session alive rather than letting it auto-complete early.
+    const lastDoseMs = (s.redoses || []).reduce((mx, r) => Math.max(mx, new Date(r.at).getTime()), new Date(s.started_at).getTime());
+    if (now - lastDoseMs > dur * 2) { s.status = "completed"; s.ended_at = nowIso(); changed = true; }
   });
   if (changed) await setArr(pkey("effectSessions"), sessions);
   return sessions
