@@ -7,11 +7,13 @@ import AdherenceRing from "@/components/AdherenceRing";
 import EmptyState from "@/components/EmptyState";
 import MedColorDot from "@/components/MedColorDot";
 import { RiskBadge } from "@/components/RiskBadge";
+import InteractionAlert from "@/components/InteractionAlert";
 import { Button } from "@/components/ui/button";
 import { useUI } from "@/context/UIContext";
 import ProfileSwitcher from "@/components/ProfileSwitcher";
 import { ActiveEffectsSimple } from "@/components/ActiveEffects";
-import { getToday, getAnalytics, createLog, deleteLog, getLog, getCheckins } from "@/lib/api";
+import { getToday, getAnalytics, createLog, deleteLog, getLog, getCheckins, getActiveSubstances } from "@/lib/api";
+import { interactionsWith } from "@/lib/interactions";
 import { scheduleAllReminders } from "@/lib/push";
 import { greeting, fmtDate, fmtTime12, timeOfDay, doseLabel, depTone, riskTone } from "@/lib/format";
 import { localDateStr } from "@/lib/dates";
@@ -27,9 +29,13 @@ export default function Today() {
     queryKey: ["checkins", "today"],
     queryFn: () => { const s = localDateStr(); return getCheckins({ start: s, end: s }); },
   });
+  // Substances currently active (recently taken / tracking) → interaction
+  // warnings on each med card.
+  const { data: activeSubstances = [] } = useQuery({ queryKey: ["activeSubstances"], queryFn: () => getActiveSubstances() });
+  const interactionsFor = (id, name, category, generic_name) => interactionsWith({ id, name, category, generic_name }, activeSubstances);
 
   const invalidate = () => {
-    ["today", "analytics", "inventory", "logs", "medications", "medication"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    ["today", "analytics", "inventory", "logs", "medications", "medication", "activeSubstances", "interactions"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     scheduleAllReminders().catch(() => {}); // logged doses shouldn't still notify
   };
 
@@ -177,7 +183,7 @@ export default function Today() {
           <div key={g}>
             <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{g}</p>
             <div className="space-y-2.5">
-              {grouped[g].map((d) => <DoseCard key={d.id} dose={d} onTake={() => quickLog(d, "taken")} onSkip={() => quickLog(d, "skipped")} onTap={() => openDose(d)} />)}
+              {grouped[g].map((d) => <DoseCard key={d.id} dose={d} interactions={interactionsFor(d.medication_id, d.name, d.category)} onTake={() => quickLog(d, "taken")} onSkip={() => quickLog(d, "skipped")} onTap={() => openDose(d)} />)}
             </div>
           </div>
         ))}
@@ -187,16 +193,22 @@ export default function Today() {
           <div>
             <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">As needed</p>
             <div className="space-y-2.5">
-              {data.prn.map((m) => (
-                <div key={m.medication_id} className="card-soft p-3 flex items-center gap-3">
-                  <MedColorDot color={m.color} size={42} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate">{m.name}</p>
-                    <p className="text-xs text-muted-foreground">{doseLabel(m.strength, m.unit)} · as needed</p>
+              {data.prn.map((m) => {
+                const findings = interactionsFor(m.medication_id, m.name, m.category);
+                return (
+                  <div key={m.medication_id} className="card-soft p-3" data-testid="prn-card">
+                    <div className="flex items-center gap-3">
+                      <MedColorDot color={m.color} size={42} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">{doseLabel(m.strength, m.unit)} · as needed</p>
+                      </div>
+                      <Button size="sm" variant="secondary" className="rounded-xl" onClick={() => ui.openQuickLog({ id: m.medication_id, name: m.name, color: m.color, strength: m.strength, unit: m.unit, category: m.category, is_prn: true, dose_quantity: m.dose_quantity || 1 })} data-testid="prn-log-button">Log</Button>
+                    </div>
+                    <InteractionAlert findings={findings} className="mt-2.5" />
                   </div>
-                  <Button size="sm" variant="secondary" className="rounded-xl" onClick={() => ui.openQuickLog({ id: m.medication_id, name: m.name, color: m.color, strength: m.strength, unit: m.unit, is_prn: true, dose_quantity: m.dose_quantity || 1 })} data-testid="prn-log-button">Log</Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -225,7 +237,7 @@ function doseText(dose) {
   return doseLabel(dose.strength, dose.unit);
 }
 
-function DoseCard({ dose, onTake, onSkip, onTap }) {
+function DoseCard({ dose, interactions = [], onTake, onSkip, onTap }) {
   const done = dose.status === "taken" || dose.status === "partial";
   const skipped = dose.status === "skipped" || dose.status === "missed";
   return (
@@ -253,6 +265,7 @@ function DoseCard({ dose, onTake, onSkip, onTap }) {
           </div>
         )}
       </div>
+      <InteractionAlert findings={interactions} className="mt-2.5" />
     </div>
   );
 }

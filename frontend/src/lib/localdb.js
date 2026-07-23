@@ -6,6 +6,7 @@ import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./ta
 import { personalizedProfile, observationsFromSession, updateModel } from "./effectsEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
+import { interactionsWith } from "./interactions";
 
 const store = localforage.createInstance({ name: "meditrax", storeName: "meditrax_v1" });
 
@@ -963,6 +964,37 @@ export async function getActiveEffectSessions() {
       const m = meds.find((x) => x.id === s.medication_id);
       return { ...s, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit };
     });
+}
+
+// Substances considered "currently in the body" for interaction checking:
+// any medication with an active effect session, or a dose taken within
+// `withinHours` (default 12h — errs toward warning). Returns a lightweight
+// shape [{ id, name, generic_name, category }] the interaction checker uses.
+export async function getActiveSubstances({ withinHours = 12 } = {}) {
+  await ensureInit();
+  const meds = await getArr(pkey("medications"));
+  const logs = await getArr(pkey("logs"));
+  const sessions = await getArr(pkey("effectSessions"));
+  const cutoff = Date.now() - withinHours * 3600000;
+  const activeIds = new Set();
+  for (const l of logs) {
+    if (!["taken", "partial"].includes(l.status)) continue;
+    if (new Date(l.timestamp).getTime() >= cutoff) activeIds.add(l.medication_id);
+  }
+  for (const s of sessions) if (s.status === "active") activeIds.add(s.medication_id);
+  return meds
+    .filter((m) => activeIds.has(m.id) && m.is_active !== false)
+    .map((m) => ({ id: m.id, name: m.name, generic_name: m.generic_name, category: m.category }));
+}
+
+// Interaction findings between one medication and everything currently active
+// (excluding itself). Used to warn before logging a dose and on home cards.
+export async function getInteractionsForMedication(medication_id, { withinHours = 12 } = {}) {
+  await ensureInit();
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
+  if (!med) return [];
+  const others = await getActiveSubstances({ withinHours });
+  return interactionsWith({ id: med.id, name: med.name, generic_name: med.generic_name, category: med.category }, others);
 }
 
 export async function getEffectSessions({ medication_id, limit } = {}) {
