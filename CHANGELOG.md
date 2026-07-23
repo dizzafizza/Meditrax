@@ -3,6 +3,33 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-23 — Redosing now decrements inventory and journals the dose
+
+### Fixed
+- **The effects tracker's "Add a dose" (redose) button didn't touch
+  inventory at all.** It only recorded the extra dose inside the effect
+  session's internal state, so stock stayed unchanged and the redose never
+  appeared in the medication's log history/journal — inconsistent with every
+  other way of logging a dose. `addEffectDose` now creates a real log entry
+  for the redose (no scheduled_time, so it always creates its own entry
+  rather than merging into an already-logged dose), which decrements
+  inventory through the same path as any other dose; an amount left blank
+  falls back to the medication's standard per-dose pill count, same as any
+  other ad-hoc log. Removing a redose (`removeEffectDose`) now deletes that
+  log too, restoring exactly the stock it took.
+
+### Verified
+- New unit test: redosing with a specified amount decrements the correct
+  pill count, redosing with no amount falls back to the standard per-dose
+  count, the redose shows up via `getLogs()` as its own entry, and removing
+  it restores stock and deletes the log. Full suite: 214 tests passing.
+  Production build clean.
+- Browser-verified end to end: added a medication with inventory tracking,
+  took the primary dose (30 → 29), redosed from the effects tracker
+  (29 → 28) — confirmed as 2 distinct rows in the medication's log
+  history — then removed the redose and confirmed stock restored to 29 and
+  the log row disappeared.
+
 ## 2026-07-23 — Pre-dose interaction warnings (red box + confirmation popup, home-screen cards)
 
 ### Added
