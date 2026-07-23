@@ -247,6 +247,44 @@ describe("session lifecycle in localdb", () => {
     await expect(db.addEffectDose(s2.id, { amount: 5 })).rejects.toThrow(/active/i);
   });
 
+  test("addEffectDose decrements inventory and journals the redose; removeEffectDose restores stock and removes the log", async () => {
+    const med = await db.createMedication({
+      name: "RedoseInvMed", strength: 50, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true,
+      dose_quantity: 1, inventory: { current_count: 30, unit: "tablets", units_per_dose: 1, refill_threshold: 10 },
+    });
+    const stockOf = async () => (await db.getMedications()).find((m) => m.id === med.id).inventory.current_count;
+
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 50 });
+    expect(await stockOf()).toBe(30); // starting a session doesn't itself log/decrement
+
+    // Redose an amount matching the medication's strength → 1 pill decremented.
+    const withRedose = await db.addEffectDose(s.id, { amount: 50 });
+    expect(await stockOf()).toBe(29);
+    expect(withRedose.redoses[0].log_id).toBeTruthy();
+
+    // The redose shows up as a real log entry (journal/history), not just
+    // internal session state — no scheduled_time, so it's its own entry.
+    const logs = await db.getLogs({ medication_id: med.id });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].id).toBe(withRedose.redoses[0].log_id);
+    expect(logs[0].status).toBe("taken");
+    expect(logs[0].dose_taken).toBe(50);
+    expect(logs[0].scheduled_time).toBeFalsy();
+
+    // A second redose with no specified amount falls back to the medication's
+    // standard per-dose pill count (1), same as any other ad-hoc log.
+    const withSecond = await db.addEffectDose(s.id, {});
+    expect(await stockOf()).toBe(28);
+    expect((await db.getLogs({ medication_id: med.id }))).toHaveLength(2);
+
+    // Removing a redose restores exactly what it took and deletes its log.
+    const doseId = withRedose.redoses[0].id;
+    const afterRemove = await db.removeEffectDose(s.id, doseId);
+    expect(await stockOf()).toBe(29); // 28 + 1 restored
+    expect(afterRemove.redoses.find((r) => r.id === doseId)).toBeUndefined();
+    expect(await db.getLogs({ medication_id: med.id })).toHaveLength(1);
+  });
+
   test("a non-redosed session still trains the model as before", async () => {
     const med = await db.createMedication({ name: "PlainTrainMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });
     const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });

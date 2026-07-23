@@ -799,8 +799,24 @@ export async function addEffectDose(sessionId, { amount = null, at = null } = {}
     amt = Number(amount);
     if (!isFinite(amt) || amt < 0) throw new Error("Invalid dose");
   }
+
+  // A redose is a real dose taken — log it like any other dose so inventory
+  // decrements and it shows up in the journal/history, not just internally on
+  // the session. No scheduled_time, so it always creates its own log entry
+  // instead of dedup-merging into an already-logged scheduled dose (same
+  // reasoning as the ad-hoc "extra dose" fix elsewhere in the log entry points).
+  const meds = await getArr(pkey("medications"));
+  const med = meds.find((m) => m.id === s.medication_id);
+  const logPayload = { medication_id: s.medication_id, status: "taken", scheduled_time: null, timestamp: when.toISOString(), unit: s.unit || med?.unit || null };
+  if (amt != null) {
+    logPayload.dose_taken = amt;
+    const pills = med?.strength != null ? pillsFromAmount(amt, med.strength) : null;
+    if (pills != null) logPayload.quantity = pills;
+  }
+  const log = await createLog(logPayload);
+
   s.redoses = s.redoses || [];
-  s.redoses.push({ id: uid(), at: when.toISOString(), amount: amt, unit: s.unit || null });
+  s.redoses.push({ id: uid(), at: when.toISOString(), amount: amt, unit: s.unit || null, log_id: log.id });
   s.redoses.sort((a, b) => a.at.localeCompare(b.at));
   s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
@@ -814,10 +830,13 @@ export async function removeEffectDose(sessionId, doseId) {
   if (!s) throw new Error("Session not found");
   if (s.status !== "active") throw new Error("Only an active session's doses can be edited");
   const before = (s.redoses || []).length;
+  const removed = (s.redoses || []).find((r) => r.id === doseId);
   s.redoses = (s.redoses || []).filter((r) => r.id !== doseId);
   if (s.redoses.length === before) throw new Error("Dose not found");
   s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
+  // Undo the inventory decrement and remove the journal entry this redose created.
+  if (removed?.log_id) await deleteLog(removed.log_id);
   return s;
 }
 
