@@ -3,6 +3,37 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-23 — Pre-dose interaction warnings (red box + confirmation popup, home-screen cards)
+
+### Added
+- **A red interaction warning now appears before you log a dose.** When you
+  open the log sheet for a medication that interacts with something you have
+  active (taken in the last 12 h or currently effect-tracking), a red box
+  lists the risk at the top of the sheet, and pressing "Save log" raises a
+  red confirmation popup naming the interaction — you must tap "Log anyway"
+  (or "Cancel") to proceed. Prescription meds and recreational substances are
+  treated the same.
+- **A red interaction box on the home screen med cards.** Each scheduled-dose
+  and as-needed card shows the same warning at its bottom when that
+  medication interacts with an active substance — so you see the risk in
+  context before you even open the log sheet.
+- New data-layer helpers `getActiveSubstances` (medications recently taken or
+  effect-tracking) and `getInteractionsForMedication`, plus an
+  `interactionsWith` matrix helper, so the warning resolves each medication's
+  category by id (robust to the trimmed med objects some entry points pass)
+  and reuses the same mechanism-based interaction rules as the effects
+  tracker.
+
+### Verified
+- New unit tests: `interactionsWith` (candidate-vs-active filtering, self-
+  exclusion, empty cases) and the `getActiveSubstances` /
+  `getInteractionsForMedication` data-layer glue (recency window, skipped-
+  dose exclusion, active effect sessions, category resolution by id). Full
+  suite: 213 tests passing. Production build clean.
+- Browser-verified end to end: taking Oxycodone then opening Alprazolam shows
+  the red box on the home card and in the log sheet, and the confirmation
+  popup gates the save — Cancel aborts, "Log anyway" proceeds.
+
 ## 2026-07-23 — Interaction checking, combined multi-drug effects graph, redosing & PWA catalog sync
 
 ### Added

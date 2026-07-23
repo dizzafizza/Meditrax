@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession } from "@/lib/api";
+import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication } from "@/lib/api";
 import { scheduleAllReminders } from "@/lib/push";
 import { Switch } from "@/components/ui/switch";
 import MedColorDot from "@/components/MedColorDot";
+import InteractionAlert from "@/components/InteractionAlert";
 import { doseLabel, fmtTime12, toDatetimeLocal } from "@/lib/format";
 import { pillsFromAmount } from "@/lib/predictor";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,8 @@ export default function QuickLogSheet() {
   // default; any manual change hands control to the user.
   const [autoDefault, setAutoDefault] = useState(true);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   // Taper/cyclic-aware default for today — the med objects passed in by the
   // various entry points don't carry plan info, so the sheet resolves it.
   const { data: defaults } = useQuery({
@@ -60,6 +63,16 @@ export default function QuickLogSheet() {
     queryFn: () => logDefaultsForMed(med.id),
     enabled: !!(ui.logSheet.open && !ui.logSheet.log && med?.id),
   });
+
+  // Interactions between this medication and everything currently active —
+  // resolved by id (the passed-in med object may not carry its category).
+  const { data: interactions = [] } = useQuery({
+    queryKey: ["interactions", med?.id],
+    queryFn: () => getInteractionsForMedication(med.id),
+    enabled: !!(ui.logSheet.open && med?.id),
+  });
+  const consumingStatus = status === "taken" || status === "partial";
+  const showInteraction = !editLog && consumingStatus && interactions.length > 0;
 
   useEffect(() => {
     if (!ui.logSheet.open || editLog || !autoDefault || !defaults) return;
@@ -118,7 +131,7 @@ export default function QuickLogSheet() {
     if (s === "taken" && quantity === perDose / 2) changeQuantity(perDose);
   };
 
-  const invalidate = () => ["today", "logs", "analytics", "inventory", "medications", "medication"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const invalidate = () => ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const mutation = useMutation({
     mutationFn: (payload) => (editLog ? updateLog(editLog.id, payload) : createLog(payload)),
@@ -194,6 +207,7 @@ export default function QuickLogSheet() {
         </DrawerHeader>
 
         <div className="px-4 pb-2">
+          {showInteraction && <InteractionAlert findings={interactions} className="mb-3" />}
           <div className="grid grid-cols-4 gap-2" data-testid="quick-log-status-toggle">
             {STATUSES.map((s) => {
               const Icon = s.icon; const active = status === s.v;
@@ -282,9 +296,38 @@ export default function QuickLogSheet() {
         </div>
 
         <div className="p-4 safe-bottom space-y-2">
-          <Button data-testid="quick-log-save-button" className="w-full h-12 rounded-xl" onClick={save} disabled={mutation.isPending}>
+          <Button data-testid="quick-log-save-button" className="w-full h-12 rounded-xl" onClick={() => (showInteraction ? setConfirmOpen(true) : save())} disabled={mutation.isPending}>
             {mutation.isPending ? "Saving…" : editLog ? "Save changes" : "Save log"}
           </Button>
+          {/* Interaction confirmation — a red popup the user must acknowledge
+              before logging a dose that interacts with an active substance. */}
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialogContent data-testid="interaction-confirm-dialog">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-destructive flex items-center gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-destructive/12">⚠️</span>
+                  Interaction warning
+                </AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div>
+                    <p>Logging {med.name} may interact with something you have active:</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {interactions.map((f, i) => (
+                        <li key={i} className="text-sm">
+                          <span className="font-medium text-foreground">{f.otherName}:</span> {f.reason}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs">Harm-reduction heuristic based on drug category, not a clinical database. When in doubt, ask a pharmacist.</p>
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel data-testid="interaction-confirm-cancel">Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => { setConfirmOpen(false); save(); }} className="bg-destructive text-destructive-foreground" data-testid="interaction-confirm-proceed">Log anyway</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {editLog && (
             <AlertDialog>
               <AlertDialogTrigger asChild>

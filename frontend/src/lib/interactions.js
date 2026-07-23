@@ -83,6 +83,20 @@ function categoryRisk(catA, catB) {
   return null;
 }
 
+// Findings between one candidate substance and each of the `others` (a
+// candidate being logged/considered vs. what's already active). Returns
+// findings involving the candidate only, most severe first.
+export function interactionsWith(candidate, others) {
+  if (!candidate) return [];
+  const findings = [];
+  for (const o of others || []) {
+    if (!o || o.id === candidate.id) continue;
+    const hit = nameOverride(candidate, o) || categoryRisk(candidate.category, o.category);
+    if (hit) findings.push({ otherId: o.id, otherName: o.name, name: candidate.name, severity: hit.severity, reason: hit.reason });
+  }
+  return findings.sort((x, y) => (x.severity === y.severity ? 0 : x.severity === SEVERE ? -1 : 1));
+}
+
 // items: [{ id, name, generic_name, category }]. Returns findings for every
 // pair with a known risk, most severe first.
 export function checkInteractions(items) {

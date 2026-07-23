@@ -1,4 +1,4 @@
-import { checkInteractions, severityMeta, SEVERE, CAUTION } from "../interactions";
+import { checkInteractions, interactionsWith, severityMeta, SEVERE, CAUTION } from "../interactions";
 
 const med = (id, name, category, generic_name) => ({ id, name, generic_name, category });
 
@@ -73,6 +73,36 @@ describe("checkInteractions", () => {
     expect(findings[findings.length - 1].severity === CAUTION || findings[findings.length - 1].severity === SEVERE).toBe(true);
     expect(findings.filter((f) => f.severity === SEVERE).length).toBe(2);
     expect(findings.filter((f) => f.severity === CAUTION).length).toBe(1);
+  });
+});
+
+describe("interactionsWith (one candidate vs. active others)", () => {
+  const active = [
+    med("a", "Oxycodone", "opioid"),
+    med("b", "Alcohol", "depressant", "ethanol"),
+    med("c", "Levothyroxine", "thyroid"),
+  ];
+
+  test("returns only findings involving the candidate, most severe first", () => {
+    const f = interactionsWith(med("x", "Cocaine", "stimulant-fast", "cocaine"), active);
+    // cocaine+opioid (caution: stim masks depressant), cocaine+alcohol (severe: cocaethylene)
+    expect(f).toHaveLength(2);
+    expect(f[0].severity).toBe(SEVERE);
+    expect(f[0].otherName).toBe("Alcohol");
+    expect(f.every((x) => x.name === "Cocaine")).toBe(true);
+  });
+
+  test("excludes the candidate itself when it's also in the active list", () => {
+    const f = interactionsWith(med("a", "Oxycodone", "opioid"), active);
+    // oxycodone vs alcohol (severe) only; not vs itself, not vs thyroid
+    expect(f).toHaveLength(1);
+    expect(f[0].otherName).toBe("Alcohol");
+  });
+
+  test("no candidate, empty others, or no interactions → empty", () => {
+    expect(interactionsWith(null, active)).toEqual([]);
+    expect(interactionsWith(med("x", "Ibuprofen", "nsaid"), [])).toEqual([]);
+    expect(interactionsWith(med("x", "Levothyroxine", "thyroid"), active)).toEqual([]);
   });
 });
 
