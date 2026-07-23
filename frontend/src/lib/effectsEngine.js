@@ -141,6 +141,54 @@ export function curveSeries(profile, points = 72) {
   return out;
 }
 
+// ---- redosing (stacked doses within one session) ----
+// A session's effect is the sum of its primary dose plus any redoses, each a
+// copy of the same curve shifted to when it was taken and scaled by its
+// amount relative to the primary dose. Returns the doses normalized to
+// [{ tOffset (min from session start), scale }]; the primary dose is always
+// first with tOffset 0.
+export function sessionDoseStack(session) {
+  const start = new Date(session.started_at).getTime();
+  const baseScale = session.profile?.intensity_scale || 1;
+  const primaryAmt = Number(session.dose);
+  const stack = [{ tOffset: 0, scale: baseScale }];
+  for (const r of session.redoses || []) {
+    const tOffset = Math.max(0, (new Date(r.at).getTime() - start) / 60000);
+    let scale = baseScale;
+    const ra = Number(r.amount);
+    if (isFinite(primaryAmt) && primaryAmt > 0 && isFinite(ra) && ra > 0) scale = baseScale * (ra / primaryAmt);
+    stack.push({ tOffset, scale, id: r.id });
+  }
+  return stack;
+}
+
+// Summed intensity at minute t (from session start) across the dose stack.
+// A dose whose tOffset is still in the future contributes 0 (intensityAt of a
+// negative time), so this is correct for any t, past or present.
+export function stackedIntensityAt(tMin, profile, stack) {
+  let sum = 0;
+  for (const d of stack) sum += intensityAt(tMin - d.tOffset, profile) * (d.scale ?? 1);
+  return round1(sum);
+}
+
+// Where the plotted curve should end: after the last dose's own tail.
+export function stackChartEnd(profile, stack) {
+  const lastOffset = stack.length ? stack[stack.length - 1].tOffset : 0;
+  return lastOffset + profile.duration_min * 1.25;
+}
+
+// Stacked series for the chart, sampled evenly across the (possibly extended)
+// timeline. Peaks can exceed 100% when doses overlap.
+export function stackedCurveSeries(profile, stack, points = 96) {
+  const end = stackChartEnd(profile, stack);
+  const out = [];
+  for (let i = 0; i <= points; i++) {
+    const t = (end * i) / points;
+    out.push({ t: Math.round(t), intensity: stackedIntensityAt(t, profile, stack) });
+  }
+  return out;
+}
+
 // ---- learning ----
 // Extract observed minutes-from-start out of a session's feedback events.
 export function observationsFromSession(session) {
