@@ -162,12 +162,29 @@ export function sessionDoseStack(session) {
   return stack;
 }
 
-// Summed intensity at minute t (from session start) across the dose stack.
+// Summed intensity at minute t (from session start) across the dose stack —
+// but once a later dose reaches its own predicted peak, the dose(s) before
+// it collapse toward zero over a short window rather than continuing to add
+// their full tail on top forever. This models a redose's peak taking over as
+// the dominant felt effect (and matches the "Peaking" feedback language)
+// instead of an ever-taller, less-plausible literal sum of every dose taken.
 // A dose whose tOffset is still in the future contributes 0 (intensityAt of a
 // negative time), so this is correct for any t, past or present.
+const COLLAPSE_MIN_MIN = 8, COLLAPSE_MAX_MIN = 45, COLLAPSE_FRACTION = 0.08;
 export function stackedIntensityAt(tMin, profile, stack) {
   let sum = 0;
-  for (const d of stack) sum += intensityAt(tMin - d.tOffset, profile) * (d.scale ?? 1);
+  const fadeWindow = clamp(profile.duration_min * COLLAPSE_FRACTION, COLLAPSE_MIN_MIN, COLLAPSE_MAX_MIN);
+  for (let i = 0; i < stack.length; i++) {
+    const d = stack[i];
+    const next = stack[i + 1];
+    let mult = 1;
+    if (next) {
+      const collapseAt = next.tOffset + profile.peak_min; // when the next dose peaks, this one starts handing off
+      if (tMin >= collapseAt + fadeWindow) continue; // fully collapsed — skip its contribution entirely
+      if (tMin >= collapseAt) mult = 1 - smooth((tMin - collapseAt) / fadeWindow);
+    }
+    sum += intensityAt(tMin - d.tOffset, profile) * (d.scale ?? 1) * mult;
+  }
   return round1(sum);
 }
 

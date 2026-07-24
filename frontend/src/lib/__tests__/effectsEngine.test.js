@@ -129,6 +129,57 @@ describe("redosing (stacked dose curves)", () => {
     // Two overlapping full doses can push the peak above 100%.
     expect(Math.max(...series.map((pt) => pt.intensity))).toBeGreaterThan(100);
   });
+
+  describe("a superseded dose collapses once the next redose peaks", () => {
+    // Redose at t=180 (full amount); its own peak is at 180+90=270.
+    const session = { started_at: base, dose: 10, profile, redoses: [{ id: "r1", at: plus(180), amount: 10 }] };
+    const stack = sessionDoseStack(session);
+
+    test("before the redose's peak, the primary still contributes its own value in full", () => {
+      // At t=200 the redose hasn't peaked yet (peaks at 270) — primary uncollapsed.
+      const combined = stackedIntensityAt(200, profile, stack);
+      const primaryOnly = intensityAt(200, profile);
+      const redoseOnly = intensityAt(200 - 180, profile);
+      expect(combined).toBeCloseTo(primaryOnly + redoseOnly, 1);
+    });
+
+    test("right at the redose's peak the primary hasn't started fading yet (no discontinuity)", () => {
+      const at270 = stackedIntensityAt(270, profile, stack);
+      const primaryAt270 = intensityAt(270, profile);
+      const redoseAtPeak = intensityAt(90, profile); // = 100
+      expect(at270).toBeCloseTo(primaryAt270 + redoseAtPeak, 1);
+    });
+
+    test("well after the redose peaks, the primary's contribution has fully collapsed to zero", () => {
+      // fadeWindow for a 300-min profile is clamp(300*0.08, 8, 45) = 24 min,
+      // so by t = 270 + 24 the primary should contribute nothing at all.
+      const wellAfter = stackedIntensityAt(270 + 24, profile, stack);
+      const redoseOnly = intensityAt((270 + 24) - 180, profile);
+      expect(wellAfter).toBeCloseTo(redoseOnly, 1); // no leftover primary contribution
+      expect(wellAfter).toBeLessThan(stackedIntensityAt(270, profile, stack)); // strictly less than the peak moment
+    });
+
+    test("the most recent dose in the stack never collapses — it plays out its own full tail", () => {
+      // Far past everything (redose's own duration+tail), intensity should
+      // simply be the redose's own tail value, not zero and not primary's.
+      const farOut = 180 + 300 * 1.1; // inside the redose's after-effects tail
+      const combined = stackedIntensityAt(farOut, profile, stack);
+      const redoseOwn = intensityAt(farOut - 180, profile);
+      expect(combined).toBeCloseTo(redoseOwn, 1);
+      expect(combined).toBeGreaterThan(0); // still fading through its own tail, not cut off
+    });
+
+    test("with three stacked doses, each collapses in turn — no unbounded stacking", () => {
+      const threeStack = sessionDoseStack({
+        started_at: base, dose: 10, profile,
+        redoses: [{ id: "r1", at: plus(60), amount: 10 }, { id: "r2", at: plus(150), amount: 10 }],
+      });
+      const series = stackedCurveSeries(profile, threeStack, 200);
+      // Even with three full-strength doses, the collapsing hand-off keeps the
+      // total well under a literal 300% triple-stack.
+      expect(Math.max(...series.map((pt) => pt.intensity))).toBeLessThan(250);
+    });
+  });
 });
 
 describe("learning (updateModel)", () => {
