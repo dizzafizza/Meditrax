@@ -8,6 +8,7 @@ import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { getAnalytics, getInventory, getMedications, getLogs, getCheckins, getTapers, getKnowledge, getAiConfig } from "@/lib/api";
 import { analyzeAll, SAFETY_COPY } from "@/lib/behavior";
+import { usageFrequency } from "@/lib/usageStats";
 import { unifyMoodEntries, moodDailySeries, moodTrend, dimensionSeries, MOOD_EMOJI } from "@/lib/moodAnalytics";
 import { buildInsightsPayload, generateOverviewInsights, getCachedOverview } from "@/lib/aiInsights";
 import { hasKey } from "@/lib/ai";
@@ -83,6 +84,7 @@ export default function Insights() {
         )}
 
         {tab === "adherence" && <AdherenceTab data={data} range={range} />}
+        {tab === "adherence" && <UsageFrequencyCard logs={logs} meds={meds} />}
         {tab === "mood" && <MoodTab mood={mood} checkins={checkins} range={range} />}
         {tab === "behaviour" && <BehaviourTab report={behavior} />}
       </div>
@@ -229,6 +231,45 @@ function AdherenceTab({ data, range }) {
         </div>
       )}
     </>
+  );
+}
+
+/* ---------------- Usage frequency ---------------- */
+
+function UsageFrequencyCard({ logs, meds }) {
+  const rows = useMemo(() => usageFrequency(logs, meds), [logs, meds]);
+  if (!rows.length) return null;
+  const TrendIcon = { up: TrendingUp, down: TrendingDown, flat: MinusIcon };
+  const trendColor = { up: "text-[hsl(var(--warning))]", down: "text-[hsl(var(--success))]", flat: "text-muted-foreground" };
+  return (
+    <div className="card-soft p-4" data-testid="usage-frequency-card">
+      <div className="flex items-center gap-2 mb-1"><RefreshCw className="h-4 w-4 text-primary" /><p className="font-semibold">How often you're using</p></div>
+      <p className="text-xs text-muted-foreground mb-3">Times taken recently. Frequency, not just dose, shapes tolerance and dependence.</p>
+      <div className="space-y-3">
+        {rows.map((r) => {
+          const Icon = TrendIcon[r.trend];
+          return (
+            <div key={r.id} data-testid="usage-frequency-row" className="flex items-center gap-3">
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-sm truncate">{r.name}</p>
+                  {r.flagged && <span className="text-[10px] rounded-full bg-destructive/12 text-destructive px-1.5 py-0.5 shrink-0">higher risk</span>}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">{r.week}×</span> this week · <span className="font-semibold text-foreground">{r.month}×</span> in 30 days
+                </p>
+              </div>
+              <span className={cn("inline-flex items-center gap-0.5 text-xs shrink-0", trendColor[r.trend])} title={`Last week: ${r.prevWeek}×`}>
+                <Icon className="h-3.5 w-3.5" />
+                {r.trend === "up" ? "rising" : r.trend === "down" ? "easing" : "steady"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-3">Descriptive only — not a diagnosis. A rising trend on a higher-risk medication is worth discussing with a clinician.</p>
+    </div>
   );
 }
 

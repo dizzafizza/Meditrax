@@ -3,6 +3,28 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Usage-frequency insights
+
+### Added
+- **A "How often you're using" card on the Insights → Adherence tab.** For
+  every medication taken in the last 30 days it shows the count this week and
+  over 30 days, a week-over-week trend (rising / easing / steady vs. the
+  prior week), and a "higher risk" flag for medications with a
+  moderate-or-worse dependency risk or high risk level — because frequency,
+  not just dose, is what shapes tolerance and dependence and isn't visible
+  from single sessions. Most-used medications are listed first; a descriptive
+  "not a diagnosis" note points toward discussing a rising trend with a
+  clinician. Fully offline.
+- New pure `usageFrequency` helper (unit-tested).
+
+### Verified
+- New unit tests: 7/30-day window counting, exclusion of skipped/missed and
+  out-of-window logs, week-over-week trend direction (rising/easing/steady),
+  and exact day-boundary bucketing. Full suite: 238 tests passing. Production
+  build clean.
+- Browser-verified: logging Alprazolam three times surfaces "3× this week ·
+  3× in 30 days" with a "higher risk" flag and a "rising" trend on the card.
+
 ## 2026-07-24 — Redose safety guardrails
 
 ### Added
