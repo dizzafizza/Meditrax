@@ -65,3 +65,20 @@ describe("getInteractionsForMedication", () => {
     expect(await db.getInteractionsForMedication("nope")).toEqual([]);
   });
 });
+
+describe("getMedicationMaxDaily", () => {
+  test("resolves the catalog max_daily_dose for a medication created from the catalog", async () => {
+    // Oxycodone's curated entry has no max (null); Ibuprofen's is 3200.
+    const ibu = (await db.searchCatalog("Ibuprofen", 1))[0];
+    const med = await db.createMedication({ name: ibu.name, strength: 200, unit: "mg", category: ibu.category, catalog_id: ibu.id, is_prn: true, times: [] });
+    expect(await db.getMedicationMaxDaily(med.id)).toBe(3200);
+  });
+
+  test("falls back to name match when no catalog_id, and returns null for unknown/none", async () => {
+    const med = await db.createMedication({ name: "Alprazolam", strength: 1, unit: "mg", category: "benzodiazepine", is_prn: true, times: [] });
+    expect(await db.getMedicationMaxDaily(med.id)).toBe(4); // Alprazolam curated max
+    const custom = await db.createMedication({ name: "TotallyMadeUpDrug", strength: 1, unit: "mg", category: "other", is_prn: true, times: [] });
+    expect(await db.getMedicationMaxDaily(custom.id)).toBe(null);
+    expect(await db.getMedicationMaxDaily("nope")).toBe(null);
+  });
+});
