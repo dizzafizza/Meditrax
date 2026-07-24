@@ -3,6 +3,37 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Redose safety guardrails
+
+### Added
+- **The redose panel now warns before you add a risky dose.** As you fill in
+  a redose it checks, live:
+  - **Too soon** — the redose lands before the previous dose is predicted to
+    peak (the classic "I don't feel it yet, take more" over-stacking
+    pattern), showing how long it's been vs. the typical peak time.
+  - **Over the typical maximum** — the running session total (primary + all
+    redoses + this one) reaches 80% of, or exceeds, the substance's known max
+    daily dose from the knowledge base.
+  When either fires, a warning box appears in the panel and the button
+  changes to "Add anyway" — these are soft guardrails, never hard blocks, so
+  you stay in control. Warnings clear automatically as you adjust the amount
+  or time.
+- New pure `redoseWarnings` helper (fully unit-tested) and a
+  `getMedicationMaxDaily` data-layer lookup that resolves the max daily dose
+  from the medication's catalog entry.
+
+### Verified
+- New unit tests: too-soon detection (measured from the most recent dose,
+  clears past peak), over-max and near-max thresholds, cumulative totals
+  counting existing redoses, unspecified-amount fallback, and both warnings
+  firing together — plus data-layer tests for `getMedicationMaxDaily`
+  (catalog-id and name-match resolution, null for unknown). Full suite: 234
+  tests passing. Production build clean.
+- Browser-verified: a 3 mg Alprazolam primary dose then an immediate 3 mg
+  redose shows both the too-soon and over-max warnings (session total 6 mg
+  vs. 4 mg max) with an "Add anyway" button; lowering the amount and dating
+  it past the peak clears both.
+
 ## 2026-07-24 — Smarter Form defaults when adding a medication from the knowledge base
 
 ### Added

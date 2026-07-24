@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getActiveEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getLogs, getMedications } from "@/lib/api";
+import { getActiveEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getLogs, getMedications } from "@/lib/api";
 import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries } from "@/lib/effectsEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
+import { redoseWarnings } from "@/lib/redoseSafety";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
 import { Activity, AlertTriangle, ChevronRight, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceDot, CartesianGrid } from "recharts";
@@ -103,6 +104,11 @@ function SessionDetail({ session, now }) {
   const [redosing, setRedosing] = useState(false);
   const [redoseAmt, setRedoseAmt] = useState("");
   const [redoseWhen, setRedoseWhen] = useState("");
+  // Typical max daily dose (from the catalog) for the redose guardrails.
+  const { data: maxDaily = null } = useQuery({
+    queryKey: ["medMaxDaily", session.medication_id],
+    queryFn: () => getMedicationMaxDaily(session.medication_id),
+  });
   const t = elapsedMin(session, now);
   const p = session.profile;
   // The session's effect is the sum of its primary dose and any redoses
@@ -211,6 +217,12 @@ function SessionDetail({ session, now }) {
     setRedoseWhen(toDatetimeLocal());
     setRedosing(true);
   };
+  // Live safety check for the redose being composed (too-soon / over-max).
+  const redoseSafety = useMemo(() => {
+    if (!redosing) return { warnings: [] };
+    const at = redoseWhen && !isNaN(new Date(redoseWhen).getTime()) ? new Date(redoseWhen).toISOString() : null;
+    return redoseWarnings(session, { amount: redoseAmt, at }, maxDaily, session.unit);
+  }, [redosing, redoseWhen, redoseAmt, session, maxDaily]);
   const saveRedose = () => {
     const when = new Date(redoseWhen);
     if (!redoseWhen || isNaN(when.getTime())) { toast.error("Enter a valid date and time"); return; }
@@ -448,8 +460,9 @@ function SessionDetail({ session, now }) {
                 <Input type="datetime-local" value={redoseWhen} max={toDatetimeLocal()} onChange={(e) => setRedoseWhen(e.target.value)} className="h-11 rounded-xl mt-1" data-testid="effect-redose-when" />
               </div>
             </div>
+            <RedoseSafetyBox warnings={redoseSafety.warnings} unit={session.unit} />
             <div className="flex gap-2 mt-3">
-              <Button size="sm" className="flex-1 rounded-xl" onClick={saveRedose} disabled={redose.isPending} data-testid="effect-redose-save">Add dose</Button>
+              <Button size="sm" className={`flex-1 rounded-xl ${redoseSafety.warnings.length ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}`} onClick={saveRedose} disabled={redose.isPending} data-testid="effect-redose-save">{redoseSafety.warnings.length ? "Add anyway" : "Add dose"}</Button>
               <Button size="sm" variant="secondary" className="flex-1 rounded-xl" onClick={() => setRedosing(false)}>Cancel</Button>
             </div>
             <p className="text-[10px] text-muted-foreground mt-2">The redose stacks onto whatever is still active — the curve sums both. Redosed sessions don't train your timing model, since the stacked timing isn't a clean single-dose reading.</p>
@@ -460,6 +473,31 @@ function SessionDetail({ session, now }) {
       <div className="mt-3 flex gap-2">
         <Button variant="secondary" size="sm" className="flex-1 rounded-xl" onClick={() => finish.mutate({ learn: true })} data-testid="effect-end-button">End session</Button>
         <Button variant="ghost" size="sm" className="rounded-xl text-muted-foreground" onClick={() => finish.mutate({ discard: true })} data-testid="effect-discard-button"><X className="h-4 w-4 mr-1" />Discard</Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- redose safety guardrails ----
+function RedoseSafetyBox({ warnings, unit }) {
+  if (!warnings?.length) return null;
+  const severe = warnings.some((w) => w.severity === "severe");
+  const line = (w) => {
+    if (w.type === "too_soon") return `The previous dose likely hasn't peaked yet (${fmtMins(w.minsSinceLast)} in, typically peaks ~${fmtMins(w.peakMin)}). Waiting until you feel the full effect avoids accidental over-stacking.`;
+    if (w.type === "over_max") return `This brings the session total to ${w.cumulative}${unit ? ` ${unit}` : ""} — above the typical maximum of ${w.maxDaily}${unit ? ` ${unit}` : ""}.`;
+    if (w.type === "near_max") return `This brings the session total to ${w.cumulative}${unit ? ` ${unit}` : ""}, near the typical maximum of ${w.maxDaily}${unit ? ` ${unit}` : ""}.`;
+    return "";
+  };
+  return (
+    <div className={`mt-3 rounded-xl border p-2.5 ${severe ? "border-destructive/40 bg-destructive/5" : "border-[hsl(var(--warning-border))] bg-[hsl(var(--warning-surface))]"}`} data-testid="redose-safety-box">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className={`h-4 w-4 shrink-0 mt-0.5 ${severe ? "text-destructive" : "text-[hsl(var(--warning))]"}`} />
+        <div className="min-w-0">
+          <p className={`text-xs font-semibold ${severe ? "text-destructive" : "text-[hsl(var(--warning))]"}`}>{severe ? "Dose safety" : "Heads up"}</p>
+          <ul className="mt-1 space-y-1">
+            {warnings.map((w, i) => <li key={i} className="text-[11px] text-muted-foreground leading-snug">{line(w)}</li>)}
+          </ul>
+        </div>
       </div>
     </div>
   );

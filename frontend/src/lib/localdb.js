@@ -1016,6 +1016,20 @@ export async function getInteractionsForMedication(medication_id, { withinHours 
   return interactionsWith({ id: med.id, name: med.name, generic_name: med.generic_name, category: med.category }, others);
 }
 
+// The typical max daily dose for a medication, resolved from the catalog
+// entry it was created from (medications don't store it themselves). Used by
+// the redose safety guardrails. Returns a number or null.
+export async function getMedicationMaxDaily(medication_id) {
+  await ensureInit();
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
+  if (!med) return null;
+  const catalog = await getArr("catalog");
+  const nameLower = (med.name || "").toLowerCase();
+  const cat = (med.catalog_id && catalog.find((c) => c.id === med.catalog_id)) || catalog.find((c) => c.name_lower === nameLower);
+  const v = cat && Number(cat.max_daily_dose);
+  return isFinite(v) && v > 0 ? v : null;
+}
+
 export async function getEffectSessions({ medication_id, limit } = {}) {
   await ensureInit();
   let sessions = await getArr(pkey("effectSessions"));
