@@ -66,6 +66,48 @@ describe("getInteractionsForMedication", () => {
   });
 });
 
+// Regression: the active-substance window used to be a flat 12 h for every
+// medication, so a short-acting substance kept flashing a red interaction
+// warning for most of a day after its effects were plainly over.
+describe("the active window follows each substance's own effect duration", () => {
+  const backdateLog = async (logId, minutesAgo) => {
+    const raw = (await db.exportData()).profileData;
+    const pid = Object.keys(raw)[0];
+    raw[pid].logs.find((l) => l.id === logId).timestamp = new Date(Date.now() - minutesAgo * 60000).toISOString();
+  };
+
+  test("a short-acting substance drops out once its curve is over, while a long-acting one is still counted", async () => {
+    // stimulant-fast (cocaine-like): 60 min duration -> 75 min curve, floored
+    // to the 2 h minimum window. antidepressant: 720 min -> capped at 12 h.
+    const fast = await db.createMedication({ name: "FastSubstance", strength: 1, unit: "mg", category: "stimulant-fast", form: "tablet", is_prn: true, times: [] });
+    const slow = await db.createMedication({ name: "SlowSubstance", strength: 1, unit: "mg", category: "antidepressant", form: "tablet", is_prn: true, times: [] });
+    const fastLog = await db.createLog({ medication_id: fast.id, status: "taken", quantity: 1, scheduled_time: null });
+    const slowLog = await db.createLog({ medication_id: slow.id, status: "taken", quantity: 1, scheduled_time: null });
+
+    // 4 hours ago: the fast substance's curve (and its 2 h floor) is long
+    // over; the antidepressant's 12 h curve is still running.
+    await backdateLog(fastLog.id, 240);
+    await backdateLog(slowLog.id, 240);
+    const names = (await db.getActiveSubstances()).map((m) => m.name);
+    expect(names).not.toContain("FastSubstance");
+    expect(names).toContain("SlowSubstance");
+  });
+
+  test("a substance taken just now is always active, whatever its duration", async () => {
+    const fast = await db.createMedication({ name: "JustTakenFast", strength: 1, unit: "mg", category: "stimulant-fast", form: "tablet", is_prn: true, times: [] });
+    await db.createLog({ medication_id: fast.id, status: "taken", quantity: 1, scheduled_time: null });
+    expect((await db.getActiveSubstances()).map((m) => m.name)).toContain("JustTakenFast");
+  });
+
+  test("an active effect session keeps a substance active regardless of the log window", async () => {
+    const med = await db.createMedication({ name: "SessionKeepsActive", strength: 1, unit: "mg", category: "stimulant-fast", form: "tablet", is_prn: true, times: [] });
+    const log = await db.createLog({ medication_id: med.id, status: "taken", quantity: 1, scheduled_time: null });
+    await db.startEffectSession({ medication_id: med.id, dose: 1 });
+    await backdateLog(log.id, 600); // log far outside any window
+    expect((await db.getActiveSubstances()).map((m) => m.name)).toContain("SessionKeepsActive");
+  });
+});
+
 describe("getMedicationMaxDaily", () => {
   test("resolves the catalog max_daily_dose for a medication created from the catalog", async () => {
     // Oxycodone's curated entry has no max (null); Ibuprofen's is 3200.

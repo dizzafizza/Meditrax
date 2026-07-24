@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd } from "./effectsEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
 import { interactionsWith } from "./interactions";
@@ -958,9 +958,21 @@ export async function reopenEffectSession(sessionId) {
   return s;
 }
 
-// Active sessions with their medication attached. Sessions long past their
-// predicted end (2× duration) auto-complete without learning — silence isn't
-// feedback.
+// How long after its start a session's curve is completely over — the last
+// dose's own after-effects tail included. Past this the chart reads 0% and
+// the phase label is "Complete", so the session has nothing left to show.
+export function sessionEndsAfterMin(session) {
+  const profile = session?.profile || { duration_min: 360, onset_min: 30, peak_min: 90 };
+  return stackChartEnd(profile, sessionDoseStack(session));
+}
+
+// Active sessions with their medication attached. A session auto-completes
+// (without learning — silence isn't feedback) once its curve has fully played
+// out, i.e. past the last dose's after-effects tail. Previously this waited
+// for 2× the duration, which left a dead "Effects complete · 0% intensity"
+// card sitting on the home and Effects screens for hours after the curve was
+// visibly over. Redoses extend the curve, so a redosed session stays active
+// as long as its own stacked curve is still running.
 export async function getActiveEffectSessions() {
   await ensureInit();
   const sessions = await getArr(pkey("effectSessions"));
@@ -969,11 +981,8 @@ export async function getActiveEffectSessions() {
   let changed = false;
   sessions.forEach((s) => {
     if (s.status !== "active") return;
-    const dur = (s.profile?.duration_min || 360) * 60000;
-    // Measure staleness from the most recent dose, so a redose keeps a
-    // still-active session alive rather than letting it auto-complete early.
-    const lastDoseMs = (s.redoses || []).reduce((mx, r) => Math.max(mx, new Date(r.at).getTime()), new Date(s.started_at).getTime());
-    if (now - lastDoseMs > dur * 2) { s.status = "completed"; s.ended_at = nowIso(); changed = true; }
+    const endsAt = new Date(s.started_at).getTime() + sessionEndsAfterMin(s) * 60000;
+    if (now > endsAt) { s.status = "completed"; s.ended_at = nowIso(); changed = true; }
   });
   if (changed) await setArr(pkey("effectSessions"), sessions);
   return sessions
@@ -986,21 +995,41 @@ export async function getActiveEffectSessions() {
 }
 
 // Substances considered "currently in the body" for interaction checking:
-// any medication with an active effect session, or a dose taken within
-// `withinHours` (default 12h — errs toward warning). Returns a lightweight
-// shape [{ id, name, generic_name, category }] the interaction checker uses.
+// any medication with an active effect session, or a dose taken recently
+// enough that its effects haven't run out yet.
+//
+// The recency window is per-medication rather than a flat cutoff, derived
+// from that medication's own effect curve (learned model where available,
+// category/form default otherwise) including the after-effects tail. A flat
+// 12 h window meant a short-acting substance kept flashing a red interaction
+// warning for most of a day after its effects were plainly over. The window
+// is floored at 2 h so a very short curve still warns for a sensible buffer,
+// and capped at `withinHours` so nothing warns indefinitely.
+const MIN_ACTIVE_WINDOW_MIN = 120;
 export async function getActiveSubstances({ withinHours = 12 } = {}) {
   await ensureInit();
   const meds = await getArr(pkey("medications"));
   const logs = await getArr(pkey("logs"));
   const sessions = await getArr(pkey("effectSessions"));
-  const cutoff = Date.now() - withinHours * 3600000;
+  const models = await getArr(pkey("effectModels"));
+  const now = Date.now();
+  const capMin = withinHours * 60;
+
+  const windowFor = (med) => {
+    const model = models.find((m) => m.medication_id === med.id) || null;
+    const profile = personalizedProfile(med, model, null);
+    return Math.min(capMin, Math.max(MIN_ACTIVE_WINDOW_MIN, profile.duration_min * 1.25));
+  };
+
   const activeIds = new Set();
+  for (const s of sessions) if (s.status === "active") activeIds.add(s.medication_id);
   for (const l of logs) {
     if (!["taken", "partial"].includes(l.status)) continue;
-    if (new Date(l.timestamp).getTime() >= cutoff) activeIds.add(l.medication_id);
+    if (activeIds.has(l.medication_id)) continue;
+    const med = meds.find((m) => m.id === l.medication_id);
+    if (!med) continue;
+    if (now - new Date(l.timestamp).getTime() <= windowFor(med) * 60000) activeIds.add(med.id);
   }
-  for (const s of sessions) if (s.status === "active") activeIds.add(s.medication_id);
   return meds
     .filter((m) => activeIds.has(m.id) && m.is_active !== false)
     .map((m) => ({ id: m.id, name: m.name, generic_name: m.generic_name, category: m.category }));

@@ -3,6 +3,45 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Effects and interaction warnings now clear when the effects are over
+
+### Fixed
+- **A finished session left a dead card on the home and Effects screens for
+  hours.** Sessions only auto-completed once *twice* the predicted duration
+  had elapsed, but the curve is visibly finished (0% intensity, phase
+  "Complete") at 1.25× — so a spent session sat there reading "Effects
+  complete · 0% intensity" for up to another 0.75× duration. A session now
+  auto-completes as soon as its curve has actually played out, including the
+  after-effects tail, and moves straight into Session history. Redoses still
+  extend the curve, so a redosed session stays active until *its* stacked
+  curve is done.
+- **The red interaction warning kept firing long after the effects ended.**
+  A substance counted as "active" for a flat 12 hours after any dose,
+  regardless of how long it actually lasts — so a short-acting substance
+  flashed a high-risk warning for most of a day after its effects were
+  plainly over. The window now follows each medication's own effect curve
+  (learned model where available, category/form default otherwise) including
+  the tail, floored at 2 h so a very short curve still warns for a sensible
+  buffer and capped at 12 h so nothing warns indefinitely. An active effect
+  session always counts, whatever the log timing.
+- **Ending a session immediately re-offered to track the same dose.** The
+  "Track effects of X" prompt only skipped medications with a *currently
+  active* session, so finishing one instantly re-offered the very dose just
+  tracked and the tracker never looked cleared. Doses that already have a
+  session (of any status), including redose entries, are no longer offered.
+
+### Verified
+- New regression tests, each confirmed to fail against the old behavior: a
+  session clears the moment its curve ends rather than at 2× duration, a
+  redose keeps the session alive until the extended curve is over, and a
+  short-acting substance drops out of the interaction window while a
+  long-acting one is still counted (plus: a just-taken dose and an active
+  session always count). Full suite: 250 tests passing. Production build clean.
+- Browser-verified against the production build: a cocaine dose logged 4 h
+  ago leaves no active card on the home screen, no session detail on the
+  Effects page, no stale interaction warning, and is not re-offered for
+  tracking — while a freshly-logged dose still raises the warning as before.
+
 ## 2026-07-24 — Session share legend swatches match the chart's exact line style
 
 ### Fixed
