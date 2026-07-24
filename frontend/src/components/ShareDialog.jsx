@@ -3,6 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { shareNode } from "@/lib/share";
+import { sessionSummaryData } from "@/lib/sessionSummary";
+import { sessionDoseStack, stackedCurveSeries, fmtMins } from "@/lib/effectsEngine";
+import { fmtDate } from "@/lib/format";
 import { Share2 } from "lucide-react";
 
 export default function ShareDialog({ open, onOpenChange, filename = "meditrax.png", title = "Meditrax", children }) {
@@ -104,6 +107,87 @@ export function MedicationShareCard({ med }) {
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#9aa3a1", marginBottom: 4 }}>Interactions</div>
           {interactions.map((w, i) => <div key={i} style={{ fontSize: 12, color: "#5b6664" }}>• {w}</div>)}
+        </div>
+      )}
+
+      <Brand />
+      <Disclaimer />
+    </div>
+  );
+}
+
+const LABEL = { fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#9aa3a1", marginBottom: 4 };
+const ROW = { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "3px 0" };
+
+// A small stacked-effect curve as inline SVG (html-to-image renders it fine).
+function MiniCurve({ session }) {
+  if (!session?.profile) return null;
+  const stack = sessionDoseStack(session);
+  const series = stackedCurveSeries(session.profile, stack, 64);
+  if (series.length < 2) return null;
+  const w = 312, h = 72, pad = 3;
+  const maxY = Math.max(100, ...series.map((p) => p.intensity));
+  const maxT = series[series.length - 1].t || 1;
+  const x = (t) => pad + (t / maxT) * (w - pad * 2);
+  const y = (v) => (h - pad) - (v / maxY) * (h - pad * 2);
+  const line = series.map((p, i) => `${i ? "L" : "M"} ${x(p.t).toFixed(1)} ${y(p.intensity).toFixed(1)}`).join(" ");
+  const area = `${line} L ${x(maxT).toFixed(1)} ${(h - pad).toFixed(1)} L ${x(0).toFixed(1)} ${(h - pad).toFixed(1)} Z`;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", marginTop: 12 }}>
+      <path d={area} fill={ACCENT} fillOpacity={0.12} />
+      <path d={line} fill="none" stroke={ACCENT} strokeWidth={2} strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function SessionShareCard({ session, med }) {
+  const d = sessionSummaryData(session, med);
+  if (!d) return null;
+  const doseStr = (amt) => (amt != null ? `${amt}${d.unit ? ` ${d.unit}` : ""}` : "—");
+  return (
+    <div style={CARD}>
+      <div style={LABEL}>Effects session</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 2 }}>
+        <span style={{ width: 40, height: 40, borderRadius: 13, background: med?.color || ACCENT, display: "inline-block" }} />
+        <div>
+          <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 600, lineHeight: "26px" }}>{d.name}</div>
+          <div style={{ fontSize: 13, color: "#5b6664" }}>{fmtDate(d.startedAt, "MMM d, h:mm a")}{d.durationMin != null ? ` · ${fmtMins(d.durationMin)}` : ""}</div>
+        </div>
+      </div>
+
+      <MiniCurve session={session} />
+
+      <div style={{ marginTop: 12 }}>
+        <div style={LABEL}>Doses</div>
+        {d.doses.map((dose, i) => (
+          <div key={i} style={ROW}>
+            <span style={{ color: "#5b6664" }}>{dose.label}{dose.offset ? ` · +${fmtMins(dose.offset)}` : ""}</span>
+            <span style={{ fontWeight: 600 }}>{doseStr(dose.amount)}</span>
+          </div>
+        ))}
+        {d.total != null && (
+          <div style={{ ...ROW, borderTop: "1px solid #f0eadf", marginTop: 3, paddingTop: 5 }}>
+            <span style={{ color: "#5b6664" }}>Total</span>
+            <span style={{ fontWeight: 700 }}>{doseStr(d.total)}</span>
+          </div>
+        )}
+      </div>
+
+      {(d.timeline.length > 0 || d.maxIntensity != null) && (
+        <div style={{ marginTop: 12 }}>
+          <div style={LABEL}>How it felt</div>
+          {d.timeline.map((t, i) => (
+            <div key={i} style={ROW}>
+              <span style={{ color: "#5b6664" }}>{t.label}</span>
+              <span style={{ fontWeight: 600 }}>{fmtMins(t.min)} in</span>
+            </div>
+          ))}
+          {d.maxIntensity != null && (
+            <div style={ROW}>
+              <span style={{ color: "#5b6664" }}>Peak intensity</span>
+              <span style={{ fontWeight: 600 }}>{d.maxIntensity}/10</span>
+            </div>
+          )}
         </div>
       )}
 

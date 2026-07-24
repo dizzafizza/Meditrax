@@ -1,13 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import MedColorDot from "@/components/MedColorDot";
 import { Button } from "@/components/ui/button";
+import ShareDialog, { SessionShareCard } from "@/components/ShareDialog";
 import { getLogs, getMedications, getCheckins, getEffectSessions } from "@/lib/api";
 import { unifyMoodEntries, moodDailySeries, moodTrend, MOOD_EMOJI } from "@/lib/moodAnalytics";
-import { sessionSummaryData, sessionSummaryText } from "@/lib/sessionSummary";
+import { sessionSummaryData } from "@/lib/sessionSummary";
 import { fmtMins } from "@/lib/effectsEngine";
 import { timestampToLocalDate } from "@/lib/dates";
 import { relativeTime, fmtDate } from "@/lib/format";
@@ -15,16 +15,6 @@ import { useUI } from "@/context/UIContext";
 import { Activity, Smile, TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Share2, History } from "lucide-react";
 import { ActiveEffectsDetail } from "@/components/ActiveEffects";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
-
-async function shareSummary(text) {
-  try {
-    if (navigator.share) { await navigator.share({ text }); return "shared"; }
-  } catch (e) {
-    if (e?.name === "AbortError") return "aborted"; // user dismissed the sheet
-  }
-  try { await navigator.clipboard.writeText(text); return "copied"; } catch {}
-  return "failed";
-}
 
 const MOOD_WORD_EMOJI = { great: "😊", good: "🙂", okay: "😐", low: "😕", bad: "😟" };
 const DIM_LABELS = { energy: "Energy", sleep: "Sleep", pain: "Pain", anxiety: "Anxiety" };
@@ -128,15 +118,9 @@ export default function Effects() {
 }
 
 function SessionHistoryCard({ session, med }) {
+  const [shareOpen, setShareOpen] = useState(false);
   const d = sessionSummaryData(session, med);
   if (!d) return null;
-  const onShare = async () => {
-    const text = sessionSummaryText(session, med, { fmtClock: (iso) => fmtDate(iso, "MMM d, h:mm a") });
-    const result = await shareSummary(text);
-    if (result === "copied") toast.success("Summary copied to clipboard");
-    else if (result === "shared") toast.success("Summary shared");
-    else if (result === "failed") toast.error("Couldn't share the summary");
-  };
   const doseSummary = d.total != null
     ? `${d.doses.length} ${d.doses.length === 1 ? "dose" : "doses"} · ${d.total}${d.unit ? ` ${d.unit}` : ""} total`
     : `${d.doses.length} ${d.doses.length === 1 ? "dose" : "doses"}`;
@@ -148,7 +132,7 @@ function SessionHistoryCard({ session, med }) {
           <p className="font-semibold truncate">{d.name}</p>
           <p className="text-xs text-muted-foreground">{fmtDate(session.started_at, "MMM d, h:mm a")}{d.durationMin != null ? ` · ${fmtMins(d.durationMin)}` : ""}</p>
         </div>
-        <Button size="sm" variant="secondary" className="rounded-xl shrink-0" onClick={onShare} data-testid="session-share-button"><Share2 className="h-4 w-4 mr-1" />Share</Button>
+        <Button size="sm" variant="secondary" className="rounded-xl shrink-0" onClick={() => setShareOpen(true)} data-testid="session-share-button"><Share2 className="h-4 w-4 mr-1" />Share</Button>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{doseSummary}</span>
@@ -156,6 +140,9 @@ function SessionHistoryCard({ session, med }) {
         {d.timeline.find((t) => t.kind === "peak") && <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">peak {fmtMins(d.timeline.find((t) => t.kind === "peak").min)} in</span>}
         {d.maxIntensity != null && <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">peak {d.maxIntensity}/10</span>}
       </div>
+      <ShareDialog open={shareOpen} onOpenChange={setShareOpen} filename={`session-${d.name.toLowerCase().replace(/\s+/g, "-")}-meditrax.png`} title={`${d.name} session · Meditrax`}>
+        <SessionShareCard session={session} med={med} />
+      </ShareDialog>
     </div>
   );
 }

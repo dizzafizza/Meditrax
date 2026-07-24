@@ -3,28 +3,43 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Session summaries now share as an image
+
+### Changed
+- **The "Share" button on a completed effects session now generates a polished
+  image**, matching the medication and taper share sheets, instead of copying
+  plain text. It opens a preview dialog showing a share card — substance, date
+  and duration, a mini stacked-effect curve (with the redose double-peak),
+  every dose and redose with timing, the cumulative total, the onset → peak →
+  wearing-off → gone timeline with peak intensity, and the Meditrax brand +
+  disclaimer — then renders it to a PNG via the same client-side
+  `html-to-image` path. It uses the native share sheet with a file where
+  supported (mobile/PWA) and downloads the PNG otherwise. Fully offline.
+- New `SessionShareCard` render component (with an inline-SVG mini curve) in
+  the shared `ShareDialog`.
+
+### Verified
+- Existing `sessionSummaryData` unit tests still cover the underlying data
+  (doses, timeline, totals). Full suite: 245 tests passing. Production build
+  clean.
+- Browser-verified end to end: an MDMA session with feedback and a redose
+  produces a share card whose PNG (≈89 KB) renders the double-peak curve,
+  the Dose 1 / Redose 1 (+2 h) / Total 150 mg breakdown, the "How it felt"
+  timeline, and the branded footer.
+
 ## 2026-07-24 — Shareable session summaries
 
 ### Added
 - **A "Session history" section on the Effects & Journal page** listing your
   completed effect-tracker sessions (substance, date, duration, dose/redose
   count, peak time and peak reported intensity), each with a **Share** button.
-  Sharing produces a clean plain-text summary — substance, every dose and
-  redose with timing, cumulative total, and the onset → peak → wearing-off →
-  gone timeline with peak intensity — as a personal harm-reduction record.
-  It uses the native share sheet where available (mobile/PWA) and falls back
-  to copying to the clipboard everywhere else. Fully offline.
-- New pure `sessionSummaryData` / `sessionSummaryText` helpers (unit-tested).
+  (Superseded the same day by image sharing — see the entry above.) New pure
+  `sessionSummaryData` / `sessionSummaryText` helpers (unit-tested).
 
 ### Verified
 - New unit tests: dose + redose collection with offsets and cumulative total,
   the phase-ordered feedback timeline and max reported intensity, bare-session
-  and null handling, and the rendered shareable text (sections present/omitted
-  correctly, footer included). Full suite: 245 tests passing. Production build
-  clean.
-- Browser-verified: completing a Cocaine session surfaces it in Session
-  history, and Share (clipboard fallback path) copies the full formatted
-  summary with the Doses / How it felt / footer sections.
+  and null handling. Full suite: 245 tests passing. Production build clean.
 
 ## 2026-07-24 — Usage-frequency insights
 
