@@ -68,6 +68,7 @@ export default function MedicationFormSheet() {
       drug_class: c.drug_class || "",
       category: c.category || "other",
       unit: c.default_unit || "mg",
+      form: c.default_form || (replace ? empty.form : f.form),
       strength: c.common_dosages?.[0] ?? "",
       risk_level: c.risk_level || "low",
       dependency_risk_category: c.dependency_risk_category || "none",

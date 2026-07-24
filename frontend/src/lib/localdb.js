@@ -13,7 +13,7 @@ const store = localforage.createInstance({ name: "meditrax", storeName: "meditra
 // Bump whenever CATALOG_SEED changes so existing installs pick up new/updated
 // curated entries. The catalog is seeded once on first run; without this,
 // users who installed an earlier version would never see later additions.
-const CATALOG_SEED_VERSION = 2;
+const CATALOG_SEED_VERSION = 3;
 
 export const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const PROFILE_COLORS = ["#2A767B", "#E08A3C", "#7A6FB0", "#3E7CB1", "#B0436F", "#5B8C5A"];

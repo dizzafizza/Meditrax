@@ -9,8 +9,33 @@ import { CATEGORY_LABELS } from "../format";
 
 const RISK_LEVELS = ["minimal", "low", "moderate", "high"];
 const DEPENDENCY_LEVELS = ["none", "low", "moderate", "high", "extreme"];
+// Mirror of MedicationFormSheet's FORMS list — default_form must be one of
+// these so it maps to a real option in the medication Form dropdown.
+const FORMS = ["tablet", "capsule", "liquid", "injection", "patch", "drops", "spray", "inhaler", "cream", "smoked/vaporized", "insufflated", "edible", "other"];
 
 describe("CATALOG_SEED integrity", () => {
+  test("any entry with a default_form uses a valid form from the Form dropdown", () => {
+    for (const d of CATALOG_SEED) {
+      if (d.default_form != null) expect(FORMS).toContain(d.default_form);
+    }
+  });
+
+  test("route-dependent recreational substances carry a sensible default_form", () => {
+    const expected = {
+      "Cannabis (THC)": "smoked/vaporized",
+      "Cocaine": "insufflated",
+      "Ketamine": "insufflated",
+      "Alcohol": "liquid",
+      "GHB / GBL": "liquid",
+      "Methamphetamine": "smoked/vaporized",
+    };
+    for (const [name, form] of Object.entries(expected)) {
+      const d = CATALOG_SEED.find((x) => x.name === name);
+      expect(d).toBeTruthy();
+      expect(d.default_form).toBe(form);
+    }
+  });
+
   test("every entry's category has a UI label (chronic-condition categories like antihypertensive/diabetes intentionally have no dedicated effects-engine PK profile and fall back to 'other')", () => {
     for (const d of CATALOG_SEED) {
       expect(CATEGORY_LABELS).toHaveProperty(d.category);
