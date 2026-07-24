@@ -1,17 +1,30 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import MedColorDot from "@/components/MedColorDot";
 import { Button } from "@/components/ui/button";
-import { getLogs, getMedications, getCheckins } from "@/lib/api";
+import { getLogs, getMedications, getCheckins, getEffectSessions } from "@/lib/api";
 import { unifyMoodEntries, moodDailySeries, moodTrend, MOOD_EMOJI } from "@/lib/moodAnalytics";
+import { sessionSummaryData, sessionSummaryText } from "@/lib/sessionSummary";
+import { fmtMins } from "@/lib/effectsEngine";
 import { timestampToLocalDate } from "@/lib/dates";
 import { relativeTime, fmtDate } from "@/lib/format";
 import { useUI } from "@/context/UIContext";
-import { Activity, Smile, TrendingUp, TrendingDown, Minus as MinusIcon, Plus } from "lucide-react";
+import { Activity, Smile, TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Share2, History } from "lucide-react";
 import { ActiveEffectsDetail } from "@/components/ActiveEffects";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
+
+async function shareSummary(text) {
+  try {
+    if (navigator.share) { await navigator.share({ text }); return "shared"; }
+  } catch (e) {
+    if (e?.name === "AbortError") return "aborted"; // user dismissed the sheet
+  }
+  try { await navigator.clipboard.writeText(text); return "copied"; } catch {}
+  return "failed";
+}
 
 const MOOD_WORD_EMOJI = { great: "😊", good: "🙂", okay: "😐", low: "😕", bad: "😟" };
 const DIM_LABELS = { energy: "Energy", sleep: "Sleep", pain: "Pain", anxiety: "Anxiety" };
@@ -21,7 +34,9 @@ export default function Effects() {
   const { data: logs = [], isLoading } = useQuery({ queryKey: ["logs"], queryFn: () => getLogs({ limit: 200 }) });
   const { data: checkins = [] } = useQuery({ queryKey: ["checkins"], queryFn: () => getCheckins({ limit: 200 }) });
   const { data: meds = [] } = useQuery({ queryKey: ["medications"], queryFn: () => getMedications(true) });
+  const { data: sessions = [] } = useQuery({ queryKey: ["effectSessions", "all"], queryFn: () => getEffectSessions() });
   const medMap = useMemo(() => Object.fromEntries(meds.map((m) => [m.id, m])), [meds]);
+  const pastSessions = useMemo(() => sessions.filter((s) => s.status === "completed").slice(0, 12), [sessions]);
 
   const trend = useMemo(() => {
     const series = moodDailySeries(unifyMoodEntries(checkins, logs), { days: 14 });
@@ -53,6 +68,16 @@ export default function Effects() {
       <div className="px-4 space-y-4">
         {/* Active effects tracker (detailed) */}
         <ActiveEffectsDetail />
+
+        {/* Completed session history — shareable summaries */}
+        {pastSessions.length > 0 && (
+          <div data-testid="session-history">
+            <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5"><History className="h-3.5 w-3.5" />Session history</p>
+            <div className="space-y-2.5">
+              {pastSessions.map((s) => <SessionHistoryCard key={s.id} session={s} med={medMap[s.medication_id]} />)}
+            </div>
+          </div>
+        )}
 
         {/* 14-day mood trend */}
         {trend.n > 0 && (
@@ -97,6 +122,39 @@ export default function Effects() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function SessionHistoryCard({ session, med }) {
+  const d = sessionSummaryData(session, med);
+  if (!d) return null;
+  const onShare = async () => {
+    const text = sessionSummaryText(session, med, { fmtClock: (iso) => fmtDate(iso, "MMM d, h:mm a") });
+    const result = await shareSummary(text);
+    if (result === "copied") toast.success("Summary copied to clipboard");
+    else if (result === "shared") toast.success("Summary shared");
+    else if (result === "failed") toast.error("Couldn't share the summary");
+  };
+  const doseSummary = d.total != null
+    ? `${d.doses.length} ${d.doses.length === 1 ? "dose" : "doses"} · ${d.total}${d.unit ? ` ${d.unit}` : ""} total`
+    : `${d.doses.length} ${d.doses.length === 1 ? "dose" : "doses"}`;
+  return (
+    <div className="card-soft p-3" data-testid="session-history-card">
+      <div className="flex items-center gap-3">
+        <MedColorDot color={med?.color} size={38} />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold truncate">{d.name}</p>
+          <p className="text-xs text-muted-foreground">{fmtDate(session.started_at, "MMM d, h:mm a")}{d.durationMin != null ? ` · ${fmtMins(d.durationMin)}` : ""}</p>
+        </div>
+        <Button size="sm" variant="secondary" className="rounded-xl shrink-0" onClick={onShare} data-testid="session-share-button"><Share2 className="h-4 w-4 mr-1" />Share</Button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{doseSummary}</span>
+        {d.redoseCount > 0 && <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{d.redoseCount} redose{d.redoseCount === 1 ? "" : "s"}</span>}
+        {d.timeline.find((t) => t.kind === "peak") && <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">peak {fmtMins(d.timeline.find((t) => t.kind === "peak").min)} in</span>}
+        {d.maxIntensity != null && <span className="text-[11px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">peak {d.maxIntensity}/10</span>}
       </div>
     </div>
   );

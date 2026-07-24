@@ -3,6 +3,29 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Shareable session summaries
+
+### Added
+- **A "Session history" section on the Effects & Journal page** listing your
+  completed effect-tracker sessions (substance, date, duration, dose/redose
+  count, peak time and peak reported intensity), each with a **Share** button.
+  Sharing produces a clean plain-text summary — substance, every dose and
+  redose with timing, cumulative total, and the onset → peak → wearing-off →
+  gone timeline with peak intensity — as a personal harm-reduction record.
+  It uses the native share sheet where available (mobile/PWA) and falls back
+  to copying to the clipboard everywhere else. Fully offline.
+- New pure `sessionSummaryData` / `sessionSummaryText` helpers (unit-tested).
+
+### Verified
+- New unit tests: dose + redose collection with offsets and cumulative total,
+  the phase-ordered feedback timeline and max reported intensity, bare-session
+  and null handling, and the rendered shareable text (sections present/omitted
+  correctly, footer included). Full suite: 245 tests passing. Production build
+  clean.
+- Browser-verified: completing a Cocaine session surfaces it in Session
+  history, and Share (clipboard fallback path) copies the full formatted
+  summary with the Doses / How it felt / footer sections.
+
 ## 2026-07-24 — Usage-frequency insights
 
 ### Added
