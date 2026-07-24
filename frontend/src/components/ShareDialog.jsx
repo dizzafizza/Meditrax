@@ -190,21 +190,32 @@ function MiniCurve({ session }) {
   );
 }
 
+// Swatches are tiny inline SVGs using the exact same stroke-dasharray as the
+// chart's own lines, rather than a CSS "dashed" border approximation, so the
+// legend reads as unmistakably the same line, not just the same color.
+function LegendSwatch({ color, dasharray }) {
+  return (
+    <svg width={16} height={10} viewBox="0 0 16 10" style={{ display: "block" }}>
+      <line x1={0} x2={16} y1={5} y2={5} stroke={color} strokeWidth={2} strokeDasharray={dasharray || undefined} />
+    </svg>
+  );
+}
+
 function CurveLegend({ session }) {
   if (!session?.profile) return null;
   const hasRedose = (session.redoses || []).length > 0;
   const items = [
-    { c: ACCENT, l: "Intensity" },
-    { c: CURVE_COLORS.onset, l: "Onset", dashed: true },
-    { c: CURVE_COLORS.peak, l: "Peak", dashed: true },
-    { c: CURVE_COLORS.ends, l: "Ends", dashed: true },
-    ...(hasRedose ? [{ c: CURVE_COLORS.redose, l: "Redose", dashed: true }] : []),
+    { c: ACCENT, l: "Intensity" }, // solid, same as the curve itself
+    { c: CURVE_COLORS.onset, l: "Onset", dasharray: "3 3" },
+    { c: CURVE_COLORS.peak, l: "Peak", dasharray: "3 3" },
+    { c: CURVE_COLORS.ends, l: "Ends", dasharray: "3 3" },
+    ...(hasRedose ? [{ c: CURVE_COLORS.redose, l: "Redose", dasharray: "1 3" }] : []),
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
       {items.map((it, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#5b6664" }}>
-          <span style={{ display: "inline-block", width: 12, height: it.dashed ? 0 : 2, borderTop: `2px ${it.dashed ? "dashed" : "solid"} ${it.c}` }} />
+          <LegendSwatch color={it.c} dasharray={it.dasharray} />
           {it.l}
         </div>
       ))}

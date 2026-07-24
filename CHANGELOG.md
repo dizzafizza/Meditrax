@@ -3,6 +3,23 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Session share legend swatches match the chart's exact line style
+
+### Fixed
+- The share card's legend previously approximated "dashed" with a generic CSS
+  border, which doesn't reproduce the chart's actual dash patterns — Onset/
+  Peak/Ends use a coarser dash than Redose's finer dotted line, but the CSS
+  border made them look identical. Legend swatches are now tiny inline SVG
+  lines using the exact same `stroke-dasharray` as the chart itself (solid
+  for Intensity, "3 3" for Onset/Peak/Ends, "1 3" for Redose), so each
+  legend entry is unmistakably the same line as its counterpart on the chart.
+
+### Verified
+- Full suite: 245 tests passing (rendering-only change). Production build
+  clean. Browser-verified against the production build: the downloaded PNG
+  shows the legend's dash patterns matching the chart's reference lines
+  exactly (Onset/Peak/Ends dashed, Redose finer-dotted, Intensity solid).
+
 ## 2026-07-24 — Session share image: gridlines, axis labels and a legend
 
 ### Changed
