@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getActiveEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getLogs, getMedications } from "@/lib/api";
+import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getLogs, getMedications } from "@/lib/api";
 import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries } from "@/lib/effectsEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
@@ -632,6 +632,19 @@ export function ActiveEffectsDetail() {
 
   // Recent consuming doses (last 8 h) without an active session → offer to track,
   // backdated to when the dose was actually taken.
+  // Doses that already have a session (of any status) must never be offered
+  // again — otherwise finishing a session instantly re-offered "Track effects
+  // of X" for the very dose just tracked, so the tracker never looked cleared.
+  const { data: allSessions = [] } = useQuery({ queryKey: ["effectSessions", "all"], queryFn: () => getEffectSessions() });
+  const trackedLogIds = useMemo(() => {
+    const ids = new Set();
+    for (const s of allSessions) {
+      if (s.log_id) ids.add(s.log_id);
+      for (const r of s.redoses || []) if (r.log_id) ids.add(r.log_id);
+    }
+    return ids;
+  }, [allSessions]);
+
   const offers = useMemo(() => {
     const activeMedIds = new Set(sessions.map((s) => s.medication_id));
     const cutoff = now - 8 * 3600000;
@@ -639,11 +652,12 @@ export function ActiveEffectsDetail() {
     return logs.filter((l) => {
       if (!["taken", "partial"].includes(l.status)) return false;
       if (new Date(l.timestamp).getTime() < cutoff) return false;
+      if (trackedLogIds.has(l.id)) return false;
       if (activeMedIds.has(l.medication_id) || seen.has(l.medication_id)) return false;
       seen.add(l.medication_id);
       return true;
     }).slice(0, 3);
-  }, [logs, sessions, now]);
+  }, [logs, sessions, now, trackedLogIds]);
 
   const start = useMutation({
     mutationFn: (log) => startEffectSession({ medication_id: log.medication_id, dose: log.dose_taken, unit: log.unit, log_id: log.id, started_at: log.timestamp }),

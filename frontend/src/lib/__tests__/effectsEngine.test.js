@@ -261,6 +261,46 @@ describe("session lifecycle in localdb", () => {
     expect(await db.getEffectModel(med.id)).toBe(null);
   });
 
+  // Regression: a finished session used to linger as a dead "Effects
+  // complete · 0% intensity" card until 2x its duration had elapsed, hours
+  // after the curve was visibly over.
+  test("a session clears as soon as its curve is over, not at 2x duration", async () => {
+    const med = await db.createMedication({ name: "ClearMed", strength: 5, unit: "mg", category: "stimulant-fast", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 5 });
+    const endsAfter = db.sessionEndsAfterMin(s); // duration * 1.25, well under 2x
+
+    // Just before the curve ends the session is still active...
+    const raw = (await db.exportData()).profileData;
+    const pid = Object.keys(raw)[0];
+    const stored = raw[pid].effectSessions.find((x) => x.id === s.id);
+    stored.started_at = new Date(Date.now() - (endsAfter - 5) * 60000).toISOString();
+    expect((await db.getActiveEffectSessions()).some((x) => x.id === s.id)).toBe(true);
+
+    // ...and clears the moment it's past, long before 2x duration.
+    stored.started_at = new Date(Date.now() - (endsAfter + 5) * 60000).toISOString();
+    expect((await db.getActiveEffectSessions()).some((x) => x.id === s.id)).toBe(false);
+    expect((await db.getEffectSessions({ medication_id: med.id }))[0].status).toBe("completed");
+    expect(await db.getEffectModel(med.id)).toBe(null); // auto-complete never trains
+  });
+
+  test("a redose keeps the session alive until the extended curve is over", async () => {
+    const med = await db.createMedication({ name: "RedoseClearMed", strength: 5, unit: "mg", category: "stimulant-fast", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 5 });
+    const soloEnd = db.sessionEndsAfterMin(s);
+    const withRedose = await db.addEffectDose(s.id, { amount: 5 });
+    // The redose pushes the end out by its own offset.
+    expect(db.sessionEndsAfterMin(withRedose)).toBeGreaterThanOrEqual(soloEnd);
+
+    const raw = (await db.exportData()).profileData;
+    const pid = Object.keys(raw)[0];
+    const stored = raw[pid].effectSessions.find((x) => x.id === s.id);
+    // Backdate the start past where a lone dose would have ended. The redose
+    // keeps its own (recent) timestamp, so its curve is still running.
+    stored.started_at = new Date(Date.now() - (soloEnd + 5) * 60000).toISOString();
+    expect(db.sessionEndsAfterMin(stored)).toBeGreaterThan(soloEnd + 5);
+    expect((await db.getActiveEffectSessions()).some((x) => x.id === s.id)).toBe(true);
+  });
+
   test("fmtMins formats human durations", () => {
     expect(fmtMins(40)).toBe("40 min");
     expect(fmtMins(95)).toBe("1 h 35 m");
