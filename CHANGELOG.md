@@ -3,6 +3,34 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — A redose collapses the previous dose's curve once it peaks
+
+### Changed
+- **The stacked effects curve no longer sums every dose forever.** Previously
+  a redose's curve was literally added on top of the earlier dose's for the
+  rest of the session, so two or three doses could show an implausible,
+  ever-taller total (up to 200-300%+) all the way to the end. Now, once a
+  redose reaches its own predicted peak, the dose(s) before it fade out to
+  zero over a short window (~8-45 min, scaled to the substance's duration)
+  instead of continuing to contribute — modeling the newest dose's peak
+  taking over as the dominant felt effect, the way a real redose is
+  typically experienced, rather than a naive PK sum. The most recent dose in
+  a session never collapses; it plays out its own full curve and tail as
+  normal. This is a pure curve-shape change — the underlying dose stack,
+  inventory decrementing and journaling from the redosing feature are
+  unaffected.
+
+### Verified
+- New unit tests: a dose contributes in full right up until the next dose's
+  predicted peak (no discontinuity at the handoff instant), fully collapses
+  to zero shortly after, the most recent dose never collapses, and three
+  stacked full-strength doses stay well under a literal 300% sum. Full
+  suite: 219 tests passing. Production build clean.
+- Browser-verified: logged a backdated primary Cocaine dose, added a redose
+  ~15 minutes in, and confirmed the chart shows a double-peak that then
+  collapses into a single smooth decline (settling into the normal
+  after-effects tail) instead of staying inflated for the rest of the curve.
+
 ## 2026-07-23 — Redosing now decrements inventory and journals the dose
 
 ### Fixed
