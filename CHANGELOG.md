@@ -3,6 +3,30 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Smarter Form defaults when adding a medication from the knowledge base
+
+### Added
+- **Route-dependent substances now auto-pick the right Form.** Adding a
+  medication from a knowledge-base article previously always defaulted the
+  Form field to "tablet". Curated entries where the route materially changes
+  onset/duration now carry a `default_form` that pre-fills the Form select —
+  Cannabis → smoked/vaporized, Cocaine/Ketamine → insufflated,
+  Alcohol/GHB → liquid, Methamphetamine → smoked/vaporized, insulin →
+  injection, nicotine → patch. This also gives the effects tracker a more
+  accurate starting curve for that route (e.g. smoked cannabis's near-instant
+  onset vs. an edible's slow one). Medications without a `default_form`
+  (ordinary tablets/capsules) are unchanged. Existing installs pick up the
+  new field via the catalog merge migration (seed version bumped to 3).
+
+### Verified
+- New unit tests: every `default_form` is a valid Form-dropdown option, the
+  route-dependent recreational substances carry the expected form, and the
+  field reaches existing installs on upgrade. Full suite: 222 tests passing.
+  Production build clean.
+- Browser-verified: adding Cocaine auto-selects "insufflated", Cannabis
+  auto-selects "smoked/vaporized", and an ordinary medication (Ibuprofen)
+  still defaults to "tablet".
+
 ## 2026-07-24 — A redose collapses the previous dose's curve once it peaks
 
 ### Changed

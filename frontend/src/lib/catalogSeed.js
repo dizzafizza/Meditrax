@@ -52,6 +52,7 @@ export const CATALOG_SEED = [
 "drug_class": "CNS depressant (sedative)",
 "category": "depressant",
 "default_unit": "units",
+"default_form": "liquid",
 "common_dosages": [
 1,
 2,
@@ -484,6 +485,7 @@ export const CATALOG_SEED = [
 "drug_class": "Cannabinoid",
 "category": "cannabis",
 "default_unit": "mg THC",
+"default_form": "smoked/vaporized",
 "common_dosages": [
 2.5,
 5,
@@ -613,6 +615,7 @@ export const CATALOG_SEED = [
 "drug_class": "CNS stimulant (tropane alkaloid)",
 "category": "stimulant-fast",
 "default_unit": "mg",
+"default_form": "insufflated",
 "common_dosages": [
 30,
 50,
@@ -1005,6 +1008,7 @@ export const CATALOG_SEED = [
 "drug_class": "CNS depressant (GABA-B agonist)",
 "category": "depressant",
 "default_unit": "ml",
+"default_form": "liquid",
 "common_dosages": [
 1,
 1.5,
@@ -1100,6 +1104,7 @@ export const CATALOG_SEED = [
 "drug_class": "Long-acting insulin",
 "category": "diabetes",
 "default_unit": "units",
+"default_form": "injection",
 "common_dosages": [
 10,
 20,
@@ -1140,6 +1145,7 @@ export const CATALOG_SEED = [
 "drug_class": "Dissociative anesthetic (NMDA antagonist)",
 "category": "dissociative",
 "default_unit": "mg",
+"default_form": "insufflated",
 "common_dosages": [
 20,
 40,
@@ -1726,6 +1732,7 @@ export const CATALOG_SEED = [
 "drug_class": "CNS stimulant (substituted amphetamine)",
 "category": "stimulant",
 "default_unit": "mg",
+"default_form": "smoked/vaporized",
 "common_dosages": [
 10,
 20,
@@ -2013,6 +2020,7 @@ export const CATALOG_SEED = [
 "drug_class": "Cholinergic stimulant",
 "category": "other",
 "default_unit": "mg",
+"default_form": "patch",
 "common_dosages": [
 2,
 4,

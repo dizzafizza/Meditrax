@@ -58,6 +58,12 @@ describe("catalog seed migration on upgrade", () => {
     expect(results.some((d) => d.name === "MDMA")).toBe(true);
   });
 
+  test("newly-added seed fields (e.g. default_form) reach existing installs on upgrade", async () => {
+    const items = await db.getKnowledge("", "all");
+    expect(items.find((d) => d.name === "Cannabis (THC)").default_form).toBe("smoked/vaporized");
+    expect(items.find((d) => d.name === "Cocaine").default_form).toBe("insufflated");
+  });
+
   test("the seed version is recorded so the migration doesn't re-run", async () => {
     await db.getKnowledge("", "all"); // ensureInit already ran
     expect(await globalThis.__meditraxStore.get("catalogSeedVersion")).toBeDefined();
