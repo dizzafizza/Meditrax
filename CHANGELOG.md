@@ -3,6 +3,31 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-24 — Session share image: gridlines, axis labels and a legend
+
+### Changed
+- **The session share card's mini curve is now a fully-labeled chart**,
+  matching the real effects-tracker graph instead of a bare sparkline: y-axis
+  percent labels and horizontal gridlines, x-axis hour labels and vertical
+  gridlines, and dashed reference lines for the predicted Onset/Peak/Ends
+  (and Redose, when the session had one) — colored the same way as the
+  in-app chart. A legend row below the chart labels each line/color so the
+  image is self-explanatory to someone who doesn't use the app.
+
+### Verified
+- Full suite: 245 tests passing (unchanged; this is a rendering-only change).
+  Production build clean.
+- Browser-verified against the **production build** specifically (not the
+  dev server): confirmed every axis label renders (0/50/100%, a >100% top
+  tick for a stacked redose, and 0–8h time labels), the legend lists
+  Intensity/Onset/Peak/Ends/Redose, and the downloaded PNG matches. (Caught
+  and fixed a margin-clipping issue where a 3-digit "175%" top label ran
+  close to the card edge — widened the axis margin.) Also caught, diagnosed,
+  and confirmed as dev-server-only noise (not a real bug): the local dev
+  server's source-mapping instrumentation injects HTML `<span>` wrappers
+  into dynamic text, which SVG's `<text>` element can't render — invisible
+  in the shipped production build, which has no such instrumentation.
+
 ## 2026-07-24 — Session summaries now share as an image
 
 ### Changed

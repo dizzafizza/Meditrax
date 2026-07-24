@@ -119,24 +119,96 @@ export function MedicationShareCard({ med }) {
 const LABEL = { fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#9aa3a1", marginBottom: 4 };
 const ROW = { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "3px 0" };
 
-// A small stacked-effect curve as inline SVG (html-to-image renders it fine).
+// Reference-line colors mirror the real effects-tracker chart's semantic
+// hues (info/success/muted-foreground), as fixed hex since this card is
+// always rendered on a fixed light "paper" background regardless of the
+// app's current theme.
+const CURVE_COLORS = { onset: "#2f8fbf", peak: "#2f7d59", ends: "#9aa3a1", redose: ACCENT, grid: "#ece4d6", axis: "#9aa3a1" };
+const xTickLabel = (m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`);
+
+// A detailed stacked-effect curve as inline SVG (html-to-image renders it
+// fine) — gridlines, axis labels and onset/peak/end/redose reference lines,
+// matching the shape of the interactive chart in the app.
 function MiniCurve({ session }) {
   if (!session?.profile) return null;
   const stack = sessionDoseStack(session);
   const series = stackedCurveSeries(session.profile, stack, 64);
   if (series.length < 2) return null;
-  const w = 312, h = 72, pad = 3;
-  const maxY = Math.max(100, ...series.map((p) => p.intensity));
+  const { onset_min, peak_min, duration_min } = session.profile;
+  const redoseMarks = stack.slice(1).map((s) => Math.round(s.tOffset));
+
+  const w = 312, h = 132;
+  // marginLeft has room for up to a 4-char tick label ("300%") at right-aligned
+  // text — html-to-image's font metrics run a little wider than the live DOM,
+  // so this is deliberately generous rather than tightly fit to "100%".
+  const marginLeft = 34, marginRight = 4, marginTop = 8, marginBottom = 16;
+  const plotW = w - marginLeft - marginRight, plotH = h - marginTop - marginBottom;
   const maxT = series[series.length - 1].t || 1;
-  const x = (t) => pad + (t / maxT) * (w - pad * 2);
-  const y = (v) => (h - pad) - (v / maxY) * (h - pad * 2);
+  const seriesMax = Math.max(100, ...series.map((p) => p.intensity));
+  const yMax = seriesMax > 100 ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
+  const yTicks = yMax > 100 ? Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b) : [0, 25, 50, 75, 100];
+  const xStep = maxT <= 150 ? 30 : maxT > 720 ? 120 : 60;
+  const xTicks = [];
+  for (let m = 0; m <= maxT; m += xStep) xTicks.push(m);
+
+  const x = (t) => marginLeft + (t / maxT) * plotW;
+  const y = (v) => marginTop + plotH - (v / yMax) * plotH;
   const line = series.map((p, i) => `${i ? "L" : "M"} ${x(p.t).toFixed(1)} ${y(p.intensity).toFixed(1)}`).join(" ");
-  const area = `${line} L ${x(maxT).toFixed(1)} ${(h - pad).toFixed(1)} L ${x(0).toFixed(1)} ${(h - pad).toFixed(1)} Z`;
+  const area = `${line} L ${x(maxT).toFixed(1)} ${y(0).toFixed(1)} L ${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
+
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", marginTop: 12 }}>
+      {/* grid */}
+      {yTicks.filter((v) => v > 0).map((v) => (
+        <line key={`hg-${v}`} x1={marginLeft} x2={w - marginRight} y1={y(v)} y2={y(v)} stroke={CURVE_COLORS.grid} strokeWidth={1} />
+      ))}
+      {xTicks.map((m) => (
+        <line key={`vg-${m}`} x1={x(m)} x2={x(m)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.grid} strokeWidth={1} />
+      ))}
+      <line x1={marginLeft} x2={w - marginRight} y1={y(0)} y2={y(0)} stroke={CURVE_COLORS.grid} strokeWidth={1.5} />
+
+      {/* predicted onset / peak / end reference lines */}
+      {onset_min <= maxT && <line x1={x(onset_min)} x2={x(onset_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.onset} strokeWidth={1.5} strokeDasharray="3 3" />}
+      {peak_min <= maxT && <line x1={x(peak_min)} x2={x(peak_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.peak} strokeWidth={1.5} strokeDasharray="3 3" />}
+      {duration_min <= maxT && <line x1={x(duration_min)} x2={x(duration_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.ends} strokeWidth={1.5} strokeDasharray="3 3" />}
+      {redoseMarks.map((m, i) => (
+        <line key={`rd-${i}`} x1={x(m)} x2={x(m)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.redose} strokeWidth={1.5} strokeDasharray="1 3" />
+      ))}
+
+      {/* curve */}
       <path d={area} fill={ACCENT} fillOpacity={0.12} />
       <path d={line} fill="none" stroke={ACCENT} strokeWidth={2} strokeLinejoin="round" />
+
+      {/* axis labels */}
+      {yTicks.map((v) => (
+        <text key={`yl-${v}`} x={marginLeft - 5} y={y(v) + 3} textAnchor="end" fontSize={9} fill={CURVE_COLORS.axis}>{v}%</text>
+      ))}
+      {xTicks.map((m) => (
+        <text key={`xl-${m}`} x={x(m)} y={h - 3} textAnchor="middle" fontSize={9} fill={CURVE_COLORS.axis}>{xTickLabel(m)}</text>
+      ))}
     </svg>
+  );
+}
+
+function CurveLegend({ session }) {
+  if (!session?.profile) return null;
+  const hasRedose = (session.redoses || []).length > 0;
+  const items = [
+    { c: ACCENT, l: "Intensity" },
+    { c: CURVE_COLORS.onset, l: "Onset", dashed: true },
+    { c: CURVE_COLORS.peak, l: "Peak", dashed: true },
+    { c: CURVE_COLORS.ends, l: "Ends", dashed: true },
+    ...(hasRedose ? [{ c: CURVE_COLORS.redose, l: "Redose", dashed: true }] : []),
+  ];
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#5b6664" }}>
+          <span style={{ display: "inline-block", width: 12, height: it.dashed ? 0 : 2, borderTop: `2px ${it.dashed ? "dashed" : "solid"} ${it.c}` }} />
+          {it.l}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -156,6 +228,7 @@ export function SessionShareCard({ session, med }) {
       </div>
 
       <MiniCurve session={session} />
+      <CurveLegend session={session} />
 
       <div style={{ marginTop: 12 }}>
         <div style={LABEL}>Doses</div>
