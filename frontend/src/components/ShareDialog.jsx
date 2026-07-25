@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { shareNode } from "@/lib/share";
 import { sessionSummaryData } from "@/lib/sessionSummary";
-import { sessionDoseStack, stackedCurveSeries, fmtMins } from "@/lib/effectsEngine";
+import { sessionDoseStack, stackChartEnd, doseIntensityAt, fmtMins } from "@/lib/effectsEngine";
 import { fmtDate } from "@/lib/format";
 import { Share2 } from "lucide-react";
 
@@ -123,19 +123,35 @@ const ROW = { display: "flex", justifyContent: "space-between", alignItems: "cen
 // hues (info/success/muted-foreground), as fixed hex since this card is
 // always rendered on a fixed light "paper" background regardless of the
 // app's current theme.
-const CURVE_COLORS = { onset: "#2f8fbf", peak: "#2f7d59", ends: "#9aa3a1", redose: ACCENT, grid: "#ece4d6", axis: "#9aa3a1" };
+const CURVE_COLORS = { onset: "#2f8fbf", peak: "#2f7d59", ends: "#9aa3a1", redose: ACCENT, previous: "#9aa3a1", grid: "#ece4d6", axis: "#9aa3a1" };
 const xTickLabel = (m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`);
 
-// A detailed stacked-effect curve as inline SVG (html-to-image renders it
-// fine) — gridlines, axis labels and onset/peak/end/redose reference lines,
-// matching the shape of the interactive chart in the app.
+// A detailed effect curve as inline SVG (html-to-image renders it fine) —
+// gridlines, axis labels and onset/peak/end/redose reference lines, matching
+// the shape of the interactive chart in the app. The solid curve is the dose
+// the session ended (or currently sits) on; any earlier, superseded doses are
+// always drawn too, as their own dotted lines — a static image can't offer a
+// toggle, so it shows the full story at once, same visual language as the
+// in-app "Show previous dose" view.
 function MiniCurve({ session }) {
   if (!session?.profile) return null;
+  const profile = session.profile;
   const stack = sessionDoseStack(session);
-  const series = stackedCurveSeries(session.profile, stack, 64);
+  const newestIdx = stack.length - 1;
+  const lastOffset = stack[newestIdx].tOffset;
+  const maxT = stackChartEnd(profile, stack) || 1;
+  const points = 64;
+  const series = [];
+  for (let i = 0; i <= points; i++) {
+    const t = (maxT * i) / points;
+    const row = { t: Math.round(t), intensity: doseIntensityAt(t, profile, stack, newestIdx) };
+    for (let k = 0; k < newestIdx; k++) row[`prev${k}`] = doseIntensityAt(t, profile, stack, k);
+    series.push(row);
+  }
   if (series.length < 2) return null;
-  const { onset_min, peak_min, duration_min } = session.profile;
+  const { onset_min, peak_min, duration_min } = profile;
   const redoseMarks = stack.slice(1).map((s) => Math.round(s.tOffset));
+  const prevKeys = Array.from({ length: newestIdx }, (_, k) => `prev${k}`);
 
   const w = 312, h = 132;
   // marginLeft has room for up to a 4-char tick label ("300%") at right-aligned
@@ -143,8 +159,7 @@ function MiniCurve({ session }) {
   // so this is deliberately generous rather than tightly fit to "100%".
   const marginLeft = 34, marginRight = 4, marginTop = 8, marginBottom = 16;
   const plotW = w - marginLeft - marginRight, plotH = h - marginTop - marginBottom;
-  const maxT = series[series.length - 1].t || 1;
-  const seriesMax = Math.max(100, ...series.map((p) => p.intensity));
+  const seriesMax = Math.max(100, ...series.flatMap((row) => Object.entries(row).filter(([k]) => k !== "t").map(([, v]) => v)));
   const yMax = seriesMax > 100 ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
   const yTicks = yMax > 100 ? Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b) : [0, 25, 50, 75, 100];
   const xStep = maxT <= 150 ? 30 : maxT > 720 ? 120 : 60;
@@ -153,7 +168,8 @@ function MiniCurve({ session }) {
 
   const x = (t) => marginLeft + (t / maxT) * plotW;
   const y = (v) => marginTop + plotH - (v / yMax) * plotH;
-  const line = series.map((p, i) => `${i ? "L" : "M"} ${x(p.t).toFixed(1)} ${y(p.intensity).toFixed(1)}`).join(" ");
+  const lineFor = (key) => series.map((p, i) => `${i ? "L" : "M"} ${x(p.t).toFixed(1)} ${y(p[key]).toFixed(1)}`).join(" ");
+  const line = lineFor("intensity");
   const area = `${line} L ${x(maxT).toFixed(1)} ${y(0).toFixed(1)} L ${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
 
   return (
@@ -167,15 +183,22 @@ function MiniCurve({ session }) {
       ))}
       <line x1={marginLeft} x2={w - marginRight} y1={y(0)} y2={y(0)} stroke={CURVE_COLORS.grid} strokeWidth={1.5} />
 
-      {/* predicted onset / peak / end reference lines */}
-      {onset_min <= maxT && <line x1={x(onset_min)} x2={x(onset_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.onset} strokeWidth={1.5} strokeDasharray="3 3" />}
-      {peak_min <= maxT && <line x1={x(peak_min)} x2={x(peak_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.peak} strokeWidth={1.5} strokeDasharray="3 3" />}
-      {duration_min <= maxT && <line x1={x(duration_min)} x2={x(duration_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.ends} strokeWidth={1.5} strokeDasharray="3 3" />}
+      {/* predicted onset / peak / end reference lines — for the dose the
+          curve actually plots (the newest one), same as the in-app chart */}
+      {lastOffset + onset_min <= maxT && <line x1={x(lastOffset + onset_min)} x2={x(lastOffset + onset_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.onset} strokeWidth={1.5} strokeDasharray="3 3" />}
+      {lastOffset + peak_min <= maxT && <line x1={x(lastOffset + peak_min)} x2={x(lastOffset + peak_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.peak} strokeWidth={1.5} strokeDasharray="3 3" />}
+      {lastOffset + duration_min <= maxT && <line x1={x(lastOffset + duration_min)} x2={x(lastOffset + duration_min)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.ends} strokeWidth={1.5} strokeDasharray="3 3" />}
       {redoseMarks.map((m, i) => (
         <line key={`rd-${i}`} x1={x(m)} x2={x(m)} y1={marginTop} y2={y(0)} stroke={CURVE_COLORS.redose} strokeWidth={1.5} strokeDasharray="1 3" />
       ))}
 
-      {/* curve */}
+      {/* each superseded dose, on its own — line only, so the current dose
+          stays the one filled curve */}
+      {prevKeys.map((key) => (
+        <path key={key} d={lineFor(key)} fill="none" stroke={CURVE_COLORS.previous} strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="4 3" strokeLinejoin="round" />
+      ))}
+
+      {/* curve — the dose the session is currently on / ended on */}
       <path d={area} fill={ACCENT} fillOpacity={0.12} />
       <path d={line} fill="none" stroke={ACCENT} strokeWidth={2} strokeLinejoin="round" />
 
@@ -210,6 +233,7 @@ function CurveLegend({ session }) {
     { c: CURVE_COLORS.peak, l: "Peak", dasharray: "3 3" },
     { c: CURVE_COLORS.ends, l: "Ends", dasharray: "3 3" },
     ...(hasRedose ? [{ c: CURVE_COLORS.redose, l: "Redose", dasharray: "1 3" }] : []),
+    ...(hasRedose ? [{ c: CURVE_COLORS.previous, l: "Previous dose", dasharray: "4 3" }] : []),
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
