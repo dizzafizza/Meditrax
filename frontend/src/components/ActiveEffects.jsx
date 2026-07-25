@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getLogs, getMedications } from "@/lib/api";
-import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseIntensityAt } from "@/lib/effectsEngine";
+import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt } from "@/lib/effectsEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
@@ -53,7 +53,7 @@ export function ActiveEffectsSimple() {
         // Phase and remaining track the most recent dose so a redose is
         // reflected as "coming up again" with time added back on.
         const phase = phaseAt(t - lastOffset, p);
-        const intensity = Math.round(stackedIntensityAt(t, p, stack));
+        const intensity = Math.round(doseIntensityAt(t, p, stack, stack.length - 1));
         const chartEnd = lastOffset + p.duration_min;
         const pct = Math.min(100, (t / chartEnd) * 100);
         const remaining = Math.max(0, chartEnd - t);
@@ -117,24 +117,33 @@ function SessionDetail({ session, now }) {
   // to when it was taken and scaled by its amount vs. the primary.
   const stack = useMemo(() => sessionDoseStack(session), [session]);
   const redoses = session.redoses || [];
-  const lastOffset = stack[stack.length - 1].tOffset;
+  const newestIdx = stack.length - 1;
+  const lastOffset = stack[newestIdx].tOffset;
   // Phase tracks the most recent dose so a redose reads as "coming up" again.
   const phase = phaseAt(t - lastOffset, p);
-  // Plotted curve, axis, gridlines, dots and the written numbers all use this
-  // same stacked percentage so the graph never disagrees with the label.
-  const intensity = Math.round(stackedIntensityAt(t, p, stack));
-  // Superseded doses are folded into the curve by the hand-off; "show
-  // previous" plots each of them again as its own faint dashed line.
+  // The filled curve is the dose you're currently on — earlier doses are kept
+  // out of it entirely rather than folded in, so a redose reads as its own
+  // clean curve instead of a hump carried over from the dose before it. Each
+  // superseded dose is still available on demand via "Show previous dose",
+  // drawn as its own dotted line. For a session with no redose this is
+  // exactly the single dose's curve, i.e. unchanged.
+  const plottedAt = useCallback((mins) => doseIntensityAt(mins, p, stack, newestIdx), [p, stack, newestIdx]);
+  // Curve, axis, gridlines, dots and the written number all read off the same
+  // value so the graph never disagrees with the label.
+  const intensity = Math.round(plottedAt(t));
   const supersededCount = Math.max(0, stack.length - 1);
   const series = useMemo(() => {
-    const base = stackedCurveSeries(p, stack);
-    if (!showPrevious || supersededCount === 0) return base;
-    return base.map((row) => {
-      const withDoses = { ...row };
-      for (let i = 0; i < supersededCount; i++) withDoses[`dose${i}`] = doseIntensityAt(row.t, p, stack, i);
-      return withDoses;
-    });
-  }, [p, stack, showPrevious, supersededCount]);
+    const end = stackChartEnd(p, stack);
+    const points = 96;
+    const rows = [];
+    for (let k = 0; k <= points; k++) {
+      const at = (end * k) / points;
+      const row = { t: Math.round(at), intensity: doseIntensityAt(at, p, stack, newestIdx) };
+      if (showPrevious) for (let i = 0; i < supersededCount; i++) row[`dose${i}`] = doseIntensityAt(at, p, stack, i);
+      rows.push(row);
+    }
+    return rows;
+  }, [p, stack, showPrevious, supersededCount, newestIdx]);
   const startMs = new Date(session.started_at).getTime();
   const clockAt = (mins) => fmtDate(new Date(startMs + mins * 60000), "h:mm a");
   const given = (kind) => session.events?.some((e) => e.kind === kind);
@@ -165,9 +174,9 @@ function SessionDetail({ session, now }) {
   const eventDots = useMemo(() => (session.events || []).map((e) => {
     const m = Math.max(0, (new Date(e.t).getTime() - startMs) / 60000);
     if (m > chartEnd) return null;
-    const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : stackedIntensityAt(m, p, stack);
+    const y = e.kind === "intensity" && e.intensity != null ? e.intensity * 10 : plottedAt(m);
     return { key: e.id, x: Math.round(m), y: Math.round(y), kind: e.kind };
-  }).filter(Boolean), [session.events, startMs, chartEnd, p, stack]);
+  }).filter(Boolean), [session.events, startMs, chartEnd, plottedAt]);
 
   // Vertical markers where each redose was taken (skip the primary at 0).
   const redoseMarks = stack.slice(1).map((d) => Math.round(d.tOffset));
@@ -336,9 +345,9 @@ function SessionDetail({ session, now }) {
               labelFormatter={(m) => `${fmtMins(m)} after dose · ${clockAt(m)}`}
             />
             {/* predicted phase boundaries */}
-            <ReferenceLine x={p.onset_min} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />
-            <ReferenceLine x={p.peak_min} stroke="hsl(var(--success))" strokeOpacity={0.6} strokeDasharray="3 3" />
-            <ReferenceLine x={p.duration_min} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />
+            <ReferenceLine x={lastOffset + p.onset_min} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />
+            <ReferenceLine x={lastOffset + p.peak_min} stroke="hsl(var(--success))" strokeOpacity={0.6} strokeDasharray="3 3" />
+            <ReferenceLine x={lastOffset + p.duration_min} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />
             {/* redose markers — where an additional dose was stacked on */}
             {redoseMarks.map((m, i) => (
               <ReferenceLine key={`rd-${i}`} x={m} stroke="hsl(var(--primary))" strokeOpacity={0.7} strokeDasharray="1 3" label={{ value: "+dose", position: "insideTopLeft", fontSize: 8, fill: "hsl(var(--primary))" }} />
@@ -361,9 +370,9 @@ function SessionDetail({ session, now }) {
       </div>
 
       <div className="mt-1 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Onset</p><p className="text-xs font-medium">~{clockAt(p.onset_min)}</p></div>
-        <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Peak</p><p className="text-xs font-medium">~{clockAt(p.peak_min)}</p></div>
-        <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Ends</p><p className="text-xs font-medium">~{clockAt(p.duration_min)}</p></div>
+        <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Onset</p><p className="text-xs font-medium">~{clockAt(lastOffset + p.onset_min)}</p></div>
+        <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Peak</p><p className="text-xs font-medium">~{clockAt(lastOffset + p.peak_min)}</p></div>
+        <div className="rounded-xl bg-muted/40 py-1.5"><p className="text-[10px] text-muted-foreground">Ends</p><p className="text-xs font-medium">~{clockAt(lastOffset + p.duration_min)}</p></div>
       </div>
 
       <div className="flex items-center justify-between gap-2 mt-2">

@@ -3,6 +3,39 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — The session curve now shows only the dose you're on, with previous doses as dotted lines
+
+### Changed
+- **A previous dose is now kept out of the session's filled curve entirely**,
+  rather than folded into it until the hand-off. The solid curve is the dose
+  you're currently on, so a redose reads as its own clean curve instead of
+  carrying a hump over from the dose before it — the axis drops back to a
+  plain 0-100% instead of an inflated stacked total.
+- **"Show previous dose" now brings each superseded dose back as its own
+  dotted line**, drawn across the whole chart alongside the current dose, so
+  the earlier dose stays fully visible for as long as the toggle is on. The
+  vertical dose/onset/peak/end markers remain visible at all times either way.
+- The intensity number, phase label, onset/peak/ends markers and their clock
+  times all now describe the dose being plotted (the most recent one), so the
+  graph, the markers and the written values agree. Previously the markers and
+  times still described the *first* dose while the curve had moved on — e.g.
+  an onset line drawn at 45 min when the plotted curve didn't start rising
+  until the redose two hours later.
+- Sessions without a redose are completely unaffected: the plotted curve is
+  that single dose's curve, exactly as before.
+
+### Verified
+- New unit test pinning the invariant the chart relies on: the newest dose's
+  own curve is zero before that dose was taken and peaks on its own clock,
+  while a superseded dose keeps its own separate curve to plot. Full suite:
+  253 tests passing. Production build clean.
+- Browser-verified against the production build, reading values off the chart
+  rather than eyeballing it: with a dose 2 h old plus a redose, the curve is
+  0% at 26 min and at 1 h 48 m (before the redose) and then runs its own
+  58% → 100% → decay; the y-axis sits at 0-100%; the toggle adds and removes
+  the dotted previous-dose line and flips its label; and the onset/peak
+  markers line up with where the plotted curve actually rises and peaks.
+
 ## 2026-07-25 — A redose now fully takes over by its peak, with a toggle to see the previous dose
 
 ### Changed
