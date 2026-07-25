@@ -3,6 +3,36 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — A redose now fully takes over by its peak, with a toggle to see the previous dose
+
+### Changed
+- **The previous dose now actually collapses when a redose peaks.** The
+  hand-off previously *started* at the redose's peak, so at the peak moment
+  the older dose was still contributing in full and the curve spiked to a
+  clearly implausible total (a 2 h-apart MDMA redose topped out around 175%).
+  The hand-off now runs across the redose's come-up instead: the older dose
+  holds full weight until the redose starts being felt (its onset), then
+  fades out so it has *fully* collapsed by the moment the redose peaks — the
+  same scenario now tops out at 125%, with the redose's peak reading as its
+  own peak rather than a pile-on. Doses that genuinely overlap on the way up
+  still stack above 100%, since that's a real experience; only a redose taken
+  well after the previous dose peaked hands over instead of adding.
+- **Added a small "Show previous dose" toggle** above the session chart
+  (only when a session has redoses). It plots each superseded dose again as
+  its own faint dashed line over the handed-off curve, so the collapse is
+  visible and inspectable rather than just implied.
+
+### Verified
+- New/updated unit tests around the hand-off: full weight until the redose's
+  onset, weight exactly 0 at its peak, a gradual fade in between with no jump
+  at either end, `{ collapse: false }` returning the raw sum for the toggle,
+  and `doseIntensityAt` exposing a single dose's own curve. Also pinned the
+  distinction that an early (overlapping) redose still exceeds 100% while a
+  late one hands over. Full suite: 252 tests passing. Production build clean.
+- Browser-verified against the production build: the same redose scenario
+  that previously charted to 175% now tops out at 125%, and the toggle adds
+  and removes the superseded dose's dashed line and flips its label.
+
 ## 2026-07-24 — Effects and interaction warnings now clear when the effects are over
 
 ### Fixed

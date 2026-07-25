@@ -14,7 +14,7 @@ jest.mock("localforage", () => {
 import {
   defaultPkProfile, personalizedProfile, intensityAt, phaseAt, curveSeries,
   observationsFromSession, updateModel, modelConfidence, fmtMins,
-  CATEGORY_PK, FORM_SPEED, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries,
+  CATEGORY_PK, FORM_SPEED, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
 } from "../effectsEngine";
 import * as db from "../localdb";
 
@@ -109,10 +109,11 @@ describe("redosing (stacked dose curves)", () => {
     // redose has only just been taken (its own t=0 → 0), so the stacked value
     // equals the primary's own value at 120.
     expect(stackedIntensityAt(120, profile, stack)).toBeCloseTo(intensityAt(120, profile), 5);
-    // Later, both contribute and the sum exceeds either alone.
-    const at210 = stackedIntensityAt(210, profile, stack);
-    expect(at210).toBeGreaterThan(intensityAt(210, profile));
-    expect(at210).toBeCloseTo(intensityAt(210, profile) + intensityAt(90, profile) * 0.5, 1);
+    // While the redose is coming up (its onset is 120+30=150) both still
+    // contribute in full, so the total exceeds either dose alone.
+    const at150 = stackedIntensityAt(150, profile, stack);
+    expect(at150).toBeGreaterThan(intensityAt(150, profile));
+    expect(at150).toBeCloseTo(intensityAt(150, profile) + intensityAt(30, profile) * 0.5, 1);
   });
 
   test("a redose of an unknown amount is assumed equal to the primary (same scale)", () => {
@@ -126,8 +127,21 @@ describe("redosing (stacked dose curves)", () => {
     expect(stackChartEnd(profile, stack)).toBe(180 + 300 * 1.25);
     const series = stackedCurveSeries(profile, stack, 48);
     expect(series[series.length - 1].t).toBe(Math.round(180 + 300 * 1.25));
-    // Two overlapping full doses can push the peak above 100%.
-    expect(Math.max(...series.map((pt) => pt.intensity))).toBeGreaterThan(100);
+  });
+
+  test("doses that genuinely overlap on the way up still stack above 100%", () => {
+    // A redose taken at t=30, while the primary is still coming up: both are
+    // rising together, so the combined curve legitimately exceeds one dose's
+    // peak. (A redose taken long after the primary peaked instead hands over,
+    // which is what keeps the curve from ballooning — covered below.)
+    const early = sessionDoseStack({ started_at: base, dose: 10, profile, redoses: [{ id: "r1", at: plus(30), amount: 10 }] });
+    const peakOfEarly = Math.max(...stackedCurveSeries(profile, early, 200).map((pt) => pt.intensity));
+    expect(peakOfEarly).toBeGreaterThan(100);
+
+    // The same two doses spaced far apart hand over instead of piling up.
+    const late = sessionDoseStack({ started_at: base, dose: 10, profile, redoses: [{ id: "r1", at: plus(180), amount: 10 }] });
+    const peakOfLate = Math.max(...stackedCurveSeries(profile, late, 200).map((pt) => pt.intensity));
+    expect(peakOfLate).toBeLessThan(peakOfEarly);
   });
 
   describe("a superseded dose collapses once the next redose peaks", () => {
@@ -135,28 +149,42 @@ describe("redosing (stacked dose curves)", () => {
     const session = { started_at: base, dose: 10, profile, redoses: [{ id: "r1", at: plus(180), amount: 10 }] };
     const stack = sessionDoseStack(session);
 
-    test("before the redose's peak, the primary still contributes its own value in full", () => {
-      // At t=200 the redose hasn't peaked yet (peaks at 270) — primary uncollapsed.
-      const combined = stackedIntensityAt(200, profile, stack);
+    // The hand-off runs across the redose's come-up: full weight until the
+    // redose's onset (180+30=210), fully collapsed by its peak (180+90=270).
+    test("until the redose starts being felt, the primary contributes its own value in full", () => {
+      const combined = stackedIntensityAt(200, profile, stack); // before onset at 210
       const primaryOnly = intensityAt(200, profile);
       const redoseOnly = intensityAt(200 - 180, profile);
       expect(combined).toBeCloseTo(primaryOnly + redoseOnly, 1);
+      expect(doseWeightAt(200, profile, stack, 0)).toBe(1);
     });
 
-    test("right at the redose's peak the primary hasn't started fading yet (no discontinuity)", () => {
-      const at270 = stackedIntensityAt(270, profile, stack);
-      const primaryAt270 = intensityAt(270, profile);
-      const redoseAtPeak = intensityAt(90, profile); // = 100
-      expect(at270).toBeCloseTo(primaryAt270 + redoseAtPeak, 1);
+    test("the primary is fully collapsed by the moment the redose peaks", () => {
+      expect(doseWeightAt(270, profile, stack, 0)).toBe(0);
+      const atPeak = stackedIntensityAt(270, profile, stack);
+      const redoseAtPeak = intensityAt(90, profile); // = 100, the redose alone
+      expect(atPeak).toBeCloseTo(redoseAtPeak, 1); // nothing left of the primary
+      // ...which is strictly less than a naive sum would have given.
+      expect(atPeak).toBeLessThan(redoseAtPeak + intensityAt(270, profile));
     });
 
-    test("well after the redose peaks, the primary's contribution has fully collapsed to zero", () => {
-      // fadeWindow for a 300-min profile is clamp(300*0.08, 8, 45) = 24 min,
-      // so by t = 270 + 24 the primary should contribute nothing at all.
-      const wellAfter = stackedIntensityAt(270 + 24, profile, stack);
-      const redoseOnly = intensityAt((270 + 24) - 180, profile);
-      expect(wellAfter).toBeCloseTo(redoseOnly, 1); // no leftover primary contribution
-      expect(wellAfter).toBeLessThan(stackedIntensityAt(270, profile, stack)); // strictly less than the peak moment
+    test("the hand-off is gradual across the come-up, with no jump at either end", () => {
+      expect(doseWeightAt(210, profile, stack, 0)).toBe(1); // starts at full
+      const mid = doseWeightAt(240, profile, stack, 0);
+      expect(mid).toBeGreaterThan(0);
+      expect(mid).toBeLessThan(1); // partway through
+      expect(doseWeightAt(269, profile, stack, 0)).toBeLessThan(0.05); // nearly gone right before the peak
+      expect(doseWeightAt(271, profile, stack, 0)).toBe(0); // and stays gone after
+    });
+
+    test("collapse: false gives back the raw sum, for the 'show previous dose' view", () => {
+      const collapsed = stackedIntensityAt(270, profile, stack);
+      const raw = stackedIntensityAt(270, profile, stack, { collapse: false });
+      expect(raw).toBeCloseTo(intensityAt(270, profile) + intensityAt(90, profile), 1);
+      expect(raw).toBeGreaterThan(collapsed);
+      // doseIntensityAt exposes one dose's own uncollapsed curve for plotting
+      expect(doseIntensityAt(270, profile, stack, 0)).toBeCloseTo(intensityAt(270, profile), 1);
+      expect(doseIntensityAt(270, profile, stack, 1)).toBeCloseTo(intensityAt(90, profile), 1);
     });
 
     test("the most recent dose in the stack never collapses — it plays out its own full tail", () => {

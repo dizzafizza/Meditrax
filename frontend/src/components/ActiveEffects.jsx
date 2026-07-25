@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getLogs, getMedications } from "@/lib/api";
-import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries } from "@/lib/effectsEngine";
+import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseIntensityAt } from "@/lib/effectsEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
@@ -101,6 +101,7 @@ function SessionDetail({ session, now }) {
   const [editing, setEditing] = useState(false);
   const [editWhen, setEditWhen] = useState("");
   const [editDose, setEditDose] = useState("");
+  const [showPrevious, setShowPrevious] = useState(false);
   const [redosing, setRedosing] = useState(false);
   const [redoseAmt, setRedoseAmt] = useState("");
   const [redoseWhen, setRedoseWhen] = useState("");
@@ -122,7 +123,18 @@ function SessionDetail({ session, now }) {
   // Plotted curve, axis, gridlines, dots and the written numbers all use this
   // same stacked percentage so the graph never disagrees with the label.
   const intensity = Math.round(stackedIntensityAt(t, p, stack));
-  const series = useMemo(() => stackedCurveSeries(p, stack), [p, stack]);
+  // Superseded doses are folded into the curve by the hand-off; "show
+  // previous" plots each of them again as its own faint dashed line.
+  const supersededCount = Math.max(0, stack.length - 1);
+  const series = useMemo(() => {
+    const base = stackedCurveSeries(p, stack);
+    if (!showPrevious || supersededCount === 0) return base;
+    return base.map((row) => {
+      const withDoses = { ...row };
+      for (let i = 0; i < supersededCount; i++) withDoses[`dose${i}`] = doseIntensityAt(row.t, p, stack, i);
+      return withDoses;
+    });
+  }, [p, stack, showPrevious, supersededCount]);
   const startMs = new Date(session.started_at).getTime();
   const clockAt = (mins) => fmtDate(new Date(startMs + mins * 60000), "h:mm a");
   const given = (kind) => session.events?.some((e) => e.kind === kind);
@@ -130,7 +142,9 @@ function SessionDetail({ session, now }) {
   // Y-axis fits the highest point the stacked curve actually reaches (a strong
   // dose, or overlapping redoses, can exceed 100% — "your typical peak").
   const chartEnd = stackChartEnd(p, stack);
-  const seriesMax = Math.max(100, ...series.map((pt) => pt.intensity));
+  // Fit the axis to every plotted line — a re-shown previous dose can sit
+  // above the handed-off total at points where it alone was still strong.
+  const seriesMax = Math.max(100, ...series.flatMap((pt) => Object.entries(pt).filter(([k]) => k !== "t").map(([, v]) => v)));
   const strong = seriesMax > 100;
   const yMax = strong ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
   const yTicks = strong
@@ -292,6 +306,18 @@ function SessionDetail({ session, now }) {
         </div>
       )}
 
+      {supersededCount > 0 && (
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => setShowPrevious((s) => !s)}
+            data-testid="effect-show-previous-button"
+            className="text-[11px] font-medium text-primary"
+          >
+            {showPrevious ? "Hide previous dose" : `Show previous dose${supersededCount > 1 ? "s" : ""}`}
+          </button>
+        </div>
+      )}
+
       <div className="mt-3 -mx-1">
         <ResponsiveContainer width="100%" height={160}>
           <AreaChart data={series} margin={{ left: 0, right: 8, top: 6, bottom: 0 }}>
@@ -318,6 +344,11 @@ function SessionDetail({ session, now }) {
               <ReferenceLine key={`rd-${i}`} x={m} stroke="hsl(var(--primary))" strokeOpacity={0.7} strokeDasharray="1 3" label={{ value: "+dose", position: "insideTopLeft", fontSize: 8, fill: "hsl(var(--primary))" }} />
             ))}
             <Area type="monotone" dataKey="intensity" stroke="hsl(var(--primary))" strokeWidth={2.5} fill={`url(#fx-${session.id})`} dot={false} />
+            {/* each superseded dose on its own, when asked for — line only,
+                so the handed-off total stays the one filled curve */}
+            {showPrevious && Array.from({ length: supersededCount }, (_, i) => (
+              <Area key={`dose-${i}`} type="monotone" dataKey={`dose${i}`} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="4 3" fill="none" fillOpacity={0} dot={false} isAnimationActive={false} />
+            ))}
             {/* the user's own feedback, plotted where it happened */}
             {eventDots.map((d) => (
               <ReferenceDot key={d.key} x={d.x} y={d.y} r={4} fill={d.kind === "intensity" ? "hsl(var(--warning))" : "hsl(var(--primary))"} stroke="hsl(var(--card))" strokeWidth={1.5} />
