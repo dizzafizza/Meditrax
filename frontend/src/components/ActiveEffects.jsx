@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -28,6 +28,46 @@ function useNow(intervalMs = 30000) {
 }
 
 const elapsedMin = (session, now) => Math.max(0, (now - new Date(session.started_at).getTime()) / 60000);
+
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Animates a chart's [xMin, xMax] domain and y-axis max toward new targets
+// whenever they change (e.g. zooming to just the current dose's window when
+// "show previous dose" is toggled off), instead of snapping. Skips the tween
+// on first mount (nothing to animate from yet) and when the OS requests
+// reduced motion.
+function useAnimatedChartDomain(targetXDomain, targetYMax, duration = 420) {
+  const [xDomain, setXDomain] = useState(targetXDomain);
+  const [yMax, setYMax] = useState(targetYMax);
+  const rafRef = useRef(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    const fromX = xDomain, fromY = yMax;
+    const toX = targetXDomain, toY = targetYMax;
+    const unchanged = fromX[0] === toX[0] && fromX[1] === toX[1] && fromY === toY;
+    if (!mountedRef.current || unchanged || prefersReducedMotion()) {
+      mountedRef.current = true;
+      setXDomain(toX);
+      setYMax(toY);
+      return;
+    }
+    const start = performance.now();
+    const tick = (now) => {
+      const e = easeInOutCubic(Math.min(1, (now - start) / duration));
+      setXDomain([fromX[0] + (toX[0] - fromX[0]) * e, fromX[1] + (toX[1] - fromX[1]) * e]);
+      setYMax(fromY + (toY - fromY) * e);
+      if (e < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetXDomain[0], targetXDomain[1], targetYMax]);
+
+  return [xDomain, yMax];
+}
 
 function useActiveSessions() {
   return useQuery({
@@ -155,19 +195,39 @@ function SessionDetail({ session, now }) {
   // above the handed-off total at points where it alone was still strong.
   const seriesMax = Math.max(100, ...series.flatMap((pt) => Object.entries(pt).filter(([k]) => k !== "t").map(([, v]) => v)));
   const strong = seriesMax > 100;
-  const yMax = strong ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
-  const yTicks = strong
-    ? Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b)
-    : [0, 25, 50, 75, 100];
+  const targetYMax = strong ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
+  const yTicks = useMemo(
+    () => (strong ? Array.from(new Set([0, 50, 100, targetYMax])).sort((a, b) => a - b) : [0, 25, 50, 75, 100]),
+    [strong, targetYMax]
+  );
   const yGrid = yTicks.filter((v) => v > 0);
 
-  // Hourly gridline positions across the curve (denser for short sessions).
+  // Hourly gridline positions across the full curve (denser for short
+  // sessions) — a fixed set independent of the zoom, so tick spacing never
+  // reflows mid-animation; only which ones fall inside the current animated
+  // window (below) changes as it zooms.
   const hourTicks = useMemo(() => {
     const step = chartEnd <= 150 ? 30 : chartEnd > 720 ? 120 : 60;
     const out = [];
     for (let m = 0; m <= chartEnd; m += step) out.push(m);
     return out;
   }, [chartEnd]);
+
+  // Zoom the visible window to just the current dose when its predecessor is
+  // hidden — nothing interesting happens before it (the plotted curve is flat
+  // zero there) — and zoom back out to the full timeline when it's shown, so
+  // the reappearing dotted line has room. Animated rather than snapped.
+  const targetXDomain = useMemo(() => [showPrevious ? 0 : lastOffset, chartEnd], [showPrevious, lastOffset, chartEnd]);
+  const [xDomain, yMax] = useAnimatedChartDomain(targetXDomain, targetYMax);
+  const visibleHourTicks = useMemo(
+    () => hourTicks.filter((m) => m >= xDomain[0] - 0.5 && m <= xDomain[1] + 0.5),
+    [hourTicks, xDomain]
+  );
+  const inView = (x) => x >= xDomain[0] - 0.5 && x <= xDomain[1] + 0.5;
+  // Same "fixed final set, filtered to what's currently in view" treatment
+  // for the y-axis while its own max animates.
+  const visibleYTicks = useMemo(() => yTicks.filter((v) => v <= yMax + 0.5), [yTicks, yMax]);
+  const visibleYGrid = visibleYTicks.filter((v) => v > 0);
 
   // Feedback events plotted on the chart: phase reports sit on the (stacked)
   // curve, intensity reports at the strength the user actually felt (0-10 → 0-100%).
@@ -336,35 +396,36 @@ function SessionDetail({ session, now }) {
                 <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={yGrid} verticalValues={hourTicks} />
-            <XAxis dataKey="t" type="number" domain={[0, "dataMax"]} ticks={hourTicks} interval={0} tickFormatter={(m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-            <YAxis domain={[0, yMax + 5]} ticks={yTicks} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} />
+            <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={visibleYGrid} verticalValues={visibleHourTicks} />
+            <XAxis dataKey="t" type="number" domain={xDomain} allowDataOverflow ticks={visibleHourTicks} interval={0} tickFormatter={(m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} animationDuration={0} />
+            <YAxis domain={[0, yMax + 5]} allowDataOverflow ticks={visibleYTicks} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} animationDuration={0} />
             <Tooltip
               contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
               formatter={(v) => [`${Math.round(v)}%`, "Intensity"]}
               labelFormatter={(m) => `${fmtMins(m)} after dose · ${clockAt(m)}`}
             />
-            {/* predicted phase boundaries */}
-            <ReferenceLine x={lastOffset + p.onset_min} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />
-            <ReferenceLine x={lastOffset + p.peak_min} stroke="hsl(var(--success))" strokeOpacity={0.6} strokeDasharray="3 3" />
-            <ReferenceLine x={lastOffset + p.duration_min} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />
+            {/* predicted phase boundaries — hidden once zoomed past them */}
+            {inView(lastOffset + p.onset_min) && <ReferenceLine x={lastOffset + p.onset_min} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />}
+            {inView(lastOffset + p.peak_min) && <ReferenceLine x={lastOffset + p.peak_min} stroke="hsl(var(--success))" strokeOpacity={0.6} strokeDasharray="3 3" />}
+            {inView(lastOffset + p.duration_min) && <ReferenceLine x={lastOffset + p.duration_min} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />}
             {/* redose markers — where an additional dose was stacked on */}
-            {redoseMarks.map((m, i) => (
+            {redoseMarks.filter(inView).map((m, i) => (
               <ReferenceLine key={`rd-${i}`} x={m} stroke="hsl(var(--primary))" strokeOpacity={0.7} strokeDasharray="1 3" label={{ value: "+dose", position: "insideTopLeft", fontSize: 8, fill: "hsl(var(--primary))" }} />
             ))}
-            <Area type="monotone" dataKey="intensity" stroke="hsl(var(--primary))" strokeWidth={2.5} fill={`url(#fx-${session.id})`} dot={false} />
+            <Area type="monotone" dataKey="intensity" stroke="hsl(var(--primary))" strokeWidth={2.5} fill={`url(#fx-${session.id})`} dot={false} isAnimationActive={false} />
             {/* each superseded dose on its own, when asked for — line only,
-                so the handed-off total stays the one filled curve */}
+                so the current dose stays the one filled curve. Zooming back
+                out (below) gives this room across the whole chart. */}
             {showPrevious && Array.from({ length: supersededCount }, (_, i) => (
               <Area key={`dose-${i}`} type="monotone" dataKey={`dose${i}`} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="4 3" fill="none" fillOpacity={0} dot={false} isAnimationActive={false} />
             ))}
             {/* the user's own feedback, plotted where it happened */}
-            {eventDots.map((d) => (
+            {eventDots.filter((d) => inView(d.x)).map((d) => (
               <ReferenceDot key={d.key} x={d.x} y={d.y} r={4} fill={d.kind === "intensity" ? "hsl(var(--warning))" : "hsl(var(--primary))"} stroke="hsl(var(--card))" strokeWidth={1.5} />
             ))}
             {/* label suppressed while the line hugs the left edge, where it
                 would collide with the 100% axis tick */}
-            <ReferenceLine x={Math.round(t)} stroke="hsl(var(--warning))" strokeDasharray="4 3" strokeWidth={2} label={t > chartEnd * 0.08 ? { value: "now", position: "insideTopRight", fontSize: 9, fill: "hsl(var(--warning))" } : undefined} />
+            {inView(t) && <ReferenceLine x={Math.round(t)} stroke="hsl(var(--warning))" strokeDasharray="4 3" strokeWidth={2} label={t - xDomain[0] > (xDomain[1] - xDomain[0]) * 0.08 ? { value: "now", position: "insideTopRight", fontSize: 9, fill: "hsl(var(--warning))" } : undefined} />}
           </AreaChart>
         </ResponsiveContainer>
       </div>

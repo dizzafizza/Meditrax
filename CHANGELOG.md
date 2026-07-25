@@ -3,6 +3,40 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — Share image matches the dotted-line graph; chart zooms in when the previous dose is hidden
+
+### Added
+- **The session chart now zooms in to the current dose's own window when the
+  previous dose is hidden**, instead of always showing the full timeline with
+  a dead flat zero region before the redose. Toggling "Show previous dose"
+  smoothly zooms back out to reveal the earlier dose's dotted line across the
+  full chart, and hiding it again zooms back in — animated (eased, ~420ms),
+  not a hard cut, and respects the OS's reduced-motion setting. Onset/peak/end
+  markers, redose markers, feedback dots and the "now" line all fade out of
+  view correctly as they scroll outside the zoomed window instead of floating
+  outside the plot.
+
+### Fixed
+- **The session share image still drew the old collapsed-sum curve.** It
+  hadn't been updated for the "plot only the dose you're on" change, so a
+  shared image still showed the previous dose folded into the total instead
+  of matching what the app itself now shows. `MiniCurve` now plots the same
+  newest-dose-only solid curve, draws every superseded dose as its own dotted
+  line (always, since a static image can't offer a toggle), aligns the onset/
+  peak/end reference lines to the plotted dose, and the legend gained a
+  "Previous dose" entry with a matching dotted swatch.
+
+### Verified
+- Full suite: 253 tests passing (both changes are rendering-only). Production
+  build clean.
+- Browser-verified against the production build: with a dose 2h old plus a
+  redose, the default (previous hidden) view's x-axis ticks start at "2h" —
+  skipping the dead zero region — and toggling "Show previous dose" zooms out
+  to include "0" again with more ticks visible, then toggling back re-zooms;
+  the share image's legend includes "Previous dose", and its solid curve is
+  confirmed flat before the redose with a genuinely dotted (`4 3` dasharray)
+  line tracing the original dose separately.
+
 ## 2026-07-25 — The session curve now shows only the dose you're on, with previous doses as dotted lines
 
 ### Changed
