@@ -177,6 +177,19 @@ describe("redosing (stacked dose curves)", () => {
       expect(doseWeightAt(271, profile, stack, 0)).toBe(0); // and stays gone after
     });
 
+    // The session chart plots the newest dose alone (earlier doses are kept
+    // out of the filled curve entirely and only re-appear as dotted lines),
+    // so its curve must be empty before that dose was actually taken.
+    test("the newest dose's own curve is zero before it was taken and peaks on its own clock", () => {
+      const newest = stack.length - 1;
+      expect(doseIntensityAt(0, profile, stack, newest)).toBe(0);
+      expect(doseIntensityAt(179, profile, stack, newest)).toBe(0); // taken at 180
+      expect(doseIntensityAt(270, profile, stack, newest)).toBeCloseTo(100, 1); // its own peak
+      // ...while the superseded dose still has its own separate curve to plot.
+      expect(doseIntensityAt(90, profile, stack, 0)).toBeCloseTo(100, 1);
+      expect(doseIntensityAt(90, profile, stack, newest)).toBe(0);
+    });
+
     test("collapse: false gives back the raw sum, for the 'show previous dose' view", () => {
       const collapsed = stackedIntensityAt(270, profile, stack);
       const raw = stackedIntensityAt(270, profile, stack, { collapse: false });
