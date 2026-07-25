@@ -3,6 +3,22 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — Finished sessions now drop off the home screen immediately
+
+### Changed
+- **Follow-up to the "Gone" fix below: on the home screen, a finished session
+  now disappears the instant its curve is done instead of sitting there
+  reading "Gone".** `ActiveEffectsSimple` filters out any session whose
+  client-computed phase has already reached "Complete" (the same check the
+  card itself used to show "Gone" for), so there's no card at all in that
+  window rather than a card that just says "Gone". The Effects page's session
+  detail badge is unchanged and still reads "Gone" for a session you're
+  actively looking at, since you're already engaged with it there (redosing,
+  giving feedback, ending it) rather than just glancing at a summary list.
+- Verified with the same fake-clock reproduction as before, now asserting the
+  home-screen card is gone (not present) at the crossing instant rather than
+  asserting its text.
+
 ## 2026-07-25 — The effects tracker briefly read "0%" instead of "Gone"
 
 ### Fixed

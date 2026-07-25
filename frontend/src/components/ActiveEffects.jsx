@@ -30,6 +30,17 @@ function useNow(intervalMs = 30000) {
 
 const elapsedMin = (session, now) => Math.max(0, (now - new Date(session.started_at).getTime()) / 60000);
 
+// True once a session's curve has actually finished playing out, tracked by
+// the same client-side clock the card renders from -- independent of the
+// effectSessions query's own (slower, polled) auto-complete check. Lets the
+// home screen drop a finished card the instant it's felt as "gone" instead
+// of waiting up to a minute for the next refetch to reclassify it.
+const isSessionGone = (session, now) => {
+  const stack = sessionDoseStack(session);
+  const lastOffset = stack[stack.length - 1].tOffset;
+  return phaseAt(elapsedMin(session, now) - lastOffset, session.profile).key === "complete";
+};
+
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -181,7 +192,7 @@ function ActiveEffectsSimpleCard({ session: s, now }) {
               <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2 py-0.5 font-medium"><Zap className="h-3 w-3" />{phase.label}</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              {phase.key === "complete" ? "Effects complete" : phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - (t - lastOffset)))}` : `~${fmtMins(remaining)} left`}
+              {phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - (t - lastOffset)))}` : `~${fmtMins(remaining)} left`}
               {s.dose != null ? ` · ${doseLabel(s.dose, s.unit)}` : ""}
             </p>
             <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
@@ -189,7 +200,7 @@ function ActiveEffectsSimpleCard({ session: s, now }) {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <p className="font-display text-xl font-semibold leading-none">{phase.key === "complete" ? "Gone" : `${intensity}%`}</p>
+            <p className="font-display text-xl font-semibold leading-none">{intensity}%</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">intensity</p>
           </div>
         </button>
@@ -218,10 +229,14 @@ function ActiveEffectsSimpleCard({ session: s, now }) {
 export function ActiveEffectsSimple() {
   const now = useNow(30000);
   const { data: sessions = [] } = useActiveSessions();
-  if (!sessions.length) return null;
+  // Drop a session from the home screen the instant its curve is done,
+  // rather than leaving a "Gone" card sitting there until the next poll
+  // reclassifies it (up to a minute later).
+  const visible = useMemo(() => sessions.filter((s) => !isSessionGone(s, now)), [sessions, now]);
+  if (!visible.length) return null;
   return (
     <div className="space-y-2.5" data-testid="active-effects-simple">
-      {sessions.map((s) => <ActiveEffectsSimpleCard key={s.id} session={s} now={now} />)}
+      {visible.map((s) => <ActiveEffectsSimpleCard key={s.id} session={s} now={now} />)}
     </div>
   );
 }
