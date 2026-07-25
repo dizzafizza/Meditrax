@@ -3,6 +3,25 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — The effects tracker briefly read "0%" instead of "Gone"
+
+### Fixed
+- **A session could flash "0% intensity" for up to a minute right as it
+  finished, instead of just reading "Gone".** A session auto-completes once
+  its curve has fully played out, but that completion check only runs when
+  the `effectSessions` query refetches (every 60s); the on-screen clock
+  (`useNow`) ticks every 30s independently. So there's a real window — up to
+  ~30s wide — where the curve has already decayed to exactly 0% and the phase
+  is "Complete", but the session hasn't been reclassified yet and is still
+  showing as active. In that window the home screen's active-effects card and
+  the Effects page's session badge both read a bare "0%"/"0% intensity",
+  which reads as broken rather than finished. Both now show "Gone" instead of
+  a numeric 0% once the phase reaches "Complete".
+- Reproduced deterministically with a fake-clock Playwright test that lands
+  exactly on the tick where the client-side clock has crossed the curve's end
+  but the query hasn't refetched yet — confirmed "0%" before the fix, "Gone"
+  after, on both the home card and the session detail badge.
+
 ## 2026-07-25 — Redose inventory decrement was invisible until it went stale
 
 ### Fixed

@@ -189,7 +189,7 @@ function ActiveEffectsSimpleCard({ session: s, now }) {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <p className="font-display text-xl font-semibold leading-none">{intensity}%</p>
+            <p className="font-display text-xl font-semibold leading-none">{phase.key === "complete" ? "Gone" : `${intensity}%`}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">intensity</p>
           </div>
         </button>
@@ -459,7 +459,7 @@ function SessionDetail({ session, now }) {
         <button onClick={openEdit} aria-label="Edit session" data-testid="effect-edit-button" className="pressable h-9 w-9 rounded-full hover:bg-muted flex items-center justify-center text-primary shrink-0"><Pencil className="h-4 w-4" /></button>
       </div>
       <div className="mt-2">
-        <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2.5 py-1 font-medium"><Zap className="h-3 w-3" />{phase.label} · {intensity}% intensity</span>
+        <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2.5 py-1 font-medium"><Zap className="h-3 w-3" />{phase.key === "complete" ? "Gone" : `${phase.label} · ${intensity}% intensity`}</span>
       </div>
 
       {editing && (
