@@ -162,30 +162,46 @@ export function sessionDoseStack(session) {
   return stack;
 }
 
-// Summed intensity at minute t (from session start) across the dose stack —
-// but once a later dose reaches its own predicted peak, the dose(s) before
-// it collapse toward zero over a short window rather than continuing to add
-// their full tail on top forever. This models a redose's peak taking over as
-// the dominant felt effect (and matches the "Peaking" feedback language)
-// instead of an ever-taller, less-plausible literal sum of every dose taken.
+// How much an earlier dose still contributes at minute t, given the next
+// dose in the stack. The hand-off runs across the newer dose's come-up: the
+// older dose holds full weight until the newer one starts being felt (its
+// onset), then fades out so that it has *fully* collapsed by the moment the
+// newer dose peaks. That matches how a redose is actually experienced — the
+// new peak takes over rather than piling on top of the old one — and keeps
+// the curve from spiking to an implausible literal sum of every dose taken.
+// Returns 1 for the newest dose (nothing supersedes it).
+export function doseWeightAt(tMin, profile, stack, i) {
+  const next = stack[i + 1];
+  if (!next) return 1;
+  const fadeFrom = next.tOffset + profile.onset_min;
+  const fadeTo = next.tOffset + profile.peak_min;
+  if (tMin <= fadeFrom) return 1;
+  if (tMin >= fadeTo) return 0;
+  return 1 - smooth((tMin - fadeFrom) / (fadeTo - fadeFrom));
+}
+
+// Summed intensity at minute t (from session start) across the dose stack,
+// with superseded doses collapsing as above. Pass { collapse: false } for the
+// raw arithmetic sum (what the UI's "show previous dose" toggle reveals).
 // A dose whose tOffset is still in the future contributes 0 (intensityAt of a
 // negative time), so this is correct for any t, past or present.
-const COLLAPSE_MIN_MIN = 8, COLLAPSE_MAX_MIN = 45, COLLAPSE_FRACTION = 0.08;
-export function stackedIntensityAt(tMin, profile, stack) {
+export function stackedIntensityAt(tMin, profile, stack, { collapse = true } = {}) {
   let sum = 0;
-  const fadeWindow = clamp(profile.duration_min * COLLAPSE_FRACTION, COLLAPSE_MIN_MIN, COLLAPSE_MAX_MIN);
   for (let i = 0; i < stack.length; i++) {
     const d = stack[i];
-    const next = stack[i + 1];
-    let mult = 1;
-    if (next) {
-      const collapseAt = next.tOffset + profile.peak_min; // when the next dose peaks, this one starts handing off
-      if (tMin >= collapseAt + fadeWindow) continue; // fully collapsed — skip its contribution entirely
-      if (tMin >= collapseAt) mult = 1 - smooth((tMin - collapseAt) / fadeWindow);
-    }
-    sum += intensityAt(tMin - d.tOffset, profile) * (d.scale ?? 1) * mult;
+    const w = collapse ? doseWeightAt(tMin, profile, stack, i) : 1;
+    if (w <= 0) continue;
+    sum += intensityAt(tMin - d.tOffset, profile) * (d.scale ?? 1) * w;
   }
   return round1(sum);
+}
+
+// One dose's own curve on the session timeline, ignoring the hand-off — used
+// to plot a superseded dose again when the user asks to see it.
+export function doseIntensityAt(tMin, profile, stack, i) {
+  const d = stack[i];
+  if (!d) return 0;
+  return round1(intensityAt(tMin - d.tOffset, profile) * (d.scale ?? 1));
 }
 
 // Where the plotted curve should end: after the last dose's own tail.
@@ -196,12 +212,12 @@ export function stackChartEnd(profile, stack) {
 
 // Stacked series for the chart, sampled evenly across the (possibly extended)
 // timeline. Peaks can exceed 100% when doses overlap.
-export function stackedCurveSeries(profile, stack, points = 96) {
+export function stackedCurveSeries(profile, stack, points = 96, opts) {
   const end = stackChartEnd(profile, stack);
   const out = [];
   for (let i = 0; i <= points; i++) {
     const t = (end * i) / points;
-    out.push({ t: Math.round(t), intensity: stackedIntensityAt(t, profile, stack) });
+    out.push({ t: Math.round(t), intensity: stackedIntensityAt(t, profile, stack, opts) });
   }
   return out;
 }
