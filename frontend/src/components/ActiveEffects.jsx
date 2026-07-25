@@ -341,6 +341,14 @@ function SessionDetail({ session, now }) {
   const redoseMarks = stack.slice(1).map((d) => Math.round(d.tOffset));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["effectSessions"] });
+  // Redosing (and undoing a redose) logs/unlogs a real dose under the hood,
+  // which decrements/restores inventory -- so it needs the same broad
+  // invalidation as any other dose-logging action (see Today.jsx, QuickLogSheet.jsx),
+  // not just the effectSessions cache.
+  const invalidateDoseChange = () => {
+    invalidate();
+    ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  };
   // "Undo" on the toast reopens the session — reverses both the completion
   // and (if nothing newer has touched the model since) the training it
   // triggered. Wrapped so the error from a stale/unsafe undo surfaces clearly.
@@ -385,12 +393,12 @@ function SessionDetail({ session, now }) {
   });
   const redose = useMutation({
     mutationFn: (payload) => addEffectDose(session.id, payload),
-    onSuccess: () => { invalidate(); setRedosing(false); setRedoseAmt(""); toast.success("Redose added — the curve now stacks it on"); },
+    onSuccess: () => { invalidateDoseChange(); setRedosing(false); setRedoseAmt(""); toast.success("Redose added — the curve now stacks it on"); },
     onError: (e) => toast.error(e?.message || "Could not add redose"),
   });
   const removeDose = useMutation({
     mutationFn: (doseId) => removeEffectDose(session.id, doseId),
-    onSuccess: () => { invalidate(); toast.success("Redose removed"); },
+    onSuccess: () => { invalidateDoseChange(); toast.success("Redose removed"); },
     onError: (e) => toast.error(e?.message || "Could not remove redose"),
   });
 
