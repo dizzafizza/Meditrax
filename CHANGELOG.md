@@ -3,6 +3,31 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — Redose inventory decrement was invisible until it went stale
+
+### Fixed
+- **Audited the redose → inventory feature end to end.** The data layer
+  (`addEffectDose`/`removeEffectDose` creating/deleting a real log entry so
+  inventory decrements/restores through the same path as any other dose) was
+  confirmed correct and unregressed. The bug was in the UI's cache
+  invalidation: `SessionDetail`'s `invalidate()` (in `ActiveEffects.jsx`) only
+  invalidated the `effectSessions` query after a redose or a redose removal,
+  unlike every other dose-logging entry point (`Today.jsx`, `QuickLogSheet.jsx`),
+  which also invalidate `inventory`, `medications`, `medication`, `today`,
+  `logs`, `analytics`, `activeSubstances`, and `interactions`.
+  Practically: redose from the effects tracker, then open Inventory (or a
+  medication's detail page) — the count still showed the pre-redose value,
+  because React Query had no reason to consider that cached data stale
+  (`isInvalidated` stayed `false`), so it kept serving it until the app's
+  15-second `staleTime` happened to expire on its own. Confirmed via a
+  browser-driven repro that primes the inventory cache, redoses through
+  genuine client-side navigation, and reads the displayed count immediately —
+  reproduced 29 → still 29 (should be 28) before the fix, 29 → 28 → 29 (add
+  then remove) after it. Added `invalidateDoseChange()` alongside the
+  existing `invalidate()`, used only by the `redose`/`removeDose` mutations
+  (the only two in `SessionDetail` that actually touch a log/inventory),
+  mirroring the app's established broad-invalidation convention.
+
 ## 2026-07-25 — Collapsible graph preview on the home screen's active-effects cards
 
 ### Added
