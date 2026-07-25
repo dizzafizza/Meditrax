@@ -14,7 +14,8 @@ import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, 
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
-import { Activity, AlertTriangle, ChevronRight, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Activity, AlertTriangle, ChevronRight, ChevronDown, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceDot, CartesianGrid } from "recharts";
 
 // Re-render on a timer so curves/labels track the clock while a session runs.
@@ -77,52 +78,150 @@ function useActiveSessions() {
   });
 }
 
+// A compact, read-only preview of a session's curve — same solid-current /
+// dotted-previous visual language as the full chart and the share image, but
+// a fixed-size inline SVG (no ResponsiveContainer/ResizeObserver) so it
+// animates cleanly inside the home screen's collapsible reveal.
+function MiniEffectPreview({ session, now }) {
+  const p = session.profile;
+  if (!p) return null;
+  const stack = sessionDoseStack(session);
+  const newestIdx = stack.length - 1;
+  const lastOffset = stack[newestIdx].tOffset;
+  const maxT = stackChartEnd(p, stack) || 1;
+  const points = 56;
+  const series = [];
+  for (let i = 0; i <= points; i++) {
+    const at = (maxT * i) / points;
+    const row = { t: at, intensity: doseIntensityAt(at, p, stack, newestIdx) };
+    for (let k = 0; k < newestIdx; k++) row[`prev${k}`] = doseIntensityAt(at, p, stack, k);
+    series.push(row);
+  }
+  const prevKeys = Array.from({ length: newestIdx }, (_, k) => `prev${k}`);
+  const seriesMax = Math.max(100, ...series.flatMap((row) => Object.entries(row).filter(([k]) => k !== "t").map(([, v]) => v)));
+  const yMax = seriesMax > 100 ? Math.min(300, Math.ceil(seriesMax / 25) * 25) : 100;
+  const yTicks = yMax > 100 ? Array.from(new Set([0, 50, 100, yMax])).sort((a, b) => a - b) : [0, 50, 100];
+  const xStep = maxT <= 150 ? 30 : maxT > 720 ? 120 : 60;
+  const xTicks = [];
+  for (let m = 0; m <= maxT; m += xStep) xTicks.push(m);
+
+  const w = 296, h = 108;
+  const marginLeft = 28, marginRight = 4, marginTop = 8, marginBottom = 16;
+  const plotW = w - marginLeft - marginRight, plotH = h - marginTop - marginBottom;
+  const x = (t) => marginLeft + (t / maxT) * plotW;
+  const y = (v) => marginTop + plotH - (v / yMax) * plotH;
+  const lineFor = (key) => series.map((pt, i) => `${i ? "L" : "M"} ${x(pt.t).toFixed(1)} ${y(pt[key]).toFixed(1)}`).join(" ");
+  const line = lineFor("intensity");
+  const area = `${line} L ${x(maxT).toFixed(1)} ${y(0).toFixed(1)} L ${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
+  const t = elapsedMin(session, now);
+  const nowInView = t >= 0 && t <= maxT;
+
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" data-testid="mini-effect-preview" style={{ display: "block" }}>
+      {yTicks.filter((v) => v > 0).map((v) => (
+        <line key={`hg-${v}`} x1={marginLeft} x2={w - marginRight} y1={y(v)} y2={y(v)} stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" />
+      ))}
+      {xTicks.map((m) => (
+        <line key={`vg-${m}`} x1={x(m)} x2={x(m)} y1={marginTop} y2={y(0)} stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" />
+      ))}
+      {lastOffset + p.onset_min <= maxT && <line x1={x(lastOffset + p.onset_min)} x2={x(lastOffset + p.onset_min)} y1={marginTop} y2={y(0)} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />}
+      {lastOffset + p.peak_min <= maxT && <line x1={x(lastOffset + p.peak_min)} x2={x(lastOffset + p.peak_min)} y1={marginTop} y2={y(0)} stroke="hsl(var(--success))" strokeOpacity={0.6} strokeDasharray="3 3" />}
+      {lastOffset + p.duration_min <= maxT && <line x1={x(lastOffset + p.duration_min)} x2={x(lastOffset + p.duration_min)} y1={marginTop} y2={y(0)} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />}
+      {stack.slice(1).map((d, i) => (
+        <line key={`rd-${i}`} x1={x(d.tOffset)} x2={x(d.tOffset)} y1={marginTop} y2={y(0)} stroke="hsl(var(--primary))" strokeOpacity={0.7} strokeDasharray="1 3" />
+      ))}
+      {prevKeys.map((key) => (
+        <path key={key} d={lineFor(key)} fill="none" stroke="hsl(var(--muted-foreground))" strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="4 3" strokeLinejoin="round" />
+      ))}
+      <path d={area} fill="hsl(var(--primary))" fillOpacity={0.14} />
+      <path d={line} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} strokeLinejoin="round" />
+      {nowInView && <line x1={x(t)} x2={x(t)} y1={marginTop} y2={y(0)} stroke="hsl(var(--warning))" strokeWidth={1.5} strokeDasharray="4 3" />}
+      {yTicks.map((v) => (
+        <text key={`yl-${v}`} x={marginLeft - 5} y={y(v) + 3} textAnchor="end" fontSize={9} fill="hsl(var(--muted-foreground))">{v}%</text>
+      ))}
+      {xTicks.map((m) => (
+        <text key={`xl-${m}`} x={x(m)} y={h - 3} textAnchor="middle" fontSize={9} fill="hsl(var(--muted-foreground))">{m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`}</text>
+      ))}
+    </svg>
+  );
+}
+
+// One session's row on the home screen: the summary strip (tap to open the
+// full Effects page) plus a chevron that expands a compact graph preview in
+// place, so you can glance at the curve without leaving Today.
+function ActiveEffectsSimpleCard({ session: s, now }) {
+  const navigate = useNavigate();
+  const [expanded, setExpanded] = useState(false);
+  const [everExpanded, setEverExpanded] = useState(false);
+  const t = elapsedMin(s, now);
+  const p = s.profile;
+  const stack = sessionDoseStack(s);
+  const lastOffset = stack[stack.length - 1].tOffset;
+  // Phase and remaining track the most recent dose so a redose is
+  // reflected as "coming up again" with time added back on.
+  const phase = phaseAt(t - lastOffset, p);
+  const intensity = Math.round(doseIntensityAt(t, p, stack, stack.length - 1));
+  const chartEnd = lastOffset + p.duration_min;
+  const pct = Math.min(100, (t / chartEnd) * 100);
+  const remaining = Math.max(0, chartEnd - t);
+
+  const toggleExpanded = () => {
+    setExpanded((v) => !v);
+    setEverExpanded(true);
+  };
+
+  return (
+    <div data-testid="active-effects-card" className="card-soft p-3">
+      <div className="flex items-center gap-3">
+        <button onClick={() => navigate("/effects")} data-testid="active-effects-card-open" className="flex items-center gap-3 flex-1 min-w-0 text-left pressable">
+          <MedColorDot color={s.medication_color} size={40} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-semibold truncate">{s.medication_name}</p>
+              <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2 py-0.5 font-medium"><Zap className="h-3 w-3" />{phase.label}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {phase.key === "complete" ? "Effects complete" : phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - (t - lastOffset)))}` : `~${fmtMins(remaining)} left`}
+              {s.dose != null ? ` · ${doseLabel(s.dose, s.unit)}` : ""}
+            </p>
+            <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-primary transition-[width] duration-1000" style={{ width: `${Math.max(3, pct)}%` }} />
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-display text-xl font-semibold leading-none">{intensity}%</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">intensity</p>
+          </div>
+        </button>
+        <button
+          onClick={toggleExpanded}
+          aria-label={expanded ? "Hide graph preview" : "Show graph preview"}
+          aria-expanded={expanded}
+          data-testid="active-effects-preview-toggle"
+          className="pressable h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground shrink-0"
+        >
+          <ChevronDown className={cn("h-5 w-5 transition-transform duration-300", expanded && "rotate-180")} />
+        </button>
+      </div>
+      <div className={cn("grid transition-[grid-template-rows] duration-300 ease-in-out", expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+        <div className="overflow-hidden">
+          <div className={cn("pt-3 mt-2 border-t border-border transition-opacity duration-200", expanded ? "opacity-100" : "opacity-0")}>
+            {everExpanded && <MiniEffectPreview session={s} now={now} />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- simplified card (home screen) ----
 export function ActiveEffectsSimple() {
-  const navigate = useNavigate();
   const now = useNow(30000);
   const { data: sessions = [] } = useActiveSessions();
   if (!sessions.length) return null;
   return (
     <div className="space-y-2.5" data-testid="active-effects-simple">
-      {sessions.map((s) => {
-        const t = elapsedMin(s, now);
-        const p = s.profile;
-        const stack = sessionDoseStack(s);
-        const lastOffset = stack[stack.length - 1].tOffset;
-        // Phase and remaining track the most recent dose so a redose is
-        // reflected as "coming up again" with time added back on.
-        const phase = phaseAt(t - lastOffset, p);
-        const intensity = Math.round(doseIntensityAt(t, p, stack, stack.length - 1));
-        const chartEnd = lastOffset + p.duration_min;
-        const pct = Math.min(100, (t / chartEnd) * 100);
-        const remaining = Math.max(0, chartEnd - t);
-        return (
-          <button key={s.id} onClick={() => navigate("/effects")} data-testid="active-effects-card" className="w-full text-left card-soft p-3 pressable">
-            <div className="flex items-center gap-3">
-              <MedColorDot color={s.medication_color} size={40} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold truncate">{s.medication_name}</p>
-                  <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2 py-0.5 font-medium"><Zap className="h-3 w-3" />{phase.label}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {phase.key === "complete" ? "Effects complete" : phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - (t - lastOffset)))}` : `~${fmtMins(remaining)} left`}
-                  {s.dose != null ? ` · ${doseLabel(s.dose, s.unit)}` : ""}
-                </p>
-                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full rounded-full bg-primary transition-[width] duration-1000" style={{ width: `${Math.max(3, pct)}%` }} />
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="font-display text-xl font-semibold leading-none">{intensity}%</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">intensity</p>
-              </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
-            </div>
-          </button>
-        );
-      })}
+      {sessions.map((s) => <ActiveEffectsSimpleCard key={s.id} session={s} now={now} />)}
     </div>
   );
 }

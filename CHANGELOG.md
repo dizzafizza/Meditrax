@@ -3,6 +3,30 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-25 — Collapsible graph preview on the home screen's active-effects cards
+
+### Added
+- **Each active-effects card on the home screen now has a collapsible graph
+  preview.** A chevron next to the intensity number expands a compact chart
+  in place — gridlines, axis labels, onset/peak/end reference lines, a "now"
+  marker, and (for a redosed session) the previous dose as its own dotted
+  line, same visual language as the full Effects page and the share image —
+  without leaving Today. Tapping the rest of the card still opens the full
+  Effects page as before; the two are now separate tap targets so expanding
+  the preview doesn't also navigate away. The expand/collapse is animated
+  (CSS grid-rows, no layout jump) and the preview is only mounted once
+  expanded, so collapsed cards don't pay any chart-rendering cost.
+
+### Verified
+- Full suite: 253 tests passing (rendering-only change). Production build
+  clean.
+- Browser-verified against the production build: the preview starts
+  unmounted/collapsed; tapping the row navigates to `/effects` while the
+  chevron does not; expanding reveals a properly-sized inline chart and
+  collapsing shrinks the region back to 0 height; a redosed session's
+  preview includes the dotted previous-dose line, matching the full chart
+  and share image.
+
 ## 2026-07-25 — Share image matches the dotted-line graph; chart zooms in when the previous dose is hidden
 
 ### Added
