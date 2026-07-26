@@ -296,7 +296,7 @@ export function personalizedProfile(med, model = null, dose = null, tolerance = 
     learned: !!model && (model.samples || 0) > 0,
     samples: model?.samples || 0,
     confidence: modelConfidence(model),
-    ...(tolerance?.applicable ? { tolerance: { level: tolerance.level, faded: tolerance.faded, daysSinceLast: tolerance.daysSinceLast, recentPeakLevel: tolerance.recentPeakLevel } } : {}),
+    ...(tolerance?.applicable ? { tolerance: { level: tolerance.level, faded: tolerance.faded, daysSinceLast: tolerance.daysSinceLast, recentPeakLevel: tolerance.recentPeakLevel, maxDampening: tolerance.maxDampening } } : {}),
   };
 }
 

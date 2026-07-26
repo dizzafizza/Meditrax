@@ -3,6 +3,43 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Say what "tolerance" actually means
+
+### Changed
+- **The tolerance meter said "91%" and left you to guess what it was 91%
+  *of*.** It was never a percentage drop in effect: it's progress along the
+  substance's own tolerance range, and each substance has a different ceiling
+  on how far tolerance can blunt it (opioids ~60%, antihistamines ~30%). So
+  91% on an opioid means doses land about 55% weaker, not 91% weaker — a gap
+  wide enough to matter when the number is being used to decide a dose. The
+  meter now leads with the plain-language band and the figure people actually
+  mean ("Very high · doses land ~51% weaker"), labels the bar's scale under
+  it ("no tolerance" → "85% of the most this substance can build"), and hides
+  the derivation behind an (i) that explains all three of: what it measures,
+  that it comes from your own logged daily amounts rather than dose counts,
+  and what it does *not* change.
+- **Faded tolerance now leads with the drop, not the leftover.** Sitting next
+  to a "this could hit harder than you're used to" caution, a headline of
+  "Low · doses land ~6% weaker" read as *nothing to see here* — the opposite
+  of the point. It now reads "Low now · was very high", and the caution below
+  gives the numbers.
+- **The dose preview's explanation was restructured and corrected.** It
+  claimed to "account for your current tolerance" and then, a clause later,
+  that tolerance "mostly cancels out" — both true, but stated as if they
+  contradicted each other. It's now three short labelled parts (what 100%
+  means, what moves it, where tolerance fits), and the tolerance part branches
+  properly: normally it cancels because your usual dose carries the same
+  tolerance, but when tolerance has **faded** it explicitly does not, and the
+  text now says so instead of asserting the cancellation and then walking it
+  back.
+
+### Fixed
+- **The two tolerance figures shown inches apart in the log sheet could not
+  be checked against each other.** The preview reported "blunting effect by
+  about X%" from one derivation and the meter reported a raw level from
+  another; the ceiling those two share wasn't carried through to the meter at
+  all. It now is, and a test pins the two to the same number.
+
 ## 2026-07-26 — Sessions already running pick up the corrected scale
 
 ### Fixed

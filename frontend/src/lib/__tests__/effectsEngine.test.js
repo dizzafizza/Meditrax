@@ -443,6 +443,18 @@ describe("learning (updateModel)", () => {
     expect(p.tolerance.faded).toBe(false);
   });
 
+  test("carries maxDampening through so the UI can state how much weaker doses land", () => {
+    // The level alone is ambiguous: it's progress along this substance's own
+    // tolerance range, not the drop in effect. The UI reports the drop
+    // (level * maxDampening), so the ceiling has to travel with the level --
+    // otherwise the meter can only show a number nobody can interpret.
+    const tolerance = { applicable: true, level: 0.9, maxDampening: 0.6, faded: false, daysSinceLast: 0.5, recentPeakLevel: 0.9 };
+    const p = personalizedProfile(med, null, 20, tolerance);
+    expect(p.tolerance.maxDampening).toBe(0.6);
+    // 90% of an opioid's range is ~54% weaker, not 90% weaker.
+    expect(p.tolerance.level * p.tolerance.maxDampening).toBeCloseTo(0.54, 5);
+  });
+
   test("tolerance that has faded since the baseline pushes the curve above full height", () => {
     // The dose genuinely will land harder than the ones it's being compared
     // against, and the curve should show that rather than hide it.
@@ -905,6 +917,12 @@ describe("tolerance wired into real sessions (localdb)", () => {
     // And tolerance is genuinely part of the picture, reported on its own.
     expect(r.factors.toleranceDampening).toBeGreaterThan(0);
     expect(r.tolerance.level).toBeGreaterThan(0);
+    // The preview's "blunting effect by about X%" and the tolerance meter's
+    // "doses land ~X% weaker" have to be the same number -- they sit inches
+    // apart in the log sheet, and the meter derives it from level *
+    // maxDampening while the preview derives it from 1 - curFactor.
+    expect(r.tolerance.maxDampening).toBeGreaterThan(0);
+    expect(r.tolerance.level * r.tolerance.maxDampening).toBeCloseTo(r.factors.toleranceDampening, 2);
   });
 
   test("a median reference dose is not dragged upward by the escalation being measured", async () => {
