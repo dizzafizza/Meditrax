@@ -1,4 +1,14 @@
-.App { min-height: 100vh; }
+/* iOS Safari (including installed/standalone PWAs) computes 1vh against the
+   largest possible viewport -- with the address bar or home indicator area
+   hidden -- not the actually-visible one, so `100vh` here is routinely
+   taller than the real screen. That phantom extra height makes the whole
+   document scrollable, which the fixed bottom tab bar and any fixed sheet
+   footers don't move with, so dragging past real content reveals blank
+   space beneath them instead of just stopping. `dvh` tracks the real
+   visible viewport (and updates live as browser chrome shows/hides); the
+   plain vh line stays first as a fallback for anything that doesn't
+   support it. */
+.App { min-height: 100vh; min-height: 100dvh; }
 
 /* iOS momentum scrolling */
 .scroll-y { -webkit-overflow-scrolling: touch; }

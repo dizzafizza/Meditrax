@@ -10,8 +10,8 @@ import InstallPrompt from "@/components/InstallPrompt";
 function Shell() {
   const ui = useUI();
   return (
-    <div className="relative min-h-screen mx-auto w-full max-w-2xl">
-      <main className="relative z-10 pb-tabbar min-h-screen">
+    <div className="relative min-h-[100dvh] mx-auto w-full max-w-2xl">
+      <main className="relative z-10 pb-tabbar min-h-[100dvh]">
         <Outlet />
       </main>
       <BottomTabBar onQuickAdd={ui.openQuickAdd} />
