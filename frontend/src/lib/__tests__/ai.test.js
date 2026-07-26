@@ -2,7 +2,7 @@
 // credits" bug: OpenRouter pre-authorizes a request against max_tokens (or,
 // if omitted, the model's maximum possible output) — so every request that
 // goes out must carry an explicit, bounded max_tokens.
-import { runAssistantLoop, mapOpenRouterError, resolveModelForTask, TASK_TIER_DEFAULTS, completeText, buildSystemPrompt, sessionId } from "../ai";
+import { runAssistantLoop, mapOpenRouterError, resolveModelForTask, TASK_TIER_DEFAULTS, completeText, buildSystemPrompt, sessionId, ASK_USER_TOOL, ASK_USER_TOOL_SCHEMA } from "../ai";
 
 function sseChunks(lines) {
   const body = lines.map((l) => `data: ${typeof l === "string" ? l : JSON.stringify(l)}\n\n`).join("") + "data: [DONE]\n\n";
@@ -165,6 +165,57 @@ describe("MAX_TOOL_ITERS headroom for chained tool calls", () => {
       executeTool: async () => ({ ok: true }),
     });
     expect(global.fetch.mock.calls.length).toBeGreaterThan(5);
+  });
+});
+
+describe("ask_user (interactive quick-reply questions)", () => {
+  afterEach(() => { delete global.fetch; });
+
+  const toolCallResponse = (calls) => ({
+    choices: [{ delta: { tool_calls: calls.map((c, i) => ({ index: i, id: c.id, function: { name: c.name, arguments: JSON.stringify(c.args) } })) }, finish_reason: "tool_calls" }],
+  });
+
+  test("ends the turn, returns quickReplies, and never calls executeTool for it", async () => {
+    global.fetch = mockStreamingFetch([toolCallResponse([{ id: "c1", name: ASK_USER_TOOL, args: { question: "Which medication?", options: ["Kratom", "Oxy"] } }])]);
+    const executeTool = jest.fn().mockResolvedValue({ ok: true });
+    const events = [];
+    const result = await runAssistantLoop({
+      config: CONFIG, messages: [{ role: "user", content: "log a dose" }],
+      tools: [ASK_USER_TOOL_SCHEMA], executeTool,
+      onEvent: (e) => events.push(e),
+    });
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.content).toBe("Which medication?");
+    expect(result.quickReplies).toEqual(["Kratom", "Oxy"]);
+    expect(global.fetch).toHaveBeenCalledTimes(1); // one round only -- the turn ends here
+    expect(events.find((e) => e.type === "ask_user")).toEqual({ type: "ask_user", question: "Which medication?", options: ["Kratom", "Oxy"] });
+
+    // Every tool_call needs a matching tool-role result before the next
+    // assistant turn, per the API's own contract -- even though there's
+    // nothing real to report back yet.
+    const toolMsg = result.messages.find((m) => m.role === "tool" && m.tool_call_id === "c1");
+    expect(toolMsg).toBeTruthy();
+  });
+
+  test("options are capped at 6 and non-string entries are dropped", async () => {
+    global.fetch = mockStreamingFetch([toolCallResponse([{ id: "c1", name: ASK_USER_TOOL, args: { question: "Pick one", options: ["a", "b", 3, "c", "d", "e", "f", "g"] } }])]);
+    const result = await runAssistantLoop({ config: CONFIG, messages: [{ role: "user", content: "x" }], tools: [ASK_USER_TOOL_SCHEMA], executeTool: jest.fn() });
+    expect(result.quickReplies).toEqual(["a", "b", "c", "d", "e", "f"]);
+  });
+
+  test("a real tool called alongside ask_user in the same batch still executes normally", async () => {
+    global.fetch = mockStreamingFetch([toolCallResponse([
+      { id: "c1", name: "get_today", args: {} },
+      { id: "c2", name: ASK_USER_TOOL, args: { question: "Log it now?", options: ["Yes", "No"] } },
+    ])]);
+    const executeTool = jest.fn().mockResolvedValue({ summary: { taken: 1 } });
+    const result = await runAssistantLoop({
+      config: CONFIG, messages: [{ role: "user", content: "x" }],
+      tools: [ASK_USER_TOOL_SCHEMA], executeTool,
+    });
+    expect(executeTool).toHaveBeenCalledWith("get_today", {});
+    expect(result.messages.find((m) => m.tool_call_id === "c1").content).toContain("taken");
+    expect(result.quickReplies).toEqual(["Yes", "No"]);
   });
 });
 

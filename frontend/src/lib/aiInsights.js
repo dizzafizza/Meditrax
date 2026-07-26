@@ -138,3 +138,30 @@ export async function generateDigest({ config, payload, customPrompt, signal }) 
     + (customPrompt ? `\n\nThe user asked this digest to specifically focus on: ${customPrompt}` : "");
   return completeText({ config, tier: "standard", system: DIGEST_SYSTEM_PROMPT, user, temperature: 0.5, maxTokens: 900, signal });
 }
+
+// ---- chat-box suggestions (see lib/chatSuggestions.js for context-gathering) ----
+// Replaces a fixed, always-the-same suggestion list with ones grounded in
+// this person's actual state -- their real medications, an effects session
+// in progress, tolerance worth asking about, a taper underway. Cheap (light
+// tier) and cached by a hash of the context, same mechanism as the other
+// cached insights, so re-opening the assistant with nothing changed costs
+// nothing after the first time.
+const CHAT_SUGGESTIONS_SYSTEM_PROMPT = [
+  "You suggest example questions/requests for Meditrax's in-app assistant chat box, based on the user's current app state.",
+  'Respond ONLY with minified JSON: {"suggestions": string[]}. Exactly 4 items, each a short first-person message under 60 characters, written as something the user would actually type or tap to send (not a description of a suggestion).',
+  "Ground them in the given context: name an actual medication or situation when the context gives you one, rather than staying generic. Vary them across different app areas (adherence, refills, mood, effects/tolerance, tapering) when the context supports it.",
+  "Never suggest anything beyond this app's own scope (medication tracking, adherence, refills, mood, effects, tolerance, tapering) -- not general medical advice-seeking.",
+].join("\n");
+
+export async function generateChatSuggestions({ config, context, force = false, signal }) {
+  const hash = await hashPayload(context);
+  const cached = await getInsight("chat_suggestions");
+  if (cached && cached.hash === hash && !force) return cached.result;
+  const { parsed } = await completeJSON({
+    config, tier: "light", system: CHAT_SUGGESTIONS_SYSTEM_PROMPT,
+    user: "Current context:\n" + JSON.stringify(context), temperature: 0.7, maxTokens: 300, signal,
+  });
+  const result = Array.isArray(parsed.suggestions) ? parsed.suggestions.filter((s) => typeof s === "string" && s.trim()).slice(0, 4) : [];
+  await saveInsight("chat_suggestions", { hash, result });
+  return result;
+}

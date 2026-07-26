@@ -22,16 +22,9 @@ export async function autofillMedication(name) {
 }
 
 // Legacy AI session helpers — the Assistant now persists chat locally via localdb.
-// Kept as safe stubs so any stale imports don't break.
+// Kept as safe stubs so any stale imports don't break. (Suggestions are now
+// real and contextual -- see lib/chatSuggestions.js.)
 export const getAiMessages = async () => [];
-export const getAiSuggestions = async () => ({
-  suggestions: [
-    "What does this medication do?",
-    "How do I taper safely?",
-    "Summarize my adherence this month",
-    "Any interactions I should watch for?",
-  ],
-});
 export const clearAiMessages = async () => ({ cleared: true });
 
 // Local notification test (replaces the old server push test).
