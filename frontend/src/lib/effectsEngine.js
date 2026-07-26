@@ -67,8 +67,11 @@ export function modelConfidence(model) {
 
 // The profile to use for a session: learned values where available, defaults
 // otherwise, with mild dose scaling against the model's reference dose
-// (higher dose ≈ somewhat longer and stronger, sub-linearly).
-export function personalizedProfile(med, model = null, dose = null) {
+// (higher dose ≈ somewhat longer and stronger, sub-linearly), and an optional
+// tolerance dampening (see toleranceEngine.js) from recent real-world use of
+// this same medication -- a session snapshot with `tolerance.applicable`
+// simply omits `tolerance` here entirely, leaving intensity untouched.
+export function personalizedProfile(med, model = null, dose = null, tolerance = null) {
   const d = defaultPkProfile(med);
   let onset = model?.onset_min ?? d.onset_min;
   let peak = model?.peak_min ?? d.peak_min;
@@ -81,6 +84,7 @@ export function personalizedProfile(med, model = null, dose = null) {
     duration = duration * clamp(Math.pow(ratio, 0.3), 0.75, 1.5);
     intensityScale = clamp(ratio, 0.5, 1.5);
   }
+  if (tolerance?.applicable) intensityScale *= 1 - tolerance.level * tolerance.maxDampening;
   peak = Math.max(peak, onset + 5);
   duration = Math.max(duration, peak + 15);
   return {
@@ -89,6 +93,7 @@ export function personalizedProfile(med, model = null, dose = null) {
     learned: !!model && (model.samples || 0) > 0,
     samples: model?.samples || 0,
     confidence: modelConfidence(model),
+    ...(tolerance?.applicable ? { tolerance: { level: tolerance.level, faded: tolerance.faded, daysSinceLast: tolerance.daysSinceLast } } : {}),
   };
 }
 

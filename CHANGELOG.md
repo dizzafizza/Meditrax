@@ -3,6 +3,78 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Usage-based tolerance modeling in the effects tracker
+
+### Added
+- **The effects tracker now models real pharmacological tolerance from your
+  own recent use of each medication, instead of always predicting the same
+  curve regardless of how often you've taken it.** New module
+  `toleranceEngine.js`, wired into `personalizedProfile` (effectsEngine.js)
+  and computed fresh at session start/edit from each medication's own logged
+  dose history (localdb.js) — pure and storage-free, same convention as
+  `redoseSafety.js`/`usageStats.js`. Two distinct, real effects are modeled:
+  - **Tolerance forms with frequent/recent use**, blunting the modeled peak
+    intensity for the same dose (pharmacodynamic tolerance — receptor
+    downregulation/desensitization). A category-specific time constant
+    controls how fast: e.g. psychedelics build near-total tachyphylaxis after
+    a single dose (the classic "why the second trip a day later feels
+    smaller" effect), while benzodiazepines build tolerance much more slowly
+    over about ten days of regular use, matching the clinical literature for
+    each.
+  - **Tolerance fades during a gap in use** — and if a substantial recent
+    tolerance has since faded, the usual dose can hit noticeably harder than
+    expected. This is the mechanism behind a lot of real-world overdoses
+    (classically opioids after a break), so it's surfaced as an explicit
+    caution ("Tolerance may have faded — it's been N days since your last
+    dose...") rather than folded silently into the curve.
+  - Deliberately **not** modeled: cross-substance/cross-tolerance (one
+    opioid's tolerance affecting another), and metabolic tolerance (faster
+    clearance from chronic enzyme induction — real for e.g. heavy alcohol use,
+    but narrow enough to be out of scope for this pass). Both are called out
+    as explicit non-goals in `toleranceEngine.js`.
+- **Formation/decay rates are keyed by the effects-engine's own PK category
+  (stimulant, opioid, psychedelic, etc.), not by the existing
+  `dependency_risk_category` field.** These are genuinely different axes:
+  psychedelics build the fastest tolerance of any category here but have low
+  physical dependence potential, while benzodiazepines are the opposite —
+  form tolerance slowly but carry high dependence risk. Keying off the wrong
+  axis would have gotten this backwards. Only recreational/psychoactive
+  categories where "how strongly does this hit" is the relevant, felt axis
+  are modeled (opioid, benzodiazepine, stimulant, stimulant-fast, depressant,
+  cannabis, psychedelic, empathogen, dissociative, sleep-aid, antihistamine,
+  muscle-relaxant); chronic-condition categories (antidepressant,
+  antipsychotic, anticonvulsant, nsaid, "other", etc.) are left out entirely —
+  modeling acute tolerance for e.g. an SSRI would misrepresent pharmacology
+  that actually works the opposite way (delayed therapeutic onset,
+  discontinuation syndrome).
+- The dose that starts a session is always excluded from its own tolerance
+  calculation (a first-ever dose of anything now correctly shows zero
+  tolerance, not a self-inflicted dampening from the very dose being logged).
+- Surfaced transparently in the session detail view: a muted note when
+  tolerance is simply dampening the curve ("Recent use may be dampening this
+  curve (~X% modeled tolerance)"), and a distinct amber caution box (same
+  visual language as the existing redose-safety warnings) when tolerance
+  looks like it's faded since a gap.
+- `resetEffectModel` ("forget what I've learned") only clears the *learned*
+  onset/peak/duration model — tolerance is a live computation from actual
+  dose history, not part of that model, so it's correctly unaffected by a
+  reset.
+
+### Verified
+- New `toleranceEngine.test.js` (formation/decay math, category table
+  sanity, faded-tolerance detection) plus new `effectsEngine.test.js`/localdb
+  integration tests (dampening wired into real sessions, non-applicable
+  categories untouched, the current dose excluded from its own tolerance,
+  faded-tolerance flagging on a real gap, tolerance surviving a model reset).
+  Full suite: 279 tests passing, no regressions to the existing PK/redose/
+  learning test coverage.
+- Browser-verified against the production build: five days of daily logged
+  Kratom doses show a "~61% modeled tolerance" note and a visibly dampened
+  curve on the next session; a Tramadol history of six doses ending 30 days
+  ago (well past that category's decay window) shows the faded-tolerance
+  caution instead, while a same-day dose right after building tolerance
+  correctly shows no faded warning.
+
 ## 2026-07-25 — Finished sessions now drop off the home screen immediately
 
 ### Changed
