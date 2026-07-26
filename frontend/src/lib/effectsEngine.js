@@ -267,7 +267,23 @@ export function personalizedProfile(med, model = null, dose = null, tolerance = 
     duration = duration * clamp(Math.pow(ratio, 0.3), 0.75, 1.5);
     intensityScale = doseResponse(ratio, doseResponseFor(med));
   }
-  if (tolerance?.applicable) intensityScale *= 1 - tolerance.level * tolerance.maxDampening;
+  // Tolerance is applied *relative to this person's own recent baseline*,
+  // not against a drug-naive one. Scaling by absolute tolerance meant a
+  // long-term user's curve topped out around 40% of a full-height axis and
+  // the chip read "Peak · 40% intensity" at the very moment the dose was
+  // peaking -- while the log sheet, which compares against their usual, called
+  // the same dose 100%. Two different baselines for the same dose. Now a
+  // usual dose peaks at 100% for everyone, and the axis is spent on what
+  // actually varies: a larger dose, or tolerance that has faded since the
+  // doses this one is being compared against (where the curve rises above
+  // 100%, matching the warning that it will land harder). Absolute tolerance
+  // is still reported in full by the meter beside the chart.
+  if (tolerance?.applicable) {
+    const baselineLevel = tolerance.faded ? (tolerance.recentPeakLevel ?? tolerance.level) : tolerance.level;
+    const current = 1 - tolerance.level * tolerance.maxDampening;
+    const usual = 1 - baselineLevel * tolerance.maxDampening;
+    if (usual > 0) intensityScale *= current / usual;
+  }
   peak = Math.max(peak, onset + 5);
   duration = Math.max(duration, peak + 15);
   return {
