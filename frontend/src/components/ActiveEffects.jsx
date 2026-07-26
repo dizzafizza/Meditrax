@@ -557,7 +557,7 @@ function SessionDetail({ session, now }) {
             <Tooltip
               contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
               formatter={(v) => [`${Math.round(v)}%`, "Intensity"]}
-              labelFormatter={(m) => `${fmtMins(m)} after dose · ${clockAt(m)}`}
+              labelFormatter={(m) => `${fmtMins(m - timeOrigin)} after ${timeOrigin > 0 ? "this dose" : "dose"} · ${clockAt(m)}`}
             />
             {/* predicted phase boundaries — hidden once zoomed past them */}
             {inView(lastOffset + p.onset_min) && <ReferenceLine x={lastOffset + p.onset_min} stroke="hsl(var(--info))" strokeOpacity={0.6} strokeDasharray="3 3" />}
@@ -565,7 +565,19 @@ function SessionDetail({ session, now }) {
             {inView(lastOffset + p.duration_min) && <ReferenceLine x={lastOffset + p.duration_min} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeDasharray="3 3" />}
             {/* redose markers — where an additional dose was stacked on */}
             {redoseMarks.filter(inView).map((m, i) => (
-              <ReferenceLine key={`rd-${i}`} x={m} stroke="hsl(var(--primary))" strokeOpacity={0.7} strokeDasharray="1 3" label={{ value: "+dose", position: "insideTopLeft", fontSize: 8, fill: "hsl(var(--primary))" }} />
+              <ReferenceLine
+                key={`rd-${i}`}
+                x={m}
+                stroke="hsl(var(--primary))"
+                strokeOpacity={0.7}
+                strokeDasharray="1 3"
+                // Unlabelled when it sits on the axis origin: zoomed to this
+                // dose, "0" already means "this dose", so the tag says nothing
+                // and only collides with the "now" marker beside it.
+                label={m - timeOrigin > (xDomain[1] - xDomain[0]) * 0.04
+                  ? { value: "+dose", position: "insideTopLeft", fontSize: 8, fill: "hsl(var(--primary))" }
+                  : undefined}
+              />
             ))}
             <Area type="monotone" dataKey="intensity" stroke="hsl(var(--primary))" strokeWidth={2.5} fill={`url(#fx-${session.id})`} dot={false} isAnimationActive={false} />
             {/* each superseded dose on its own, when asked for — line only,

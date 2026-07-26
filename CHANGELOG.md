@@ -3,6 +3,22 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Chart tooltip now reads on the same scale as the axis
+
+### Fixed
+- **The chart's hover detail still measured from the session start after the
+  axis had been rebased onto the current dose.** With previous doses hidden
+  the axis reads as time since the dose being shown, but the tooltip kept
+  reporting session time — so a point sitting at roughly 45 minutes on the
+  axis announced itself as "4 h 59 m after dose". It now uses the same origin
+  as the axis ("54 min after this dose" zoomed in, "after dose" when the whole
+  session is in view).
+- **The "+dose" marker no longer collides with "now".** Zoomed to the current
+  dose, that marker sits exactly on the axis origin, where "0" already means
+  this dose — so the tag said nothing and overlapped the "now" label beside
+  it. It's dropped at the origin and returns when the wider view puts the
+  redose somewhere meaningful.
+
 ## 2026-07-26 — Curve continuity with old feedback, and residual drug in the prediction
 
 ### Verified
