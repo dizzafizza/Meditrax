@@ -3,6 +3,24 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Center the assistant's empty-chat intro instead of leaving it pinned at the top
+
+### Fixed
+- **A large blank void could sit between the "How can I help?" intro and
+  the input box on a blank conversation**, on tall phones especially — not
+  a scroll bug (that container has nothing to overflow: measured directly,
+  its scrollHeight and clientHeight were identical), but a layout one. The
+  intro was top-aligned with a fixed `pt-8`, so on a screen taller than its
+  own content it just left everything below to sit empty instead of using
+  it. Centered it vertically within the actual available space instead
+  (`flex-1` + `justify-center` on the intro block, applied only when the
+  conversation is empty — a populated conversation's message list is
+  completely unaffected, verified directly). This was a distinct defect
+  from the reserved-bottom-padding mismatch fixed for populated
+  conversations in the previous change; that fix was correct as far as it
+  went, it just didn't cover this screen, which has no messages to reserve
+  space below at all.
+
 ## 2026-07-26 — Revert the vh→dvh change; fix the assistant's real bottom-padding mismatch instead
 
 ### Fixed

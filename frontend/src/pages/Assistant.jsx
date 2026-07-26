@@ -190,7 +190,7 @@ export default function Assistant() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-y px-4 py-4 space-y-3" style={{ paddingBottom: keyReady ? `calc(var(--tabbar-h) + var(--sab) + ${inputBarHeight}px + 12px)` : "24px" }}>
+      <div ref={scrollRef} className={cn("flex-1 overflow-y-auto scroll-y px-4 py-4 space-y-3", keyReady && empty && "flex flex-col")} style={{ paddingBottom: keyReady ? `calc(var(--tabbar-h) + var(--sab) + ${inputBarHeight}px + 12px)` : "24px" }}>
         {!keyReady && (
           <div className="card-soft p-5 text-center mt-6" data-testid="assistant-setup-card">
             <div className="h-16 w-16 mx-auto rounded-3xl bg-primary/12 text-primary flex items-center justify-center"><KeyRound className="h-8 w-8" /></div>
@@ -206,7 +206,13 @@ export default function Assistant() {
         )}
 
         {keyReady && empty && (
-          <div className="flex flex-col items-center text-center pt-8">
+          // flex-1 + justify-center on this single child of the now-flex
+          // scroll container centers it in whatever space is actually
+          // available, instead of pinning it near the top with pt-8 and
+          // leaving a large dead void below on a tall phone -- the void
+          // wasn't a scroll bug (this container has nothing to overflow;
+          // it just looked broken).
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
             <div className="h-16 w-16 rounded-3xl bg-primary/12 text-primary flex items-center justify-center"><Sparkles className="h-8 w-8" /></div>
             <h2 className="font-display text-2xl font-semibold mt-4">How can I help?</h2>
             <p className="text-sm text-muted-foreground mt-1 max-w-xs">
