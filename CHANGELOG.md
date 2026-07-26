@@ -3,6 +3,27 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — The curve is scaled against your own usual, like everything else
+
+### Fixed
+- **A dose at its peak read "Peak · 40% intensity" while the log sheet called
+  the same dose 100% of usual.** The curve was scaled by *absolute* tolerance
+  — at 98% tolerance the factor is `1 − 0.98×0.6 ≈ 0.41` — so a long-term
+  user's curve topped out around 40% of a full-height axis and never went
+  near the top of the chart, no matter what they took. That's the same
+  drug-naive baseline already corrected in the predicted-effect headline, and
+  having the two disagree about the same dose was the visible symptom.
+  Tolerance is now applied relative to the person's own recent baseline, so:
+  - a usual dose peaks at 100% for everyone, and the axis is spent on what
+    actually varies rather than on a constant offset;
+  - a **larger** dose rises above 100%, as it already did;
+  - tolerance that has **faded** since the doses this one follows also rises
+    above 100%, which is exactly the "this will land harder" case the warning
+    beside it describes.
+  Absolute tolerance is unchanged and still reported in full by the meter
+  beside the chart — it's shown once, in the place meant for it, instead of
+  being silently folded into a second number on a different scale.
+
 ## 2026-07-26 — The tolerance meter reads the same everywhere
 
 ### Fixed

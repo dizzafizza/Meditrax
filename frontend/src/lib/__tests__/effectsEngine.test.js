@@ -431,24 +431,36 @@ describe("learning (updateModel)", () => {
     expect(withInapplicable.tolerance).toBeUndefined();
   });
 
-  test("an applicable tolerance dampens intensity_scale and is reported on the profile", () => {
-    const tolerance = { applicable: true, level: 0.5, maxDampening: 0.6, faded: false, daysSinceLast: 1 };
+  test("steady tolerance leaves a usual dose at full height, and is still reported", () => {
+    // Tolerance is measured against this person's own recent baseline, so
+    // when it hasn't moved, their usual dose is exactly their usual
+    // experience -- 100%. Scaling it down would describe a drug-naive
+    // stranger and would disagree with the log sheet's own comparison.
+    const tolerance = { applicable: true, level: 0.5, maxDampening: 0.6, faded: false, daysSinceLast: 1, recentPeakLevel: 0.5 };
     const p = personalizedProfile(med, null, 20, tolerance);
-    // 1 * (1 - 0.5*0.6) = 0.7
-    expect(p.intensity_scale).toBeCloseTo(0.7, 5);
-    expect(p.tolerance).toEqual({ level: 0.5, faded: false, daysSinceLast: 1 });
+    expect(p.intensity_scale).toBeCloseTo(1, 5);
+    expect(p.tolerance.level).toBe(0.5);
+    expect(p.tolerance.faded).toBe(false);
   });
 
-  test("tolerance dampening composes with dose-ratio scaling", () => {
+  test("tolerance that has faded since the baseline pushes the curve above full height", () => {
+    // The dose genuinely will land harder than the ones it's being compared
+    // against, and the curve should show that rather than hide it.
+    const faded = { applicable: true, level: 0.2, maxDampening: 0.6, faded: true, daysSinceLast: 30, recentPeakLevel: 0.8 };
+    const p = personalizedProfile(med, null, 20, faded);
+    expect(p.intensity_scale).toBeGreaterThan(1);
+  });
+
+  test("dose-ratio scaling survives tolerance being folded in", () => {
     const model = { onset_min: 20, peak_min: 60, duration_min: 240, ref_dose: 20, samples: 4 };
-    const tolerance = { applicable: true, level: 1, maxDampening: 0.5, faded: false, daysSinceLast: 0 };
+    const steady = { applicable: true, level: 1, maxDampening: 0.5, faded: false, daysSinceLast: 0, recentPeakLevel: 1 };
     const undamped = personalizedProfile(med, model, 40).intensity_scale;
-    const p = personalizedProfile(med, model, 40, tolerance);
-    // Full tolerance at maxDampening 0.5 halves whatever the dose response
-    // was. Both ends are rounded to 1dp independently, so allow for that
-    // rather than asserting exact arithmetic on already-rounded values.
-    expect(Math.abs(p.intensity_scale - undamped * 0.5)).toBeLessThanOrEqual(0.06);
-    expect(p.intensity_scale).toBeLessThan(undamped);
+    // Steady tolerance cancels against its own baseline, so a double dose is
+    // still a double dose's worth of curve.
+    expect(personalizedProfile(med, model, 40, steady).intensity_scale).toBeCloseTo(undamped, 5);
+    // A faded baseline lifts it further still.
+    const faded = { applicable: true, level: 0.3, maxDampening: 0.5, faded: true, daysSinceLast: 21, recentPeakLevel: 0.9 };
+    expect(personalizedProfile(med, model, 40, faded).intensity_scale).toBeGreaterThan(undamped);
   });
 });
 
@@ -746,14 +758,16 @@ describe("session lifecycle in localdb", () => {
 describe("tolerance wired into real sessions (localdb)", () => {
   const daysAgoIso = (n) => new Date(Date.now() - n * 86400000).toISOString();
 
-  test("frequent recent use dampens a new session's intensity_scale and is reported on the profile", async () => {
+  test("frequent recent use is reported on a new session's profile", async () => {
     const med = await db.createMedication({ name: "TolMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
     // Five daily doses leading up to just now, all logged as real (backdated) logs.
     for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
     const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
-    expect(s.profile.intensity_scale).toBeLessThan(1);
     expect(s.profile.tolerance.level).toBeGreaterThan(0);
     expect(s.profile.tolerance.faded).toBe(false);
+    // Real tolerance, but it hasn't moved relative to the doses this one
+    // follows -- so this is an ordinary dose, and the curve says so.
+    expect(s.profile.intensity_scale).toBeCloseTo(1, 1);
   });
 
   test("a fresh medication with no dose history at all shows no tolerance effect", async () => {
