@@ -606,6 +606,33 @@ describe("tolerance wired into real sessions (localdb)", () => {
     const biggerDose = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 40 });
     expect(biggerDose.suggested).toBeGreaterThan(afterFrequentUse.suggested);
   });
+
+  test("estimateDoseEffectiveness reflects dose amount for a medication that's never used the effects tracker (older/scheduled meds)", async () => {
+    // A plain scheduled medication, logged the ordinary way for months --
+    // is_prn is false and startEffectSession has never been called, so
+    // there is no learned ref_dose from the effects tracker at all.
+    const med = await db.createMedication({ name: "OldScheduleMed", strength: 20, unit: "mg", category: "opioid", form: "tablet", times: ["09:00", "21:00"], is_prn: false });
+    for (let i = 10; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 20, scheduled_time: i % 2 ? "09:00" : "21:00", timestamp: daysAgoIso(i) });
+
+    const typical = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 20 });
+    const double = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 40 });
+    const half = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(double.intensityScale).toBeGreaterThan(typical.intensityScale);
+    expect(half.intensityScale).toBeLessThan(typical.intensityScale);
+    // Ten days of a twice-daily schedule is plenty of tolerance-relevant history too.
+    expect(typical.tolerance.level).toBeGreaterThan(0);
+  });
+
+  test("estimateDoseEffectiveness ignores logs with no recorded dose amount when building the historical-average fallback", async () => {
+    const med = await db.createMedication({ name: "NoAmountMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 3; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) }); // no dose_taken
+    // With no valid historical amount to infer a reference dose from, the
+    // dose-ratio block never activates -- intensityScale should be identical
+    // regardless of the dose asked about (tolerance alone may still apply).
+    const small = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 5 });
+    const huge = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 100 });
+    expect(huge.intensityScale).toBe(small.intensityScale);
+  });
 });
 
 describe("deleteEffectEvent (editing a session's feedback)", () => {

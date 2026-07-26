@@ -751,7 +751,23 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null } =
   if (!med) return null;
   const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
   const tolerance = await toleranceForMedication(med);
-  const profile = personalizedProfile(med, model, dose, tolerance);
+  // Dose-ratio scaling in personalizedProfile only kicks in with a learned
+  // ref_dose, which only exists once the effects tracker has actually been
+  // used and completed at least once -- so a medication logged for months on
+  // a fixed schedule (never "Track effects") would never reflect the dose
+  // amount in this preview at all. Fall back to the medication's own average
+  // historically logged amount as a reference dose for THIS preview only --
+  // the real effects-tracker curve/model is untouched, still trained
+  // exclusively from actual feedback.
+  let refModel = model;
+  if (!refModel?.ref_dose) {
+    const logs = await getArr(pkey("logs"));
+    const amounts = logs
+      .filter((l) => l.medication_id === medication_id && LOG_CONSUMING_STATUSES.includes(l.status) && isFinite(Number(l.dose_taken)) && Number(l.dose_taken) > 0)
+      .map((l) => Number(l.dose_taken));
+    if (amounts.length) refModel = { ...(model || {}), ref_dose: amounts.reduce((a, b) => a + b, 0) / amounts.length };
+  }
+  const profile = personalizedProfile(med, refModel, dose, tolerance);
   return { suggested: modeledEffectiveness(profile.intensity_scale), intensityScale: profile.intensity_scale, tolerance: profile.tolerance || null };
 }
 

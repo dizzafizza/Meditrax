@@ -3,6 +3,49 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — A live dose-effect preview when logging, for any schedule
+
+### Added
+- **Logging a dose now shows a live preview of how it's likely to land —
+  predicted effect strength and tolerance — for any medication with enough
+  history to say something, not just PRN ones using the effects tracker.**
+  A compact card appears right under the dose-amount fields in
+  `QuickLogSheet` (before saving, no need to expand "Add mood, effectiveness
+  & notes"), showing "Predicted effect: X% of typical" plus the same
+  tolerance meter used elsewhere, and it recomputes live as the dose amount
+  is adjusted. Quiet by design: it only appears once there's something
+  meaningful to report (the dose deviates from typical, or tolerance is
+  non-trivial or faded) — a fresh medication or one with nothing unusual
+  going on shows nothing extra.
+- **Works for medications that have never used the effects tracker at all —
+  the "existing older schedules" case.** Dose-ratio scaling previously only
+  activated once a `ref_dose` had been *learned* from a completed
+  effects-tracker session, so a medication logged the plain way for months
+  on a fixed schedule would never reflect its dose amount in this preview.
+  `estimateDoseEffectiveness` now falls back to the medication's own average
+  historically logged amount as the reference dose when no learned model
+  exists, for this preview computation only — the real effects-tracker
+  curve/model is untouched, still trained exclusively from actual feedback.
+  Confirmed against a scheduled (once-daily, non-PRN) medication with five
+  days of plain history and no effects-tracker session ever started: the
+  preview correctly showed a dampened predicted effect and rising tolerance,
+  and scaling the entered amount up 3x visibly raised the predicted-effect
+  percentage.
+- Also verified against a taper-plan medication (dose changing day to day
+  under a separate schedule on top of the log history) — the preview reads
+  the taper-adjusted dose amount already prefilled into the form and renders
+  a sane, non-crashing result.
+
+### Verified
+- Two new localdb integration tests: dose-ratio scaling now works from
+  historical average alone (no trained model), and logs with no recorded
+  dose amount are correctly excluded from that average rather than
+  poisoning it. Full suite: 289 tests passing.
+- Browser-verified against the production build with three medication
+  shapes: a fresh PRN one, a scheduled once-daily one with no effects-
+  tracker history, and a taper-plan medication — all render the preview (or
+  correctly render nothing) without errors.
+
 ## 2026-07-26 — Tolerance meter, and a smarter effectiveness-rating default
 
 ### Added

@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
 import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness } from "@/lib/api";
+import { ToleranceNote } from "@/components/ActiveEffects";
 import { scheduleAllReminders } from "@/lib/push";
 import { Switch } from "@/components/ui/switch";
 import MedColorDot from "@/components/MedColorDot";
@@ -33,6 +34,34 @@ const STATUSES = [
   { v: "skipped", l: "Skip", icon: SkipForward },
   { v: "missed", l: "Missed", icon: X },
 ];
+
+// A live preview of how this dose is likely to land -- for ANY medication
+// with enough history to say something (scheduled or PRN, however long it's
+// been logged), not just ones actively using the effects tracker. Reuses the
+// same intensityScale the effects-tracker curve itself is built from, so
+// "predicted effect" here means exactly the same thing it means everywhere
+// else in the app. Quiet by design: renders nothing unless the dose entered
+// actually deviates from typical, or tolerance has something to say.
+function DoseEffectPreview({ suggestion }) {
+  if (!suggestion) return null;
+  const { intensityScale, tolerance } = suggestion;
+  const meaningfulDose = Math.abs(intensityScale - 1) >= 0.05;
+  const meaningfulTolerance = tolerance && (tolerance.level >= 0.15 || tolerance.faded);
+  if (!meaningfulDose && !meaningfulTolerance) return null;
+  const pct = Math.round(intensityScale * 100);
+  return (
+    <div className="mt-4 rounded-xl bg-muted/40 px-3 py-2.5" data-testid="dose-effect-preview">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Predicted effect</span>
+        <span className="font-medium">{pct}% of typical</span>
+      </div>
+      <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+      <ToleranceNote tolerance={tolerance} />
+    </div>
+  );
+}
 
 export default function QuickLogSheet() {
   const ui = useUI();
@@ -75,12 +104,18 @@ export default function QuickLogSheet() {
   const consumingStatus = status === "taken" || status === "partial";
   const showInteraction = !editLog && consumingStatus && interactions.length > 0;
 
-  // A starting point for the effectiveness slider, from this medication's
-  // current modeled tolerance and the dose amount being entered -- only for
-  // a brand-new log (never overrides an existing rating being edited), and
-  // only until the user actually touches the slider themselves. Recomputes as
-  // the dose amount changes, so it tracks "based off tolerance and dosage"
-  // live while the form is open.
+  // Predicted effect + tolerance for the dose being entered, from this
+  // medication's own dose history and modeled tolerance -- feeds both the
+  // always-visible preview (any medication, scheduled or PRN, old or new --
+  // see DoseEffectPreview below) and the effectiveness slider's starting
+  // point (still PRN-only, matching that field's existing convention).
+  // Computed for any consuming-status log, not just PRN ones, so a
+  // medication that's been on a fixed schedule for months gets the same
+  // preview as a fresh PRN one -- only for a brand-new log (never overrides
+  // an existing rating being edited), and the slider's default only applies
+  // until the user actually touches it themselves. Recomputes as the dose
+  // amount changes, so it tracks "based off tolerance and dosage" live while
+  // the form is open.
   //
   // Deliberately NOT a react-query useQuery: the sheet can open, save, close
   // and reopen for the same medication+dose within seconds (logging several
@@ -95,7 +130,7 @@ export default function QuickLogSheet() {
   const effectivenessTouchedRef = useRef(effectivenessTouched);
   effectivenessTouchedRef.current = effectivenessTouched;
   const doseNum = dose === "" ? null : Number(dose);
-  const effSuggestionEnabled = !!(ui.logSheet.open && !editLog && med?.is_prn && consumingStatus);
+  const effSuggestionEnabled = !!(ui.logSheet.open && !editLog && consumingStatus);
   useEffect(() => {
     if (!effSuggestionEnabled) { effReqRef.current++; setEffSuggestion(null); return; }
     const reqId = ++effReqRef.current;
@@ -286,6 +321,8 @@ export default function QuickLogSheet() {
               </div>
             </div>
           )}
+
+          {!editLog && <DoseEffectPreview suggestion={effSuggestion} />}
 
           {!editLog && (status === "taken" || status === "partial") && (
             <div className="mt-4 flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2.5">
