@@ -258,6 +258,32 @@ describe("learning (updateModel)", () => {
     expect(none.learned).toBe(false);
     expect(none.onset_min).toBe(40); // default stimulant
   });
+
+  test("omitting tolerance (or a non-applicable one) leaves intensity_scale exactly as before", () => {
+    const withoutArg = personalizedProfile(med, null, 20);
+    const withNull = personalizedProfile(med, null, 20, null);
+    const withInapplicable = personalizedProfile(med, null, 20, { applicable: false });
+    expect(withoutArg.intensity_scale).toBe(1);
+    expect(withNull.intensity_scale).toBe(1);
+    expect(withInapplicable.intensity_scale).toBe(1);
+    expect(withoutArg.tolerance).toBeUndefined();
+    expect(withInapplicable.tolerance).toBeUndefined();
+  });
+
+  test("an applicable tolerance dampens intensity_scale and is reported on the profile", () => {
+    const tolerance = { applicable: true, level: 0.5, maxDampening: 0.6, faded: false, daysSinceLast: 1 };
+    const p = personalizedProfile(med, null, 20, tolerance);
+    // 1 * (1 - 0.5*0.6) = 0.7
+    expect(p.intensity_scale).toBeCloseTo(0.7, 5);
+    expect(p.tolerance).toEqual({ level: 0.5, faded: false, daysSinceLast: 1 });
+  });
+
+  test("tolerance dampening composes with dose-ratio scaling", () => {
+    const model = { onset_min: 20, peak_min: 60, duration_min: 240, ref_dose: 20, samples: 4 };
+    const tolerance = { applicable: true, level: 1, maxDampening: 0.5, faded: false, daysSinceLast: 0 };
+    const p = personalizedProfile(med, model, 40, tolerance); // dose ratio 2x -> intensity_scale 1.5 before tolerance, then halved -> 0.75, rounded to 1dp
+    expect(p.intensity_scale).toBeCloseTo(0.8, 5);
+  });
 });
 
 describe("session lifecycle in localdb", () => {
@@ -464,6 +490,65 @@ describe("session lifecycle in localdb", () => {
     const active = (await db.getActiveEffectSessions()).find((x) => x.id === s2.id);
     expect(active.profile.learned).toBe(false);
     expect(active.profile.onset_min).toBe(40); // stimulant default again
+  });
+});
+
+describe("tolerance wired into real sessions (localdb)", () => {
+  const daysAgoIso = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
+  test("frequent recent use dampens a new session's intensity_scale and is reported on the profile", async () => {
+    const med = await db.createMedication({ name: "TolMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    // Five daily doses leading up to just now, all logged as real (backdated) logs.
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    expect(s.profile.intensity_scale).toBeLessThan(1);
+    expect(s.profile.tolerance.level).toBeGreaterThan(0);
+    expect(s.profile.tolerance.faded).toBe(false);
+  });
+
+  test("a fresh medication with no dose history at all shows no tolerance effect", async () => {
+    const med = await db.createMedication({ name: "FreshMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    expect(s.profile.intensity_scale).toBe(1);
+    expect(s.profile.tolerance.level).toBe(0);
+  });
+
+  test("a non-recreational category is never dampened even with heavy logged history", async () => {
+    const med = await db.createMedication({ name: "SsriMed", strength: 10, unit: "mg", category: "antidepressant", form: "tablet", times: [], is_prn: true });
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    expect(s.profile.intensity_scale).toBe(1);
+    // Not an applicable category at all -- no tolerance field, not just a zero one.
+    expect(s.profile.tolerance).toBeUndefined();
+  });
+
+  test("the dose that starts this very session doesn't count toward its own tolerance", async () => {
+    const med = await db.createMedication({ name: "FirstDoseMed", strength: 10, unit: "mg", category: "psychedelic", form: "tablet", times: [], is_prn: true });
+    const log = await db.createLog({ medication_id: med.id, status: "taken" });
+    // If the log for *this* dose were counted, even a first-ever psychedelic
+    // dose would show heavy self-inflicted "tolerance" -- it must not.
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10, log_id: log.id });
+    expect(s.profile.intensity_scale).toBe(1);
+    expect(s.profile.tolerance.level).toBe(0);
+  });
+
+  test("a long gap after building real tolerance flags as faded on the next session", async () => {
+    const med = await db.createMedication({ name: "FadedMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 35; i >= 30; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    expect(s.profile.tolerance.faded).toBe(true);
+    expect(s.profile.tolerance.daysSinceLast).toBeCloseTo(30, 0);
+  });
+
+  test("resetEffectModel keeps tolerance applied even though the learned onset/peak/duration model is cleared", async () => {
+    const med = await db.createMedication({ name: "ResetTolMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const dampedBefore = s.profile.intensity_scale;
+    await db.resetEffectModel(med.id);
+    const active = (await db.getActiveEffectSessions()).find((x) => x.id === s.id);
+    expect(active.profile.learned).toBe(false);
+    expect(active.profile.intensity_scale).toBe(dampedBefore);
   });
 });
 

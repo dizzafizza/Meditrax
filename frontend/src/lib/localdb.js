@@ -4,6 +4,7 @@ import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
 import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd } from "./effectsEngine";
+import { estimateTolerance } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
 import { interactionsWith } from "./interactions";
@@ -703,10 +704,31 @@ async function bumpEffectModelVersion(medication_id) {
   return next;
 }
 
+// How far back to look for a medication's own consuming-dose history when
+// estimating tolerance (see toleranceEngine.js). Generous relative to the
+// longest decay constant used there (benzodiazepine, 21 days) so a real gap
+// in use is never mistaken for "no history at all."
+const TOLERANCE_LOOKBACK_DAYS = 120;
+
+// `excludeLogId` leaves out the dose this profile is being computed *for* --
+// tolerance reflects what the body brought into this dose, not this dose's
+// own contribution (otherwise even a first-ever dose would show tolerance).
+async function toleranceForMedication(med, { now = Date.now(), excludeLogId = null } = {}) {
+  const logs = await getArr(pkey("logs"));
+  const cutoff = now - TOLERANCE_LOOKBACK_DAYS * 86400000;
+  const doseTimes = logs
+    .filter((l) => l.medication_id === med.id && l.id !== excludeLogId && LOG_CONSUMING_STATUSES.includes(l.status))
+    .map((l) => new Date(l.timestamp).getTime())
+    .filter((t) => isFinite(t) && t >= cutoff && t <= now);
+  return estimateTolerance(doseTimes, med.category, now);
+}
+
 // Forget everything learned about a medication's timing and fall back to the
 // typical profile. Active sessions for that med re-derive their curve too.
 // Bumps the version counter so no earlier session can later "undo" past this
-// point — a Reset is a deliberate, permanent forget.
+// point — a Reset is a deliberate, permanent forget. Tolerance is a live
+// computation from real dose history, not part of the learned model, so it's
+// still applied here rather than reset to zero.
 export async function resetEffectModel(medication_id) {
   await ensureInit();
   const models = await getArr(pkey("effectModels"));
@@ -715,13 +737,14 @@ export async function resetEffectModel(medication_id) {
   const sessions = await getArr(pkey("effectSessions"));
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id) || {};
   let changed = false;
-  sessions.forEach((s) => {
+  for (const s of sessions) {
     if (s.medication_id === medication_id && s.status === "active") {
-      s.profile = personalizedProfile(med, null, s.dose);
+      const tolerance = await toleranceForMedication(med, { excludeLogId: s.log_id });
+      s.profile = personalizedProfile(med, null, s.dose, tolerance);
       s.updated_at = nowIso();
       changed = true;
     }
-  });
+  }
   if (changed) await setArr(pkey("effectSessions"), sessions);
   return { reset: true };
 }
@@ -735,13 +758,14 @@ export async function startEffectSession({ medication_id, dose = null, unit = nu
   // confusing duplicates with a clean restart.
   sessions.forEach((s) => { if (s.medication_id === medication_id && s.status === "active") { s.status = "discarded"; s.ended_at = nowIso(); } });
   const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
+  const tolerance = await toleranceForMedication(med, { excludeLogId: log_id });
   const doc = {
     id: uid(), medication_id, log_id,
     dose: dose != null && isFinite(Number(dose)) ? Number(dose) : null,
     unit: unit || med.unit || null,
     started_at: started_at && !isNaN(new Date(started_at).getTime()) ? new Date(started_at).toISOString() : nowIso(),
     ended_at: null, status: "active", events: [],
-    profile: personalizedProfile(med, model, dose), // snapshot used for this session
+    profile: personalizedProfile(med, model, dose, tolerance), // snapshot used for this session
     created_at: nowIso(),
   };
   sessions.push(doc);
@@ -770,7 +794,8 @@ export async function updateEffectSession(sessionId, patch = {}) {
     s.dose = v;
     const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
     const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === s.medication_id) || null;
-    s.profile = personalizedProfile(med, model, v);
+    const tolerance = await toleranceForMedication(med, { excludeLogId: s.log_id });
+    s.profile = personalizedProfile(med, model, v, tolerance);
   }
   s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
