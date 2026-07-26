@@ -327,7 +327,13 @@ const ONSET_FRACTION = 0.10; // effect at onset_min, as a fraction of peak
 // a tail -- so aiming lower would just make the fit infeasible for the very
 // substances that need it most.
 const END_FRACTION = 0.12;
-const TAIL_SPAN = 0.25; // after-effects window, as a fraction of duration
+const TAIL_SPAN = 0.25; // after-effects window past duration_min, as a fraction of duration
+// The taper starts slightly *before* duration_min rather than at it. A user
+// who tapped "Gone" at that moment reported no effect, so the model shouldn't
+// still be showing a fifth of peak there -- easing out across the report
+// rather than after it keeps the curve agreeing with the feedback that
+// produced it, without distorting the fitted peak.
+const TAIL_START = 0.82;
 
 const bateman = (t, ka, ke) => Math.exp(-ke * t) - Math.exp(-ka * t);
 const emax = (c, c50, h) => (c <= 0 ? 0 : Math.pow(c, h) / (Math.pow(c50, h) + Math.pow(c, h)));
@@ -408,7 +414,7 @@ export function curveModel(profile = {}) {
   }
   const shape = shapeFor(r, tlag);
   const endMin = dur * (1 + TAIL_SPAN);
-  const model = { shape, endMin, dur, ...ratesFor(r, tlag), c50, hill: h };
+  const model = { shape, endMin, dur, pk, ...ratesFor(r, tlag), c50, hill: h };
   // Bounded so a long session that edits its dose repeatedly can't grow this
   // without limit; curves are cheap to re-solve if one is evicted.
   if (curveCache.size > 512) curveCache.clear();
@@ -425,7 +431,12 @@ export function intensityAt(tMin, profile) {
   // Taper the last stretch smoothly to zero. Exponential decline never
   // actually reaches nothing, and a curve that just stops mid-air is the
   // artifact this replaced -- so the after-effects window eases it out.
-  if (tMin > m.dur) e *= 1 - smooth((tMin - m.dur) / (m.endMin - m.dur));
+  // Never before the peak: for a tightly compressed profile (a learned onset
+  // sitting just under its peak, say) a fixed fraction of duration can fall
+  // on the wrong side of it, and tapering there would flatten the peak the
+  // user actually reported.
+  const taperFrom = Math.max(m.pk, m.dur * TAIL_START);
+  if (tMin > taperFrom) e *= 1 - smooth((tMin - taperFrom) / (m.endMin - taperFrom));
   return round1(clamp(e * 100, 0, 100));
 }
 

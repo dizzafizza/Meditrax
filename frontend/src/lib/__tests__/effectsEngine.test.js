@@ -857,6 +857,42 @@ describe("tolerance wired into real sessions (localdb)", () => {
     expect(doubled.suggested).toBeGreaterThan(usual.suggested);
   });
 
+  test("a dose landing while an earlier one is still active is predicted stronger", async () => {
+    // Until now this was only modeled *within* one effects session, so a dose
+    // logged a couple of hours after another was treated as landing on
+    // nothing -- the single biggest short-term factor after the dose itself.
+    const med = await db.createMedication({ name: "ResidualMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 10; i >= 2; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: daysAgoIso(i) });
+
+    const settled = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(settled.factors.residual).toBeLessThan(0.05);
+
+    // One taken an hour ago -- around its peak for this profile, so a good
+    // chunk of it is still on board.
+    await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: new Date(Date.now() - 60 * 60000).toISOString() });
+    const onTop = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(onTop.factors.residual).toBeGreaterThan(0.2);
+    expect(onTop.relativeToUsual).toBeGreaterThan(settled.relativeToUsual);
+  });
+
+  test("a dose long past its curve contributes no residual", async () => {
+    const med = await db.createMedication({ name: "NoResidualMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 10; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: daysAgoIso(i) });
+    const r = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(r.factors.residual).toBeLessThan(0.05);
+  });
+
+  test("the reported factors add up to the headline", async () => {
+    const med = await db.createMedication({ name: "FactorsMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 8; i >= 2; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: daysAgoIso(i) });
+    await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: new Date(Date.now() - 90 * 60000).toISOString() });
+    const r = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 20 });
+    expect(r.factors.dose + r.factors.residual).toBeCloseTo(r.relativeToUsual, 1);
+    // And tolerance is genuinely part of the picture, reported on its own.
+    expect(r.factors.toleranceDampening).toBeGreaterThan(0);
+    expect(r.tolerance.level).toBeGreaterThan(0);
+  });
+
   test("a median reference dose is not dragged upward by the escalation being measured", async () => {
     // Long history at 2, then a short recent run at 6. The mean would be
     // pulled well above 2 by that tail, shrinking the very ratio the preview
@@ -1073,5 +1109,92 @@ describe("deleteMedication cleans up effect-tracker data (no orphaned models/ses
     const after = await db.addEffectEvent(s2.id, { kind: "gone" });
     expect(after.status).toBe("completed");
     expect((await db.getEffectModel(med2.id)).samples).toBe(1);
+  });
+});
+
+// The curve's internals were rewritten from a hand-built spline to a fitted
+// PK/PD model. Users had already taught their models onset/peak/duration
+// through feedback, so the rewrite must not quietly reinterpret what those
+// reports meant -- a curve that peaks somewhere other than where someone
+// tapped "Peaking" would make their own history look wrong to them. These
+// bounds pin the agreement so it can't drift again unnoticed.
+describe("continuity with feedback collected before the PK/PD rewrite", () => {
+  const smooth = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+  // The pre-rewrite spline, reproduced verbatim as the reference.
+  function previousCurve(tMin, { onset_min: on, peak_min: pk, duration_min: dur }) {
+    const plateauEnd = pk + (dur - pk) * 0.35;
+    if (tMin <= 0) return 0;
+    if (tMin < on) return 12 * smooth(tMin / on);
+    if (tMin < pk) return 12 + 88 * smooth((tMin - on) / (pk - on));
+    if (tMin < plateauEnd) return 100;
+    if (tMin < dur) return 100 * (1 - smooth((tMin - plateauEnd) / (dur - plateauEnd)));
+    const tail = dur * 0.25;
+    if (tMin < dur + tail) return 8 * (1 - smooth((tMin - dur) / tail));
+    return 0;
+  }
+
+  const profiles = Object.keys(CATEGORY_PK).map((category) => defaultPkProfile({ category, form: "tablet" }));
+
+  test("peak still lands exactly where the user reported peaking", () => {
+    for (const p of profiles) {
+      expect(intensityAt(p.peak_min, p)).toBe(100);
+      expect(previousCurve(p.peak_min, p)).toBe(100);
+    }
+  });
+
+  test("onset still reads as barely-perceptible, within a couple of points of before", () => {
+    for (const p of profiles) {
+      expect(Math.abs(intensityAt(p.onset_min, p) - previousCurve(p.onset_min, p))).toBeLessThanOrEqual(4);
+    }
+  });
+
+  test("a dose reported gone reads as gone, not still substantially active", () => {
+    for (const p of profiles) {
+      expect(intensityAt(p.duration_min, p)).toBeLessThan(25);
+      expect(intensityAt(p.duration_min * 1.25, p)).toBe(0);
+    }
+  });
+
+  test("overall exposure is comparable — the same dose, not a different drug", () => {
+    for (const p of profiles) {
+      let before = 0, after = 0;
+      for (let t = 0; t <= p.duration_min * 1.25; t += 2) {
+        before += previousCurve(t, p) * 2;
+        after += intensityAt(t, p) * 2;
+      }
+      const ratio = after / before;
+      expect(ratio).toBeGreaterThan(0.7);
+      expect(ratio).toBeLessThan(1.3);
+    }
+  });
+
+  test("a model trained from feedback still round-trips into the same timings", async () => {
+    const med = await db.createMedication({ name: "RoundTripMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    // Feedback taps are stamped when they happen and measured against the
+    // session's start, so the clock is advanced between them to place them
+    // where a real session would: "feeling it" 40 min in, "gone" 300 min in.
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(new Date("2026-07-01T08:00:00.000Z"));
+      const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+      jest.setSystemTime(new Date("2026-07-01T08:40:00.000Z"));
+      await db.addEffectEvent(s.id, { kind: "onset" });
+      jest.setSystemTime(new Date("2026-07-01T13:00:00.000Z"));
+      await db.addEffectEvent(s.id, { kind: "gone" });
+    } finally {
+      jest.useRealTimers();
+    }
+    const model = await db.getEffectModel(med.id);
+    const next = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    // The reported onset carries into the next session's curve verbatim, and
+    // the curve is anchored to that session's own peak -- so the feedback
+    // that produced the model is exactly what the user sees plotted back.
+    // (duration is subject to the engine's ordering rule, since only onset
+    // and "gone" were reported here and peak has to sit between them.)
+    expect(next.profile.onset_min).toBe(Math.round(model.onset_min));
+    expect(next.profile.duration_min).toBeGreaterThanOrEqual(Math.round(model.duration_min));
+    expect(next.profile.peak_min).toBeGreaterThan(next.profile.onset_min);
+    expect(intensityAt(next.profile.peak_min, next.profile)).toBe(100);
+    expect(intensityAt(next.profile.onset_min, next.profile)).toBeLessThan(20);
   });
 });
