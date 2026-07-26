@@ -41,8 +41,10 @@ const STATUSES = [
 // ever appear alongside real content, not on its own).
 function isDoseEffectMeaningful(suggestion) {
   if (!suggestion) return false;
-  const { relativeToUsual, tolerance } = suggestion;
-  return Math.abs((relativeToUsual ?? 1) - 1) >= 0.05 || !!(tolerance && (tolerance.level >= 0.15 || tolerance.faded));
+  const { relativeToUsual, tolerance, factors } = suggestion;
+  return Math.abs((relativeToUsual ?? 1) - 1) >= 0.05
+    || !!(tolerance && (tolerance.level >= 0.15 || tolerance.faded))
+    || (factors?.residual ?? 0) >= 0.05;
 }
 
 // A live preview of how this dose is likely to land -- for ANY medication
@@ -61,7 +63,7 @@ function isDoseEffectMeaningful(suggestion) {
 function DoseEffectPreview({ suggestion }) {
   const [showInfo, setShowInfo] = useState(false);
   if (!isDoseEffectMeaningful(suggestion)) return null;
-  const { relativeToUsual, tolerance, calibrated } = suggestion;
+  const { relativeToUsual, tolerance, calibrated, factors } = suggestion;
   const pct = Math.round((relativeToUsual ?? 1) * 100);
   const stronger = pct >= 110;
   // The track runs 0-200% so a usual dose sits mid-bar with visible headroom
@@ -85,13 +87,19 @@ function DoseEffectPreview({ suggestion }) {
         {/* Where a usual dose lands, so a half-filled bar reads as "normal". */}
         <div className="absolute inset-y-0 left-1/2 w-px bg-muted-foreground/40" />
       </div>
+      {(factors?.residual ?? 0) >= 0.05 && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground" data-testid="dose-effect-residual">
+          Includes <span className="font-medium text-foreground">+{Math.round(factors.residual * 100)}%</span> still active from a recent dose — this one lands on top of it.
+        </p>
+      )}
       <p className="mt-1 text-[10px] text-muted-foreground/80" data-testid="dose-effect-source">
         {calibrated ? "Based on your calibrated effects-tracker data" : "Based on typical values for this category"}
       </p>
       {showInfo && (
         <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug animate-rise" data-testid="dose-effect-info-text">
           Compares this dose against the amount you usually take, on a saturating dose-response curve — so each extra unit adds less than the one before it{calibrated ? ", using your personal timing calibrated from your tracked sessions" : ""}.
-          {" "}100% means a normal dose for you; your tolerance is shown separately below.
+          {" "}It also accounts for your current tolerance{(factors?.toleranceDampening ?? 0) >= 0.05 ? ` (currently blunting effect by about ${Math.round(factors.toleranceDampening * 100)}%)` : ""} and for any drug still active from a recent dose.
+          {" "}100% means a normal dose for you; because tolerance affects your usual dose too, it mostly cancels out of this comparison — the meter below shows it on its own.
           {!calibrated && " Track effects on a few doses (Onset → Peak → Gone) to calibrate the timing to you specifically."} It's a helpful guide, not a guarantee — always start low if you're unsure.
         </p>
       )}

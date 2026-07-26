@@ -3,6 +3,53 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Curve continuity with old feedback, and residual drug in the prediction
+
+### Verified
+- **Checked that the PK/PD rewrite didn't reinterpret feedback people had
+  already given**, by replaying the previous spline against the new curve
+  across every category. The two anchors users actually tap are effectively
+  unchanged: **peak is identical** (100 at `peak_min` in both) and **onset is
+  within 2 points**. Total exposure (area under the curve) stays within ±20%
+  — the same dose, not a different drug. The real divergence is mid-decline,
+  where the new curve is 9-41 points lower, and that is the intended
+  correction: the old shape held a dead-flat 100% for a third of the
+  post-peak span, which no real drug does.
+- These bounds are now regression tests, along with one that trains a model
+  from real feedback taps and confirms the reported onset carries into the
+  next session's curve verbatim with the peak still anchored at 100 — so this
+  can't silently drift again.
+
+### Fixed
+- **A dose reported "Gone" no longer reads as still substantially active.**
+  The fitted curve retained 12-22% at `duration_min`, so the moment someone
+  reported no effect the model still showed a fifth of peak. The
+  after-effects taper now begins slightly *before* that point rather than at
+  it, easing out across the report instead of after it — bringing the
+  residual to 0-17% without touching the fitted peak.
+- **The taper could flatten the peak itself on a compressed profile.** Where
+  a learned onset sits close under its peak, a fixed fraction of duration can
+  fall on the wrong side of the peak; the taper is now clamped to never start
+  before it. Caught by the round-trip test above.
+
+### Added
+- **Predicted effect now accounts for drug still on board from earlier
+  doses.** This was only ever modeled *within* a single effects session, so a
+  dose logged a couple of hours after another — or during a separate session
+  entirely — was treated as landing on nothing, despite that being the
+  largest short-term factor after the dose itself. Each recent dose now
+  contributes its own curve's value at that moment, scaled by its size and
+  dampened by the same tolerance as the new dose. Surfaced explicitly:
+  "Includes +98% still active from a recent dose — this one lands on top of
+  it."
+- **The prediction reports its own breakdown** (`factors`: dose, residual,
+  tolerance dampening), and the explainer now states plainly that tolerance
+  is accounted for and by roughly how much ("currently blunting effect by
+  about 47%") — so "does this take tolerance into account" has a visible
+  answer rather than an implicit one. Tolerance still largely cancels from
+  the headline by design, because it affects the usual dose being compared
+  against too; the meter beneath reports it on its own.
+
 ## 2026-07-26 — The curve is now a real PK/PD model, and tolerance follows daily exposure
 
 ### Changed

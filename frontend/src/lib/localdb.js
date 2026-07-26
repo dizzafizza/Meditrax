@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt } from "./effectsEngine";
 import { estimateTolerance } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -750,7 +750,7 @@ export async function getMedicationTolerance(medication_id) {
 // The user's own rating, once they touch the slider, is what actually gets
 // stored; this only pre-fills a smarter default than the fixed "7" so the
 // tool reflects what it already knows before asking the person to guess.
-export async function estimateDoseEffectiveness({ medication_id, dose = null } = {}) {
+export async function estimateDoseEffectiveness({ medication_id, dose = null, now = Date.now() } = {}) {
   await ensureInit();
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
   if (!med) return null;
@@ -816,9 +816,29 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null } =
   const usualLevel = tolerance.applicable && tolerance.faded ? tolerance.recentPeakLevel : tolerance.level;
   const curFactor = tolerance.applicable ? 1 - tolerance.level * tolerance.maxDampening : 1;
   const usualFactor = tolerance.applicable ? 1 - usualLevel * tolerance.maxDampening : 1;
-  const relativeToUsual = usualFactor > 0
-    ? (doseResponse(doseRatio, doseResponseFor(med)) * curFactor) / usualFactor
-    : 1;
+  const doseEffect = doseResponse(doseRatio, doseResponseFor(med)) * curFactor;
+
+  // Drug still on board from earlier doses. A dose taken while the last one
+  // is still working lands on top of it -- the single biggest short-term
+  // factor after the dose itself, and until now modeled only *within* one
+  // effects session, so a dose logged a couple of hours after another (or
+  // during a separate session entirely) was treated as landing on nothing.
+  // Each prior dose contributes its own curve's value at this moment,
+  // scaled by its size, and dampened by the same tolerance as the new one.
+  const logs = await getArr(pkey("logs"));
+  const windowMin = profile.duration_min * 1.25;
+  let residual = 0;
+  for (const l of logs) {
+    if (l.medication_id !== medication_id || !LOG_CONSUMING_STATUSES.includes(l.status)) continue;
+    const elapsed = (now - new Date(l.timestamp).getTime()) / 60000;
+    if (!(elapsed > 0) || elapsed >= windowMin) continue;
+    const amt = Number(l.dose_taken);
+    const priorRatio = refDose > 0 && isFinite(amt) && amt > 0 ? Math.min(10, Math.max(0.1, amt / refDose)) : 1;
+    residual += (intensityAt(elapsed, profile) / 100) * doseResponse(priorRatio, doseResponseFor(med));
+  }
+  residual = Math.min(3, residual) * curFactor;
+
+  const relativeToUsual = usualFactor > 0 ? (doseEffect + residual) / usualFactor : 1;
 
   return {
     suggested: modeledEffectiveness(relativeToUsual),
@@ -826,6 +846,12 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null } =
     intensityScale: profile.intensity_scale,
     tolerance: profile.tolerance || null,
     calibrated,
+    // The pieces behind the headline, so the UI can show what moved it.
+    factors: {
+      dose: Math.round((usualFactor > 0 ? doseEffect / usualFactor : 1) * 100) / 100,
+      residual: Math.round((usualFactor > 0 ? residual / usualFactor : 0) * 100) / 100,
+      toleranceDampening: Math.round((1 - curFactor) * 100) / 100,
+    },
   };
 }
 
