@@ -10,11 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { getMedication, deleteMedication, adjustInventory, getLogs, getCheckins, getSettings, getKnowledge } from "@/lib/api";
+import { getMedication, deleteMedication, adjustInventory, getLogs, getCheckins, getSettings, getKnowledge, getMedicationTolerance } from "@/lib/api";
 import { predictRunOut } from "@/lib/predictor";
 import { analyzeMedication, SAFETY_COPY } from "@/lib/behavior";
+import { ToleranceNote } from "@/components/ActiveEffects";
 import { doseLabel, FREQUENCY_LABELS, CATEGORY_LABELS, fmtTime12, fmtDate, riskTone, depTone, WEEKDAY_LABELS, relativeTime } from "@/lib/format";
-import { Pencil, Trash2, Clock, Package, Pill, TrendingDown, Minus, Plus, ClipboardList, ChevronRight, RefreshCw, Share2, ShieldAlert, History, Check, X, SkipForward, MinusCircle } from "lucide-react";
+import { Pencil, Trash2, Clock, Package, Pill, TrendingDown, Minus, Plus, ClipboardList, ChevronRight, RefreshCw, Share2, ShieldAlert, History, Check, X, SkipForward, MinusCircle, Activity } from "lucide-react";
 
 export default function MedicationDetail() {
   const { id } = useParams();
@@ -27,6 +28,7 @@ export default function MedicationDetail() {
   const { data: checkins = [] } = useQuery({ queryKey: ["checkins"], queryFn: () => getCheckins({ limit: 500 }) });
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const { data: catalog = [] } = useQuery({ queryKey: ["knowledge", "all"], queryFn: () => getKnowledge() });
+  const { data: tolerance } = useQuery({ queryKey: ["medicationTolerance", id], queryFn: () => getMedicationTolerance(id), enabled: !!id, refetchInterval: 60000, staleTime: 0 });
 
   const prediction = useMemo(
     () => (med?.inventory ? predictRunOut({ med, logs, taper: med.active_taper, settings: settings || {} }) : null),
@@ -126,6 +128,15 @@ export default function MedicationDetail() {
             {prediction && !prediction.run_out_date && med.is_prn && (
               <p className="text-xs text-muted-foreground text-center mt-2">As-needed — log doses to build a refill projection.</p>
             )}
+          </div>
+        )}
+
+        {/* Tolerance — live, from this medication's own recent dose history (see
+            toleranceEngine.js); shown even without an active effects session. */}
+        {tolerance && (
+          <div className="card-soft p-4" data-testid="medication-tolerance-card">
+            <div className="flex items-center gap-2 mb-2"><Activity className="h-4 w-4 text-primary" /><p className="font-semibold">Tolerance</p></div>
+            <ToleranceNote tolerance={tolerance} />
           </div>
         )}
 

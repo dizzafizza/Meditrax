@@ -93,8 +93,19 @@ export function personalizedProfile(med, model = null, dose = null, tolerance = 
     learned: !!model && (model.samples || 0) > 0,
     samples: model?.samples || 0,
     confidence: modelConfidence(model),
-    ...(tolerance?.applicable ? { tolerance: { level: tolerance.level, faded: tolerance.faded, daysSinceLast: tolerance.daysSinceLast } } : {}),
+    ...(tolerance?.applicable ? { tolerance: { level: tolerance.level, faded: tolerance.faded, daysSinceLast: tolerance.daysSinceLast, recentPeakLevel: tolerance.recentPeakLevel } } : {}),
   };
+}
+
+// A 1-10 starting point for the user's own effectiveness rating (QuickLogSheet),
+// derived purely from this dose's modeled intensity_scale -- i.e. from the
+// same dose-ratio and tolerance adjustments the curve itself uses, nothing
+// else. 7 (the app's long-standing fixed default) maps back exactly when
+// intensity_scale is untouched (1), so a medication with no model/tolerance
+// history behaves exactly as before. This is a *suggested* value, not a
+// replacement for the user's own report -- see QuickLogSheet.jsx.
+export function modeledEffectiveness(intensityScale) {
+  return clamp(Math.round(7 * (isFinite(intensityScale) ? intensityScale : 1)), 1, 10);
 }
 
 // ---- curve & phases ----

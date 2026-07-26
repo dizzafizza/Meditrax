@@ -3,6 +3,74 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Tolerance meter, and a smarter effectiveness-rating default
+
+### Added
+- **Tolerance now has an actual visual meter, not just prose.** The effects
+  tracker's session detail shows a thin percentage bar (the app's existing
+  0-100% idiom — same pattern as the intensity bar on the home-screen card),
+  colored amber and with a marker at the recent peak level when tolerance has
+  faded since a gap, so "it used to be this high, now it's back down to here"
+  is visible at a glance instead of only in a sentence. The same meter is now
+  also shown on `MedicationDetail` as its own "Tolerance" card, persistent
+  and live even without an active effects session (new `getMedicationTolerance`
+  data-layer function) — previously tolerance was only visible mid-session.
+- **The effectiveness slider in QuickLogSheet now suggests a starting point
+  computed from tolerance and dose amount, instead of always defaulting to a
+  fixed 7/10.** New `modeledEffectiveness(intensity_scale)` (effectsEngine.js)
+  maps the same intensity_scale the curve itself uses — dose-ratio and
+  tolerance dampening both included — onto a 1-10 scale, exactly reproducing
+  7 when neither factor is in play (so a medication with no history behaves
+  identically to before). The suggestion recomputes live as the dose amount
+  field changes, and is clearly captioned ("Starting point from your recent
+  usage and dose — adjust to how it actually felt") until the user actually
+  touches the slider, at which point it's entirely theirs.
+  - **Deliberately does not overwrite or replace the user's own rating.**
+    `behavior.js`'s `toleranceSignal` already infers tolerance indirectly from
+    a *declining trend* in self-reported effectiveness over time; if the
+    stored rating became fully computed from the same tolerance model, that
+    signal would just be regressing the model against itself. The suggestion
+    is a pre-fill only — what gets saved is whatever the user leaves on the
+    slider, so the self-report stays genuine, independent evidence.
+
+### Fixed
+- **The effectiveness suggestion (and, less visibly, the tolerance meter)
+  could silently show a stale, pre-history value after logging several doses
+  back to back.** Two compounding bugs, both in query/data freshness rather
+  than the tolerance math itself:
+  1. `QuickLogSheet`'s and `Today.jsx`'s dose-logging invalidation lists
+     didn't include the new `effectivenessSuggestion`/`medicationTolerance`
+     query keys at all, so neither ever refreshed after a log was saved.
+  2. Even after adding that, the suggestion could still land on a stale
+     value: opening, saving, and reopening the sheet for the same
+     medication+dose within seconds re-enables and disables the identical
+     query key on every cycle, and the resulting overlapping lookups could
+     resolve **out of order** — an earlier, lower-tolerance computation
+     finishing *after* a later, more accurate one and silently overwriting
+     it. Replaced the react-query-based lookup with a plain effect guarded by
+     a monotonically increasing request id, so only the most recently
+     *started* request's result is ever applied, regardless of resolution
+     order.
+  Reproduced with a Playwright script that logs five backdated doses in
+  quick succession and checks the suggested rating right after: showed a
+  flat 7/10 (no dampening at all) before the fix, 4/10 (correctly reflecting
+  ~61% modeled tolerance) after.
+
+### Verified
+- New tests for `modeledEffectiveness` (identity at intensity_scale=1,
+  monotonic in both directions, clamped to 1-10, non-finite input falls back
+  to neutral) and for `getMedicationTolerance`/`estimateDoseEffectiveness`
+  wired into real logged sessions (dampens with history, unaffected for
+  non-recreational categories, a bigger dose suggests higher once a
+  reference dose is learned). Full suite: 287 tests passing.
+- Browser-verified against the production build: the tolerance meter renders
+  with the correct bar width and peak marker in the session detail and on
+  MedicationDetail without an active session; the effectiveness slider
+  suggests a dampened value after building tolerance, the suggestion caption
+  disappears the instant the slider is manually touched, and — the specific
+  regression this round caught — the suggestion is no longer stuck on the
+  very first (zero-tolerance) computation after several rapid dose logs.
+
 ## 2026-07-26 — Usage-based tolerance modeling in the effects tracker
 
 ### Added

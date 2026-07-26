@@ -35,7 +35,7 @@ export default function Today() {
   const interactionsFor = (id, name, category, generic_name) => interactionsWith({ id, name, category, generic_name }, activeSubstances);
 
   const invalidate = () => {
-    ["today", "analytics", "inventory", "logs", "medications", "medication", "activeSubstances", "interactions"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    ["today", "analytics", "inventory", "logs", "medications", "medication", "activeSubstances", "interactions", "effectivenessSuggestion", "medicationTolerance"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     scheduleAllReminders().catch(() => {}); // logged doses shouldn't still notify
   };
 

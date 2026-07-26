@@ -362,7 +362,7 @@ function SessionDetail({ session, now }) {
   // not just the effectSessions cache.
   const invalidateDoseChange = () => {
     invalidate();
-    ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions", "effectivenessSuggestion", "medicationTolerance"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
   // "Undo" on the toast reopens the session — reverses both the completion
   // and (if nothing newer has touched the model since) the training it
@@ -711,30 +711,49 @@ function SessionDetail({ session, now }) {
 // RedoseSafetyBox -- when tolerance looks like it's faded since a gap,
 // because that's the one that matters for safety (a usual dose can hit much
 // harder than expected).
-function ToleranceNote({ tolerance }) {
+// A thin percentage bar -- the app's existing 0-100% idiom (same pattern as
+// the intensity bar on the home-screen card) -- plus a short caption. Only
+// rendered once there's something worth showing (meaningful tolerance, or a
+// faded one) so a first-time/rarely-used medication's session stays quiet.
+// When tolerance has faded, a marker at the recent peak level shows "it used
+// to be this high, now it's back down to here" visually, not just in prose.
+export function ToleranceNote({ tolerance }) {
   if (!tolerance) return null;
-  if (tolerance.faded) {
-    const days = Math.round(tolerance.daysSinceLast);
-    return (
-      <div className="mt-2 rounded-xl border border-[hsl(var(--warning-border))] bg-[hsl(var(--warning-surface))] p-2.5" data-testid="tolerance-faded-note">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--warning))]" />
-          <p className="text-[11px] text-muted-foreground leading-snug">
-            <span className="font-semibold text-[hsl(var(--warning))]">Tolerance may have faded — </span>
-            it's been {days} day{days === 1 ? "" : "s"} since your last dose. If you'd built up tolerance, the usual amount could hit stronger than you're used to — consider starting lower.
-          </p>
-        </div>
+  const { level, faded, recentPeakLevel, daysSinceLast } = tolerance;
+  if (!faded && level < 0.15) return null;
+  const pct = Math.round(level * 100);
+  const peakPct = faded && recentPeakLevel != null ? Math.round(recentPeakLevel * 100) : null;
+
+  return (
+    <div className="mt-2" data-testid="tolerance-meter">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>Tolerance{faded ? " (faded)" : ""}</span>
+        <span className={faded ? "font-medium text-[hsl(var(--warning))]" : ""}>{pct}%</span>
       </div>
-    );
-  }
-  if (tolerance.level >= 0.15) {
-    return (
-      <p className="mt-2 text-[11px] text-muted-foreground" data-testid="tolerance-note">
-        Recent use may be dampening this curve (~{Math.round(tolerance.level * 100)}% modeled tolerance).
-      </p>
-    );
-  }
-  return null;
+      <div className="relative mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ${faded ? "bg-[hsl(var(--warning))]" : "bg-primary"}`}
+          style={{ width: `${pct}%` }}
+        />
+        {peakPct != null && peakPct > pct && (
+          <div className="absolute inset-y-0 w-0.5 bg-muted-foreground/60" style={{ left: `${peakPct}%` }} title={`Recent peak tolerance: ~${peakPct}%`} />
+        )}
+      </div>
+      {faded ? (
+        <div className="mt-2 rounded-xl border border-[hsl(var(--warning-border))] bg-[hsl(var(--warning-surface))] p-2.5" data-testid="tolerance-faded-note">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--warning))]" />
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              <span className="font-semibold text-[hsl(var(--warning))]">Tolerance may have faded — </span>
+              it's been {Math.round(daysSinceLast)} day{Math.round(daysSinceLast) === 1 ? "" : "s"} since your last dose. If you'd built up tolerance, the usual amount could hit stronger than you're used to — consider starting lower.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground" data-testid="tolerance-note">Recent use may be dampening this curve.</p>
+      )}
+    </div>
+  );
 }
 
 function RedoseSafetyBox({ warnings, unit }) {
