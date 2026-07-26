@@ -4,7 +4,8 @@
 // level rendering oddly in the UI) rather than failing loudly.
 
 import { CATALOG_SEED } from "../catalogSeed";
-import { CATEGORY_PK } from "../effectsEngine";
+import { CATEGORY_PK, SUBSTANCE_PK, substancePkFor } from "../effectsEngine";
+import { SUBSTANCE_TOLERANCE } from "../toleranceEngine";
 import { CATEGORY_LABELS } from "../format";
 
 const RISK_LEVELS = ["minimal", "low", "moderate", "high"];
@@ -91,5 +92,33 @@ describe("CATALOG_SEED integrity", () => {
         expect(CATEGORY_PK).toHaveProperty(d.category);
       }
     });
+  });
+});
+
+// The per-substance pharmacology tables key off a medication's name, which
+// for anything added from the knowledge base is the catalog entry's name.
+// A rename or typo on either side would silently drop the substance back to
+// its (materially less accurate) category default, with nothing failing --
+// exactly the kind of silent regression these tests exist to catch.
+describe("per-substance pharmacology tables line up with the catalog", () => {
+  const byName = new Map(CATALOG_SEED.map((d) => [d.name.trim().toLowerCase(), d]));
+
+  test("every SUBSTANCE_PK key names a real catalog entry", () => {
+    for (const key of Object.keys(SUBSTANCE_PK)) {
+      expect(byName.has(key)).toBe(true);
+    }
+  });
+
+  test("every SUBSTANCE_TOLERANCE key names a real catalog entry", () => {
+    for (const key of Object.keys(SUBSTANCE_TOLERANCE)) {
+      expect(byName.has(key)).toBe(true);
+    }
+  });
+
+  test("a catalog entry with its own PK profile actually resolves to it", () => {
+    for (const key of Object.keys(SUBSTANCE_PK)) {
+      const entry = byName.get(key);
+      expect(substancePkFor({ name: entry.name, generic_name: entry.generic_name })).toBe(SUBSTANCE_PK[key]);
+    }
   });
 });

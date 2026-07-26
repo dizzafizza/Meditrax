@@ -14,9 +14,113 @@ jest.mock("localforage", () => {
 import {
   defaultPkProfile, personalizedProfile, intensityAt, phaseAt, curveSeries,
   observationsFromSession, updateModel, modelConfidence, fmtMins, modeledEffectiveness,
-  CATEGORY_PK, FORM_SPEED, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
+  CATEGORY_PK, FORM_SPEED, SUBSTANCE_PK, substancePkFor,
+  sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
 } from "../effectsEngine";
 import * as db from "../localdb";
+
+describe("per-substance PK overrides", () => {
+  test("every entry is internally ordered and survives the engine's clamps intact", () => {
+    Object.entries(SUBSTANCE_PK).forEach(([name, s]) => {
+      expect(s.onset).toBeGreaterThan(0);
+      expect(s.onset).toBeLessThan(s.peak);
+      expect(s.peak).toBeLessThan(s.duration);
+      expect(FORM_SPEED[s.form]).toBeDefined(); // reference route must be a real form
+      // Fed back through the engine at its own reference route, an entry
+      // should come out as exactly the numbers it declares -- if a clamp is
+      // silently rewriting one, the table is lying about what it models.
+      const p = defaultPkProfile({ name, form: s.form });
+      expect(p).toEqual({ onset_min: s.onset, peak_min: s.peak, duration_min: s.duration });
+    });
+  });
+
+  test("resolves by name, generic_name and brand/street alias", () => {
+    expect(substancePkFor({ name: "Kratom" })).toBe(SUBSTANCE_PK.kratom);
+    expect(substancePkFor({ name: "Something Custom", generic_name: "buprenorphine" })).toBe(SUBSTANCE_PK.buprenorphine);
+    expect(substancePkFor({ name: "Suboxone" })).toBe(SUBSTANCE_PK.buprenorphine);
+    expect(substancePkFor({ name: "  vYvAnSe " })).toBe(SUBSTANCE_PK.lisdexamfetamine);
+    expect(substancePkFor({ name: "Totally Unknown Drug" })).toBeNull();
+    expect(substancePkFor({})).toBeNull();
+  });
+
+  test("a substance with no entry still falls back to its category, unchanged", () => {
+    const viaCategory = defaultPkProfile({ name: "Totally Unknown Drug", category: "opioid", form: "tablet" });
+    expect(viaCategory).toEqual(defaultPkProfile({ category: "opioid", form: "tablet" }));
+  });
+
+  test("buprenorphine's effects far outlast the generic oral-opioid bucket", () => {
+    const bupe = defaultPkProfile({ name: "Buprenorphine", category: "opioid", form: "tablet" });
+    const generic = defaultPkProfile({ category: "opioid", form: "tablet" });
+    expect(bupe.duration_min).toBeGreaterThan(generic.duration_min * 4);
+    expect(bupe.duration_min).toBe(1440); // ~24 h, vs the bucket's 4.5
+  });
+
+  test("LSD runs roughly twice as long as psilocybin, which one bucket could not express", () => {
+    const lsd = defaultPkProfile({ name: "LSD", category: "psychedelic", form: "other" });
+    const shrooms = defaultPkProfile({ name: "Psilocybin mushrooms", category: "psychedelic", form: "other" });
+    expect(lsd.duration_min).toBeGreaterThan(shrooms.duration_min * 1.5);
+    // The old shared bucket over-ran psilocybin badly.
+    expect(shrooms.duration_min).toBeLessThan(CATEGORY_PK.psychedelic.duration);
+  });
+
+  test("nicotine is over in under an hour, not the six its category implies", () => {
+    const nic = defaultPkProfile({ name: "Nicotine", category: "other", form: "smoked/vaporized" });
+    expect(nic.onset_min).toBeLessThanOrEqual(5);
+    expect(nic.duration_min).toBeLessThan(90);
+    expect(nic.duration_min).toBeLessThan(CATEGORY_PK.other.duration / 3);
+  });
+
+  test("kratom absorbs far faster than a typical oral opioid", () => {
+    const kratom = defaultPkProfile({ name: "Kratom", category: "opioid", form: "other" });
+    expect(kratom.onset_min).toBeLessThan(CATEGORY_PK.opioid.onset / 2);
+    expect(kratom.duration_min).toBeGreaterThan(CATEGORY_PK.opioid.duration);
+  });
+
+  test("a route-specific profile is not sped up a second time by its own route", () => {
+    // Regression: the cannabis baseline was already measured for smoked
+    // material, but FORM_SPEED then applied the 0.15 smoked multiplier on top
+    // of it, collapsing an 8-minute onset to ~1. Reference-route handling
+    // means declaring the same route is now a no-op.
+    const smoked = defaultPkProfile({ name: "Cannabis (THC)", category: "cannabis", form: "smoked/vaporized" });
+    expect(smoked.onset_min).toBe(SUBSTANCE_PK["cannabis (thc)"].onset);
+    // A genuinely slower route still slows it down, and by a lot.
+    const edible = defaultPkProfile({ name: "Cannabis (THC)", category: "cannabis", form: "edible" });
+    expect(edible.onset_min).toBeGreaterThan(smoked.onset_min * 5);
+    expect(edible.duration_min).toBeGreaterThan(smoked.duration_min);
+  });
+
+  test("an unspecified form uses the substance's own reference route as-is", () => {
+    const noForm = defaultPkProfile({ name: "Kratom" });
+    expect(noForm.onset_min).toBe(SUBSTANCE_PK.kratom.onset);
+  });
+
+  test("a large route change shifts the curve without crushing the come-up", () => {
+    // Regression: onset scales linearly with route speed but the come-up only
+    // by its square root, so a big enough ratio (here nicotine's smoked
+    // baseline read through a transdermal patch, ~20x) used to drive onset
+    // past peak and leave the ordering clamp to flatten the come-up to its
+    // 5-minute floor -- a curve that spikes the moment it begins.
+    const patch = defaultPkProfile({ name: "Nicotine", category: "other", form: "patch" });
+    expect(patch.onset_min).toBeGreaterThan(SUBSTANCE_PK.nicotine.onset * 5); // route really is much slower
+    expect(patch.peak_min - patch.onset_min).toBeGreaterThan(5); // and the come-up survived
+    expect(patch.duration_min).toBeGreaterThan(patch.peak_min);
+  });
+
+  test("no category/form/substance combination can produce a degenerate curve", () => {
+    const names = [...Object.keys(SUBSTANCE_PK), "Totally Unknown Drug"];
+    for (const name of names) {
+      for (const category of Object.keys(CATEGORY_PK)) {
+        for (const form of [...Object.keys(FORM_SPEED), undefined]) {
+          const p = defaultPkProfile({ name, category, form });
+          expect(p.onset_min).toBeGreaterThanOrEqual(2);
+          expect(p.peak_min).toBeGreaterThan(p.onset_min);
+          expect(p.duration_min).toBeGreaterThan(p.peak_min);
+          expect(Number.isFinite(p.onset_min + p.peak_min + p.duration_min)).toBe(true);
+        }
+      }
+    }
+  });
+});
 
 describe("defaultPkProfile", () => {
   test("category and form shape the baseline, ordering always sane", () => {

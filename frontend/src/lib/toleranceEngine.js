@@ -55,9 +55,34 @@ export const TOLERANCE_PARAMS = {
   "muscle-relaxant": { formationDays: 7, decayDays: 14, maxDampening: 0.35 },
 };
 
+// Same "the category bucket is wrong for this specific substance" escape
+// hatch as effectsEngine.js's SUBSTANCE_PK, keyed the same way (lowercased
+// name/generic_name). Only for substances whose own tolerance behavior is
+// clearly mismatched to their category.
+export const SUBSTANCE_TOLERANCE = {
+  // Nicotine sits in the "other" category, which models no tolerance at all
+  // (correctly, for the chronic-condition medications that bucket otherwise
+  // holds) -- yet it's among the most tolerance-forming substances here, with
+  // acute tolerance measurable within a single day and overnight abstinence
+  // enough to restore a noticeable amount of it.
+  nicotine: { formationDays: 2, decayDays: 5, maxDampening: 0.5 },
+};
+
 const round2 = (x) => Math.round(x * 100) / 100;
 const round1 = (x) => Math.round(x * 10) / 10;
 const DAY_MS = 86400000;
+const normalizeName = (s) => String(s ?? "").trim().toLowerCase();
+
+// Tolerance constants for a medication: its own substance-specific entry if
+// it has one, otherwise its category's. Accepts either a medication object or
+// a bare category string.
+export function toleranceParamsFor(medOrCategory) {
+  if (typeof medOrCategory === "string" || medOrCategory == null) return TOLERANCE_PARAMS[medOrCategory] || null;
+  const med = medOrCategory;
+  const keys = [normalizeName(med.generic_name), normalizeName(med.name)].filter(Boolean);
+  for (const k of keys) if (SUBSTANCE_TOLERANCE[k]) return SUBSTANCE_TOLERANCE[k];
+  return TOLERANCE_PARAMS[med.category] || null;
+}
 
 // A decaying sum of one "impulse" per dose, each contributing
 // exp(-daysAgo/decayDays) at time `at`. This is the same mathematical shape
@@ -98,8 +123,10 @@ export function toleranceLevel(doseTimesMs, at, { formationDays, decayDays }) {
 //   - `faded`: true when tolerance was recently meaningful (>=0.35 as of the
 //     last dose) but has since decayed by >=0.2 during the gap since then --
 //     the "this may hit harder than your last few doses" signal.
-export function estimateTolerance(doseTimestamps, category, now = Date.now()) {
-  const params = TOLERANCE_PARAMS[category];
+// `medOrCategory` may be a medication object (so substance-specific
+// constants can apply) or a bare category string.
+export function estimateTolerance(doseTimestamps, medOrCategory, now = Date.now()) {
+  const params = toleranceParamsFor(medOrCategory);
   if (!params) return { applicable: false, level: 0, maxDampening: 0, daysSinceLast: null, faded: false, recentPeakLevel: 0 };
   const past = (doseTimestamps || [])
     .map((t) => new Date(t).getTime())

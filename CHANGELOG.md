@@ -3,6 +3,76 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Per-substance pharmacology, and two engine logic fixes
+
+Audit of the effects engine's accuracy against published pharmacology,
+prompted by kratom — whose absorption is far faster than the generic oral
+opioid bucket it shares. The audit found the bucket approach itself was the
+problem for a meaningful slice of the catalog, plus two latent logic faults.
+
+### Added
+- **Substances whose pharmacology is genuinely unlike their category now
+  carry their own timings** (`SUBSTANCE_PK` in effectsEngine.js), taking
+  precedence over `CATEGORY_PK`, which stays as the prior for substances
+  there's no specific data on. Keyed by name/generic_name (plus a small
+  brand/street alias list), so existing medications pick their profile up
+  with no migration or catalog re-seed. 21 entries; the ones the category
+  was worst for:
+  - **Buprenorphine** — the generic opioid bucket said 4.5 h. Its very slow
+    mu-receptor dissociation means effects long outlast plasma levels;
+    now modeled at ~24 h. This was the single largest error in the engine.
+  - **Nicotine** — sat in "other" at 6 h; effects are over in well under an
+    hour even though plasma nicotine takes hours to clear. Now 45 min.
+  - **Psilocybin vs LSD** — shared one 8 h psychedelic bucket, but LSD runs
+    roughly twice as long as psilocybin (~8.2 h vs ~4.9 h in head-to-head
+    trials). Split into 540 min and 300 min.
+  - **Kratom** — onset 8 min rather than the bucket's 25, duration 5.5 h.
+    Its effects are also famously dose-dependent (stimulant-leaning at low
+    doses, opioid-like and sedating at high); the timing is similar across
+    that range, but the *character* change is not something a single
+    intensity curve can express, so it's documented rather than faked.
+  - **Modafinil** (7 h → 11 h), **cyclobenzaprine** (5 h → 15 h, ~18 h
+    half-life), **clonazepam** (6 h → 12 h), **lisdexamfetamine** (a prodrug,
+    with a deliberately slow 90 min onset), **methamphetamine**, **caffeine**,
+    **tramadol**, and others.
+- **Nicotine now has modeled tolerance** (`SUBSTANCE_TOLERANCE`). Its "other"
+  category correctly models none — that bucket otherwise holds
+  chronic-condition medications — but nicotine is among the most
+  tolerance-forming substances in the catalog, and was getting nothing.
+- Tests assert every override round-trips through the engine unchanged at its
+  own reference route (so no entry can silently claim numbers a clamp is
+  rewriting), that no category × form × substance combination can produce a
+  degenerate curve, and that every table key still names a real catalog entry
+  — a rename on either side would otherwise silently drop a substance back to
+  its less accurate category default with nothing failing.
+
+### Fixed
+- **A route-specific baseline was being sped up twice.** The cannabis
+  baseline was already measured for smoked material, but `FORM_SPEED` then
+  applied the 0.15 smoked multiplier on top, collapsing an 8-minute onset to
+  about 1. Each substance profile now records the route its numbers actually
+  describe, and form is applied *relative* to it — so declaring the same
+  route is a no-op, while a genuinely slower one (an edible) still slows the
+  curve, and by the right amount.
+- **A large route change could crush the come-up.** Onset scales linearly
+  with route speed but the come-up only by its square root, so past a certain
+  ratio onset overtook peak and the ordering clamp flattened the come-up to
+  its 5-minute floor — a curve that spikes the instant it begins. Peak is now
+  derived as onset plus a scaled come-up, which keeps the curve's shape and
+  keeps `onset < peak` true by construction for any ratio.
+- **A long curve made the combined chart's x-axis unreadable.** Nothing in
+  the catalog previously ran long enough to stress it; buprenorphine's ~30 h
+  window emitted 15 ticks of full clock times that collided into a smear.
+  Tick spacing now scales past the old 2-hour maximum (to 6- and 12-hour
+  steps), leaving short and medium sessions exactly as they were.
+
+### Verified
+- Full suite: 308 tests passing (18 new). Browser-verified against the
+  production build: kratom charts onset ~8 min / peak ~75 min / end ~5.5 h,
+  buprenorphine charts onset ~30 min / peak ~2 h / end the *following day*,
+  and both the combined and detail charts render legible axes across a 30 h
+  window.
+
 ## 2026-07-26 — Confidence-gated calibration, and a first-time explainer
 
 ### Added
