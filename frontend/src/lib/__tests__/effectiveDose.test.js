@@ -157,6 +157,63 @@ describe("taper pause / resume", () => {
   });
 });
 
+describe("adjustTaper (backs the AI's adjust_taper_plan tool)", () => {
+  // Until now the only way to change a taper's core parameters (pace,
+  // target, method) was updateTaper, which only ever touched
+  // is_active/is_paused/notes -- there was no "reshape the remaining plan"
+  // operation at all, for the UI or otherwise.
+  test("reshapes the remaining schedule from today's actual dose, keeping the same taper id", async () => {
+    const med = await addMed({ name: "AdjustMed" });
+    const taper = await db.createTaper({ medication_id: med.id, initial_dose: 100, final_dose: 0, unit: "mg", method: "linear", total_days: 28, step_interval_days: 7, start_date: daysAgo(14) });
+    const before = await db.getTaper(taper.id);
+    expect(before.current_dose).toBe(50); // day 14 of 28, linear -> halfway
+    const updated = await db.adjustTaper(taper.id, { total_days: 42 });
+    expect(updated.id).toBe(taper.id); // adjusted in place, not a new plan
+    expect(updated.initial_dose).toBe(50); // today's actual dose is the new starting point
+    expect(updated.start_date).toBe(today());
+    expect(updated.total_days).toBe(42);
+    expect(updated.schedule.steps[0].dose).toBe(50);
+    expect(updated.schedule.steps[updated.schedule.steps.length - 1].dose).toBe(0); // final_dose unchanged
+  });
+
+  test("slowing down produces a shallower per-step reduction than the original pace", async () => {
+    const med = await addMed({ name: "SlowMed" });
+    const taper = await db.createTaper({ medication_id: med.id, initial_dose: 100, final_dose: 0, unit: "mg", method: "linear", total_days: 28, step_interval_days: 7, start_date: daysAgo(7) });
+    const fast = (await db.getTaper(taper.id)).current_dose;
+    const slowed = await db.adjustTaper(taper.id, { total_days: 70 }); // stretch the remainder way out
+    const firstDrop = slowed.schedule.steps[0].dose - slowed.schedule.steps[1].dose;
+    const originalDrop = 100 / 4; // 28 days / 7-day steps = 4 steps, linear
+    expect(firstDrop).toBeLessThan(originalDrop);
+    expect(fast).toBeGreaterThan(0); // sanity: taper was actually mid-course
+  });
+
+  test("changing final_dose retargets the plan's endpoint", async () => {
+    const med = await addMed({ name: "RetargetMed" });
+    const taper = await db.createTaper({ medication_id: med.id, initial_dose: 100, final_dose: 0, unit: "mg", method: "linear", total_days: 28, step_interval_days: 7, start_date: daysAgo(7) });
+    const updated = await db.adjustTaper(taper.id, { final_dose: 25 });
+    expect(updated.final_dose).toBe(25);
+    expect(updated.schedule.steps[updated.schedule.steps.length - 1].dose).toBe(25);
+  });
+
+  test("un-pauses a paused taper, since the adjustment reshapes it from today", async () => {
+    const med = await addMed({ name: "UnpauseMed" });
+    const taper = await db.createTaper({ medication_id: med.id, initial_dose: 100, final_dose: 0, unit: "mg", method: "linear", total_days: 28, step_interval_days: 7, start_date: daysAgo(7) });
+    await db.updateTaper(taper.id, { is_paused: true });
+    const updated = await db.adjustTaper(taper.id, { total_days: 21 });
+    expect(updated.is_paused).toBe(false);
+    expect(updated.paused_on).toBe(null);
+  });
+
+  test("rejects a final dose above the current dose, and refuses to adjust a finished/inactive taper", async () => {
+    const med = await addMed({ name: "InvalidAdjustMed" });
+    const taper = await db.createTaper({ medication_id: med.id, initial_dose: 100, final_dose: 0, unit: "mg", method: "linear", total_days: 28, step_interval_days: 7, start_date: daysAgo(7) });
+    await expect(db.adjustTaper(taper.id, { final_dose: 999 })).rejects.toThrow(/final dose/i);
+    await db.updateTaper(taper.id, { is_active: false });
+    await expect(db.adjustTaper(taper.id, { total_days: 10 })).rejects.toThrow(/active/i);
+    await expect(db.adjustTaper("missing-id", {})).rejects.toThrow(/not found/i);
+  });
+});
+
 describe("logDefaultsForMed", () => {
   test("returns the taper-aware default for today", async () => {
     const med = await addMed({ name: "DefaultsMed" });

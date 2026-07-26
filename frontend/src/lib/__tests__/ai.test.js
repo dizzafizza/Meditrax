@@ -2,7 +2,7 @@
 // credits" bug: OpenRouter pre-authorizes a request against max_tokens (or,
 // if omitted, the model's maximum possible output) — so every request that
 // goes out must carry an explicit, bounded max_tokens.
-import { runAssistantLoop, mapOpenRouterError, resolveModelForTask, TASK_TIER_DEFAULTS } from "../ai";
+import { runAssistantLoop, mapOpenRouterError, resolveModelForTask, TASK_TIER_DEFAULTS, completeText, buildSystemPrompt, sessionId } from "../ai";
 
 function sseChunks(lines) {
   const body = lines.map((l) => `data: ${typeof l === "string" ? l : JSON.stringify(l)}\n\n`).join("") + "data: [DONE]\n\n";
@@ -107,5 +107,77 @@ describe("cost-tiered model routing", () => {
   test("per-tier override in aiConfig.modelTiers wins over the default", () => {
     const cfg = { ...CONFIG, modelTiers: { light: "custom/model" } };
     expect(resolveModelForTask(cfg, "light")).toBe("custom/model");
+  });
+});
+
+describe("web access", () => {
+  afterEach(() => { delete global.fetch; });
+
+  test("the 'web' plugin is only sent when the user's webAccess toggle is on", async () => {
+    global.fetch = mockStreamingFetch([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]);
+    await runAssistantLoop({ config: CONFIG, messages: [{ role: "user", content: "x" }], tools: [], executeTool: async () => ({}) });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).plugins).toBeUndefined();
+
+    global.fetch = mockStreamingFetch([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]);
+    await runAssistantLoop({ config: { ...CONFIG, webAccess: true }, messages: [{ role: "user", content: "x" }], tools: [], executeTool: async () => ({}) });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).plugins).toEqual([{ id: "web", max_results: 3 }]);
+  });
+
+  test("buildSystemPrompt only mentions web search when webAccess is passed", () => {
+    expect(buildSystemPrompt({ toolsEnabled: true, webAccess: false })).not.toMatch(/web search/i);
+    expect(buildSystemPrompt({ toolsEnabled: true, webAccess: true })).toMatch(/web search/i);
+  });
+});
+
+describe("completeText (plain-text completion, e.g. the periodic digest)", () => {
+  afterEach(() => { delete global.fetch; });
+
+  test("returns the model's raw text, non-streamed", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ model: "mock/model", choices: [{ message: { content: "Here is your summary." } }] }) });
+    const { text, model } = await completeText({ config: CONFIG, system: "sys", user: "user" });
+    expect(text).toBe("Here is your summary.");
+    expect(model).toBe("mock/model");
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.stream).toBeUndefined(); // non-streaming, unlike the chat loop
+    expect(body.max_tokens).toBeGreaterThan(0);
+  });
+
+  test("an empty completion is treated as a failure worth retrying, not a blank result", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: "" } }] }) });
+    await expect(completeText({ config: CONFIG, system: "sys", user: "user" })).rejects.toThrow(/empty/i);
+  });
+
+  test("requires an API key, same as the rest of the client", async () => {
+    await expect(completeText({ config: {}, system: "sys", user: "user" })).rejects.toThrow(/API key/);
+  });
+});
+
+describe("MAX_TOOL_ITERS headroom for chained tool calls", () => {
+  afterEach(() => { delete global.fetch; });
+
+  test("a model that keeps calling tools runs well past the old 5-iteration cap before stopping", async () => {
+    global.fetch = jest.fn().mockImplementation(() =>
+      Promise.resolve({ ok: true, status: 200, body: sseChunks([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c", function: { name: "noop", arguments: "{}" } }] }, finish_reason: "tool_calls" }] }]) })
+    );
+    await runAssistantLoop({
+      config: CONFIG, messages: [{ role: "user", content: "keep going" }],
+      tools: [{ type: "function", function: { name: "noop", parameters: { type: "object", properties: {} } } }],
+      executeTool: async () => ({ ok: true }),
+    });
+    expect(global.fetch.mock.calls.length).toBeGreaterThan(5);
+  });
+});
+
+describe("sessionId", () => {
+  test("persists the same id across calls, works without a global crypto (e.g. non-secure/test contexts)", () => {
+    localStorage.removeItem("meditrax-ai-session");
+    const realCrypto = global.crypto;
+    // eslint-disable-next-line no-global-assign
+    delete global.crypto;
+    const a = sessionId();
+    const b = sessionId();
+    expect(a).toBe(b);
+    expect(a).toBeTruthy();
+    global.crypto = realCrypto;
   });
 });

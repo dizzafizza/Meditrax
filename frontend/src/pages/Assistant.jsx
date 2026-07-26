@@ -4,17 +4,11 @@ import { Link } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
 import Markdown from "@/components/Markdown";
 import { getAiConfig, getChat, addChatMessage, clearChat, getProfile, getMedications, getToday } from "@/lib/api";
-import { runAssistantLoop, buildSystemPrompt, hasKey, resolveModel } from "@/lib/ai";
+import { runAssistantLoop, buildSystemPrompt, hasKey, resolveModel, sessionId } from "@/lib/ai";
 import { useAITools } from "@/context/AIToolsContext";
 import { useProfiles } from "@/context/ProfileContext";
 import { Sparkles, Send, Info, Trash2, Settings as SettingsIcon, Wrench, Check, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function sessionId() {
-  let s = localStorage.getItem("meditrax-ai-session");
-  if (!s) { s = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()); localStorage.setItem("meditrax-ai-session", s); }
-  return s;
-}
 
 const TOOL_LABELS = {
   set_theme: "Changing theme", switch_profile: "Switching profile", create_profile: "Creating profile",
@@ -26,6 +20,8 @@ const TOOL_LABELS = {
   log_mood_checkin: "Logging mood", get_mood_trends: "Reading mood trends",
   get_active_effects: "Checking active effects", get_medication_tolerance: "Checking tolerance",
   get_dose_effect_preview: "Previewing dose effect", add_redose: "Adding redose",
+  check_interactions: "Checking interactions", adjust_taper_plan: "Adjusting taper plan",
+  research_substance: "Researching substance",
 };
 
 export default function Assistant() {
@@ -76,6 +72,7 @@ export default function Assistant() {
         personality: config.personality,
         context: { profileName: prof?.name, medsSummary, todaySummary },
         toolsEnabled: agentMode,
+        webAccess: !!config.webAccess,
       });
       const apiMessages = [{ role: "system", content: system }, ...priorHistory, { role: "user", content: msg }];
 
