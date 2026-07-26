@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getPriorDoseTotalToday, getLogs, getMedications } from "@/lib/api";
+import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getPriorDoseTotalToday, getMedicationTolerance, getLogs, getMedications } from "@/lib/api";
 import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt } from "@/lib/effectsEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
@@ -278,6 +278,20 @@ function SessionDetail({ session, now }) {
     queryKey: ["medMaxDaily", session.medication_id],
     queryFn: () => getMedicationMaxDaily(session.medication_id),
   });
+  // Tolerance as it stands *now*. The session's own profile carries a
+  // tolerance snapshot too, but that one is frozen at the moment the session
+  // started and deliberately excludes the session's own dose -- correct for
+  // dampening this dose's curve, wrong for a meter labelled "Tolerance",
+  // which would then disagree with the identical meter in the log sheet and
+  // on the medication page (both of which read live). Same query key as those,
+  // so all three share one cache entry and can't drift apart.
+  const { data: liveTolerance } = useQuery({
+    queryKey: ["medicationTolerance", session.medication_id],
+    queryFn: () => getMedicationTolerance(session.medication_id),
+    staleTime: 0,
+    refetchInterval: 60000,
+  });
+
   // Anything of this medication already taken earlier today outside this
   // session, so a max-DAILY-dose check actually covers the day.
   const { data: priorToday = 0 } = useQuery({
@@ -508,7 +522,7 @@ function SessionDetail({ session, now }) {
       <div className="mt-2">
         <span className="inline-flex items-center gap-1 text-[11px] rounded-full bg-primary/12 text-primary px-2.5 py-1 font-medium"><Zap className="h-3 w-3" />{phase.key === "complete" ? "Gone" : `${phase.label} · ${intensity}% intensity`}</span>
       </div>
-      <ToleranceNote tolerance={p.tolerance} />
+      <ToleranceNote tolerance={liveTolerance} />
 
       {editing && (
         <div className="mt-3 rounded-xl border border-border p-3 animate-rise" data-testid="effect-edit-panel">
