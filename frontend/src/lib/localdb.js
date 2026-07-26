@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness, modelConfidence } from "./effectsEngine";
 import { estimateTolerance } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -61,6 +61,7 @@ const DEFAULT_SETTINGS = {
   quiet_hours: { enabled: false, start: "22:00", end: "07:00" },
   refill_threshold_days: 7,
   refill_lead_days: 3,
+  seen_dose_effect_intro: false,
 };
 
 async function ensureInit() {
@@ -751,24 +752,36 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null } =
   if (!med) return null;
   const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
   const tolerance = await toleranceForMedication(med);
-  // Dose-ratio scaling in personalizedProfile only kicks in with a learned
-  // ref_dose, which only exists once the effects tracker has actually been
-  // used and completed at least once -- so a medication logged for months on
-  // a fixed schedule (never "Track effects") would never reflect the dose
-  // amount in this preview at all. Fall back to the medication's own average
-  // historically logged amount as a reference dose for THIS preview only --
-  // the real effects-tracker curve/model is untouched, still trained
-  // exclusively from actual feedback.
-  let refModel = model;
-  if (!refModel?.ref_dose) {
+  // Onset/peak/duration come from timing self-reports (when did it kick in,
+  // when did it peak) -- EWMA-learned, and the very first observation is
+  // adopted outright with no smoothing at all (see updateModel), so a
+  // sample or two is genuinely noisy. Only trust those learned values over
+  // the researched category default once modelConfidence reaches "medium"
+  // (>=3 sessions); below that, this preview is more accurate using the
+  // population-typical curve than an under-sampled personal one.
+  const calibrated = !!model && ["medium", "high"].includes(modelConfidence(model));
+  const timingModel = calibrated ? model : null;
+  // ref_dose is a different kind of signal -- "how much did you take," a
+  // plain recorded number, not a fuzzy timing estimate -- so it's trusted
+  // starting from a single session, learned or (as a fallback) averaged
+  // from plain log history. Dose-ratio scaling in personalizedProfile only
+  // kicks in with a ref_dose, which only exists once the effects tracker has
+  // actually been used and completed at least once -- so a medication
+  // logged for months on a fixed schedule (never "Track effects") would
+  // never reflect the dose amount in this preview at all without this
+  // fallback. The real effects-tracker curve/model is untouched either way,
+  // still trained exclusively from actual feedback.
+  let refDose = model?.ref_dose;
+  if (!refDose) {
     const logs = await getArr(pkey("logs"));
     const amounts = logs
       .filter((l) => l.medication_id === medication_id && LOG_CONSUMING_STATUSES.includes(l.status) && isFinite(Number(l.dose_taken)) && Number(l.dose_taken) > 0)
       .map((l) => Number(l.dose_taken));
-    if (amounts.length) refModel = { ...(model || {}), ref_dose: amounts.reduce((a, b) => a + b, 0) / amounts.length };
+    if (amounts.length) refDose = amounts.reduce((a, b) => a + b, 0) / amounts.length;
   }
+  const refModel = timingModel || refDose ? { ...(timingModel || {}), ref_dose: refDose } : null;
   const profile = personalizedProfile(med, refModel, dose, tolerance);
-  return { suggested: modeledEffectiveness(profile.intensity_scale), intensityScale: profile.intensity_scale, tolerance: profile.tolerance || null };
+  return { suggested: modeledEffectiveness(profile.intensity_scale), intensityScale: profile.intensity_scale, tolerance: profile.tolerance || null, calibrated };
 }
 
 // Forget everything learned about a medication's timing and fall back to the

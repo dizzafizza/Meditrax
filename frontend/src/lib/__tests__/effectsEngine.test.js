@@ -607,6 +607,37 @@ describe("tolerance wired into real sessions (localdb)", () => {
     expect(biggerDose.suggested).toBeGreaterThan(afterFrequentUse.suggested);
   });
 
+  test("estimateDoseEffectiveness only trusts learned onset/peak/duration once modelConfidence reaches medium (>=3 sessions)", async () => {
+    const med = await db.createMedication({ name: "ConfidenceMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    // Train the model with a single wildly atypical session -- with only one
+    // sample, updateModel adopts it outright (no averaging), so this is
+    // exactly the kind of noisy single data point that shouldn't yet be
+    // trusted over the researched category default.
+    const s1 = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.updateEffectSession(s1.id, { started_at: new Date(Date.now() - 500 * 60000).toISOString() });
+    await db.addEffectEvent(s1.id, { kind: "onset" }); // ~500 min in -- absurdly slow onset for an opioid
+    await db.addEffectEvent(s1.id, { kind: "gone" });
+    expect((await db.getEffectModel(med.id)).samples).toBe(1);
+
+    const lowConfidence = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(lowConfidence.calibrated).toBe(false);
+    // ref_dose (10, matching this one session) is still trusted even at low
+    // confidence, so a same-size dose shouldn't show any dose-ratio scaling.
+    // Only tolerance (near-zero here) affects intensityScale.
+    expect(lowConfidence.intensityScale).toBeCloseTo(1, 1);
+
+    // Two more sessions with the same reported (atypical) onset push samples to 3 -> medium confidence.
+    for (let i = 0; i < 2; i++) {
+      const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+      await db.updateEffectSession(s.id, { started_at: new Date(Date.now() - 500 * 60000).toISOString() });
+      await db.addEffectEvent(s.id, { kind: "onset" });
+      await db.addEffectEvent(s.id, { kind: "gone" });
+    }
+    expect((await db.getEffectModel(med.id)).samples).toBe(3);
+    const highConfidence = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(highConfidence.calibrated).toBe(true);
+  });
+
   test("estimateDoseEffectiveness reflects dose amount for a medication that's never used the effects tracker (older/scheduled meds)", async () => {
     // A plain scheduled medication, logged the ordinary way for months --
     // is_prn is false and startEffectSession has never been called, so
