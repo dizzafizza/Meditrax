@@ -3,6 +3,22 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Sessions already running pick up the corrected scale
+
+### Fixed
+- **A session that was already in flight kept showing the old 40%-ceiling
+  curve.** Rescaling the curve against the user's own baseline only changed
+  what *new* sessions were given: `intensity_scale` is written onto a
+  session's profile when it starts and was then returned verbatim forever, so
+  a session running at the time of the change stayed on the old value until
+  it ended — hours of a curve that couldn't exceed 40% however the dose
+  actually felt. A running session's height and tolerance are now recomputed
+  on read, since both are just functions of the dose and current tolerance.
+  Its *timing* is still snapshotted and deliberately not re-derived — a curve
+  that shifted underneath you mid-session would be worse than useless.
+  As a side effect the tolerance shown against a running session now tracks
+  doses logged after it started, instead of reporting the moment it began.
+
 ## 2026-07-26 — The curve is scaled against your own usual, like everything else
 
 ### Fixed

@@ -1212,3 +1212,32 @@ describe("continuity with feedback collected before the PK/PD rewrite", () => {
     expect(intensityAt(next.profile.onset_min, next.profile)).toBeLessThan(20);
   });
 });
+
+describe("a session already in flight is not left on a stale intensity scale", () => {
+  const daysAgoIso2 = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
+  test("a running session's height and tolerance track reality; its timing stays snapshotted", async () => {
+    // A session begins with no history behind it, so nothing to dampen.
+    const med = await db.createMedication({ name: "InFlightMed", strength: 1, unit: "g", category: "opioid", form: "other", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 2 });
+    expect(s.profile.tolerance.level).toBe(0);
+    const snapshot = { onset: s.profile.onset_min, peak: s.profile.peak_min, duration: s.profile.duration_min };
+
+    // Then a month of daily use lands in the log -- the session is still
+    // running, and its stored profile still says "no tolerance".
+    for (let i = 30; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 2, timestamp: daysAgoIso2(i) });
+
+    const live = (await db.getActiveEffectSessions()).find((x) => x.id === s.id);
+    // Reading the session reflects where things actually stand now, rather
+    // than serving whatever was frozen in at the moment it started.
+    expect(live.profile.tolerance.level).toBeGreaterThan(0.5);
+    // Timing is deliberately *not* re-derived -- a curve that shifted
+    // underneath you mid-session would be worse than useless.
+    expect(live.profile.onset_min).toBe(snapshot.onset);
+    expect(live.profile.peak_min).toBe(snapshot.peak);
+    expect(live.profile.duration_min).toBe(snapshot.duration);
+    // And a usual dose still reads as a usual dose, not scaled down by
+    // tolerance measured against a drug-naive baseline.
+    expect(live.profile.intensity_scale).toBeCloseTo(1, 1);
+  });
+});
