@@ -3,6 +3,40 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — The AI assistant catches up to the effects tracker
+
+### Fixed
+- **`get_active_effects` (the assistant's view of a running effects session)
+  was reading a pre-redose, pre-tolerance-rebaseline version of the engine.**
+  It computed intensity from the *original* dose's curve and scaled it by a
+  raw `intensity_scale`, so a session with a redose on top reported the
+  superseded first dose's fading curve instead of the current one — and
+  phase was measured from session start rather than from the most recent
+  dose, so "coming up again" after a redose read as "wearing off" instead.
+  Neither matched what the Effects page itself shows. It now reuses the same
+  `sessionDoseStack` / `phaseAt` / `doseIntensityAt` the chart renders from
+  (via a new shared `describeActiveSession`), reports how many redoses are
+  stacked, and states tolerance in the same plain terms as the tolerance
+  meter rather than a bare number.
+
+### Added
+- **Two new read tools**, wired into the assistant's tool schema and system
+  prompt: `get_medication_tolerance` (a plain-language band, roughly how much
+  weaker a dose lands, and whether it looks faded after a gap) and
+  `get_dose_effect_preview` (previews a specific dose's percent-of-usual
+  before it's taken — exactly what the log sheet shows when entering that
+  dose). Both derive from the same functions the UI uses, so the assistant
+  can never disagree with what's on screen.
+- **Two new action tools**: `log_dose` takes an optional `track_effects` flag
+  that starts an effects-tracking session on the dose just logged (mirroring
+  the log sheet's toggle), and `add_redose` stacks a redose onto a
+  medication's running session, surfacing the same too-soon / over-max safety
+  warnings the Effects page's redose flow shows.
+- The system prompt now explicitly warns the model against restating a raw
+  tolerance level as if it were itself a percentage reduction in effect —
+  the exact misreading corrected everywhere else in this app in the change
+  above.
+
 ## 2026-07-26 — Say what "tolerance" actually means
 
 ### Changed

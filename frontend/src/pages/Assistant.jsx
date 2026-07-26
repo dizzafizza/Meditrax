@@ -22,6 +22,10 @@ const TOOL_LABELS = {
   update_medication: "Updating medication", delete_medication: "Deleting medication", log_dose: "Logging dose",
   create_taper_plan: "Building taper plan", get_today: "Checking today", get_inventory: "Checking inventory",
   get_analytics: "Reading analytics", navigate: "Opening page",
+  get_refill_prediction: "Predicting refills", get_behavior_analysis: "Reviewing usage patterns",
+  log_mood_checkin: "Logging mood", get_mood_trends: "Reading mood trends",
+  get_active_effects: "Checking active effects", get_medication_tolerance: "Checking tolerance",
+  get_dose_effect_preview: "Previewing dose effect", add_redose: "Adding redose",
 };
 
 export default function Assistant() {
