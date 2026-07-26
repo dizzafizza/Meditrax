@@ -9,7 +9,13 @@ jest.mock("localforage", () => {
   };
 });
 
-import { buildInsightsPayload, hashPayload } from "../aiInsights";
+jest.mock("../ai", () => {
+  const actual = jest.requireActual("../ai");
+  return { ...actual, completeJSON: jest.fn() };
+});
+
+import { buildInsightsPayload, hashPayload, generateChatSuggestions } from "../aiInsights";
+import { completeJSON } from "../ai";
 
 describe("hashPayload", () => {
   test("stable across key order", async () => {
@@ -44,5 +50,56 @@ describe("buildInsightsPayload", () => {
     expect(p.behavior[0].signals[0]).toEqual({ label: "x", detail: "d" }); // evidence stripped
     expect(p.meds).toHaveLength(1); // inactive excluded
     expect(JSON.stringify(p)).not.toMatch(/notes/i);
+  });
+});
+
+describe("generateChatSuggestions", () => {
+  const config = { apiKeys: { openrouter: "sk-test" } };
+
+  beforeEach(() => {
+    completeJSON.mockReset();
+    completeJSON.mockResolvedValue({ parsed: { suggestions: ["How's my kratom tolerance?", "Log Sertraline as taken", "Summarize my week", "Any interactions to watch?"] } });
+  });
+
+  test("returns up to 4 string suggestions from the model", async () => {
+    const result = await generateChatSuggestions({ config, context: { _case: "basic", medications: [{ name: "Kratom" }] } });
+    expect(result).toHaveLength(4);
+    expect(result[0]).toMatch(/tolerance/i);
+  });
+
+  test("filters out non-string entries and caps at 4", async () => {
+    completeJSON.mockResolvedValue({ parsed: { suggestions: ["a", 2, "b", "c", "d", "e"] } });
+    const result = await generateChatSuggestions({ config, context: { _case: "filters" } });
+    expect(result).toEqual(["a", "b", "c", "d"]);
+  });
+
+  test("a malformed response (no suggestions array) yields an empty list rather than throwing", async () => {
+    completeJSON.mockResolvedValue({ parsed: {} });
+    const result = await generateChatSuggestions({ config, context: { _case: "malformed" } });
+    expect(result).toEqual([]);
+  });
+
+  test("caches by context hash -- an unchanged context doesn't call the model again", async () => {
+    const context = { _case: "cache-hit", medications: [{ name: "Kratom" }] };
+    await generateChatSuggestions({ config, context });
+    completeJSON.mockClear();
+    const second = await generateChatSuggestions({ config, context });
+    expect(completeJSON).not.toHaveBeenCalled();
+    expect(second).toHaveLength(4);
+  });
+
+  test("a changed context regenerates", async () => {
+    await generateChatSuggestions({ config, context: { _case: "changed", medications: [] } });
+    completeJSON.mockClear();
+    await generateChatSuggestions({ config, context: { _case: "changed", medications: [{ name: "Oxy" }] } });
+    expect(completeJSON).toHaveBeenCalledTimes(1);
+  });
+
+  test("force bypasses the cache even for an unchanged context", async () => {
+    const context = { _case: "force", medications: [] };
+    await generateChatSuggestions({ config, context });
+    completeJSON.mockClear();
+    await generateChatSuggestions({ config, context, force: true });
+    expect(completeJSON).toHaveBeenCalledTimes(1);
   });
 });

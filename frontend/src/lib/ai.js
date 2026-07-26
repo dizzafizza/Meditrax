@@ -14,6 +14,30 @@ const OR_MODELS_URL = "https://openrouter.ai/api/v1/models";
 // in 1-3 turns long before it matters.
 const MAX_TOOL_ITERS = 10;
 
+// A UI-only "tool" the model can call to ask the user something with a
+// small set of tappable quick replies instead of free text. Unlike every
+// other tool it isn't executed against app data at all: runAssistantLoop
+// intercepts it by name below and ends the turn right there, since there's
+// nothing to feed back yet -- the "result" is whatever the user taps next,
+// which arrives as an ordinary new message on the *next* call to this
+// function, not within this one.
+export const ASK_USER_TOOL = "ask_user";
+export const ASK_USER_TOOL_SCHEMA = {
+  type: "function",
+  function: {
+    name: ASK_USER_TOOL,
+    description: "Ask the user a question with a small set of quick-reply options they can tap instead of typing. Use this instead of asking in plain text whenever the question has a short, enumerable set of likely answers — confirming which medication or dose, a status (taken/skipped/partial), yes/no, picking among a few choices. Ends your turn; the user's tap (or their own typed answer) comes back as their next message. Don't use it for open-ended questions.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The question to show" },
+        options: { type: "array", items: { type: "string" }, description: "2-6 short tappable replies" },
+      },
+      required: ["question", "options"],
+    },
+  },
+};
+
 // The single chat thread the assistant reads/writes to, on this device --
 // shared by the interactive Assistant page and the background digest (see
 // digest.js) so a proactively-generated digest shows up as a message
@@ -260,7 +284,9 @@ export async function runAssistantLoop({ config, messages, tools, executeTool, o
 
     if (!toolCalls.length) break;
 
+    const askCall = toolCalls.find((tc) => tc.function.name === ASK_USER_TOOL);
     for (const tc of toolCalls) {
+      if (tc === askCall) continue; // handled after the loop, not run as a data tool
       let args = {};
       try { args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; } catch (e) { args = {}; }
       onEvent?.({ type: "tool_start", name: tc.function.name, args });
@@ -269,6 +295,22 @@ export async function runAssistantLoop({ config, messages, tools, executeTool, o
       catch (e) { result = { error: String(e?.message || e) }; }
       onEvent?.({ type: "tool_end", name: tc.function.name, result });
       working.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result ?? { ok: true }) });
+    }
+
+    if (askCall) {
+      let args = {};
+      try { args = askCall.function.arguments ? JSON.parse(askCall.function.arguments) : {}; } catch (e) { args = {}; }
+      // Every tool_call on an assistant message needs a matching tool
+      // result before the next assistant turn, per the API's own contract
+      // -- there's no real result yet, so this is a placeholder that only
+      // matters for a *later*, separate runAssistantLoop call whose
+      // priorHistory includes this exchange.
+      working.push({ role: "tool", tool_call_id: askCall.id, content: JSON.stringify({ presented: true }) });
+      const question = String(args.question || "").trim();
+      const options = Array.isArray(args.options) ? args.options.filter((o) => typeof o === "string" && o.trim()).slice(0, 6) : [];
+      onEvent?.({ type: "ask_user", question, options });
+      const combined = [finalContent, question].filter(Boolean).join("\n\n");
+      return { messages: working, content: combined, quickReplies: options };
     }
   }
 
@@ -305,6 +347,7 @@ export function buildSystemPrompt({ personality = {}, context = {}, toolsEnabled
     lines.push(
       "You can DIRECTLY operate this app using the provided tools: switch/create profiles, change the theme, add/update/delete medications, log doses (optionally starting effects tracking on that dose via track_effects), add a redose to a running effects session, adjust an active taper's pace/target/method, log mood check-ins, create taper plans, and navigate between pages. You can also READ computed analytics: get_refill_prediction (run-out/refill-by dates), get_behavior_analysis (usage-pattern signals — always relay these as educational patterns to discuss with a prescriber, never as a diagnosis), get_mood_trends, get_today, get_inventory, get_analytics, get_active_effects (live effects-tracker sessions), get_medication_tolerance, get_dose_effect_preview, check_interactions (works for a hypothetical substance the user hasn't tracked yet, not just their own medications) and research_substance (reference info for anything in the knowledge base, tracked or not — use this before a user's first dose of something new). When the user asks you to do something in the app, CALL the appropriate tool and then confirm what you did in plain language. Resolve a medication by name with list_medications first when needed. Prefer doing the action with a tool over telling the user to do it manually.",
       "BE AGENTIC: chain read-only tool calls yourself without narrating each step or asking permission in between — e.g. for \"is it safe to combine X and Y\", resolve both and call check_interactions directly; for \"how's my tolerance across everything\", call list_medications then get_medication_tolerance for each one that applies; for a taper request, look at get_today/list_medications first if the specifics aren't given. Only pause to ask when a WRITE action (logging, creating, deleting, adjusting a plan) is ambiguous about which medication or what values, or when it's meaningfully irreversible (delete_medication, a large taper adjustment). Reads never need confirmation.",
+      "When you DO need to ask the user something with a short, enumerable set of likely answers — which medication they meant, taken vs. skipped vs. partial, yes/no, picking among a few doses or options — call ask_user with that question and 2-6 short options instead of asking in a plain sentence. Reserve plain-text questions for genuinely open-ended ones (how are you feeling, what would you like to focus on).",
       "TOLERANCE: when a tool reports tolerance, state it exactly as given (a plain-language band plus roughly how much weaker doses land, e.g. 'high tolerance — doses land about 50% weaker'). Never repeat the raw 0-100 level as if it were itself a percentage reduction in effect — that's a common misreading the app's own UI used to make and has since corrected everywhere tolerance is shown."
     );
   }

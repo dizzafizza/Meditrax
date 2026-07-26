@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
 import Markdown from "@/components/Markdown";
 import { getAiConfig, getChat, addChatMessage, clearChat, getProfile, getMedications, getToday } from "@/lib/api";
-import { runAssistantLoop, buildSystemPrompt, hasKey, resolveModel, sessionId } from "@/lib/ai";
+import { runAssistantLoop, buildSystemPrompt, hasKey, resolveModel, sessionId, ASK_USER_TOOL_SCHEMA } from "@/lib/ai";
+import { getChatSuggestions, FALLBACK_SUGGESTIONS } from "@/lib/chatSuggestions";
 import { useAITools } from "@/context/AIToolsContext";
 import { useProfiles } from "@/context/ProfileContext";
 import { Sparkles, Send, Info, Trash2, Settings as SettingsIcon, Wrench, Check, KeyRound } from "lucide-react";
@@ -27,6 +28,7 @@ const TOOL_LABELS = {
 export default function Assistant() {
   const sid = useRef(sessionId());
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
   const { tools, executeTool } = useAITools();
   const { activeId } = useProfiles();
   const { data: config } = useQuery({ queryKey: ["aiConfig"], queryFn: getAiConfig });
@@ -36,6 +38,7 @@ export default function Assistant() {
   const [streaming, setStreaming] = useState(false);
   const [toolEvents, setToolEvents] = useState([]);
   const [modelUsed, setModelUsed] = useState(null);
+  const [quickReplies, setQuickReplies] = useState([]);
 
   useEffect(() => {
     getChat(sid.current).then((h) => setMessages(h.map((m) => ({ role: m.role, content: m.content }))));
@@ -48,12 +51,25 @@ export default function Assistant() {
   const keyReady = hasKey(config);
   const agentMode = config?.advanced !== false;
 
+  // Contextual "what could I ask?" chips for a blank conversation -- real
+  // and grounded in this person's own state (see lib/chatSuggestions.js),
+  // not the same four generic strings forever. Falls back to a fixed list
+  // instantly so the row is never empty while the real ones load.
+  const { data: chatSuggestions } = useQuery({
+    queryKey: ["chatSuggestions"],
+    queryFn: () => getChatSuggestions({ config }),
+    enabled: keyReady && messages.length === 0,
+    placeholderData: FALLBACK_SUGGESTIONS,
+    staleTime: 5 * 60000,
+  });
+
   async function send(text) {
     const msg = (text ?? input).trim();
     if (!msg || streaming) return;
     if (!keyReady) return;
     setInput("");
     setToolEvents([]);
+    setQuickReplies([]);
     const priorHistory = messages.map((m) => ({ role: m.role, content: m.content })).filter((m) => m.content);
     setMessages((m) => [...m, { role: "user", content: msg }, { role: "assistant", content: "" }]);
     setStreaming(true);
@@ -76,10 +92,10 @@ export default function Assistant() {
       });
       const apiMessages = [{ role: "system", content: system }, ...priorHistory, { role: "user", content: msg }];
 
-      const { content } = await runAssistantLoop({
+      const { content, quickReplies: replies } = await runAssistantLoop({
         config,
         messages: apiMessages,
-        tools: agentMode ? tools : [],
+        tools: agentMode ? [...tools, ASK_USER_TOOL_SCHEMA] : [],
         executeTool,
         onDelta: (d) =>
           setMessages((m) => {
@@ -106,6 +122,7 @@ export default function Assistant() {
         return c;
       });
       await addChatMessage(sid.current, "assistant", finalText);
+      if (replies?.length) setQuickReplies(replies);
     } catch (e) {
       const errText = `${e?.message || "Something went wrong. Please try again."}`;
       setMessages((m) => {
@@ -123,16 +140,12 @@ export default function Assistant() {
     setMessages([]);
     setToolEvents([]);
     setModelUsed(null);
+    setQuickReplies([]);
   }
 
   const empty = messages.length === 0;
   const personaName = config?.personality?.name || "Meditrax";
-  const suggestions = [
-    "Add Sertraline 50mg once daily",
-    "How do I taper off a benzodiazepine safely?",
-    "Switch to dark mode",
-    "Summarize my adherence this month",
-  ];
+  const suggestions = chatSuggestions || FALLBACK_SUGGESTIONS;
 
   return (
     <div className="flex flex-col" style={{ height: "100vh" }}>
@@ -217,6 +230,15 @@ export default function Assistant() {
                   ))}
                 </div>
               )}
+              {m.role === "assistant" && isLast && !streaming && quickReplies.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2 ml-1" data-testid="assistant-quick-replies">
+                  {quickReplies.map((opt, j) => (
+                    <button key={j} data-testid="assistant-quick-reply" onClick={() => send(opt)} className="rounded-full border border-primary/30 bg-primary/5 px-3 h-8 text-xs font-medium text-primary pressable">
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -228,12 +250,16 @@ export default function Assistant() {
             {empty && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                 {suggestions.map((s, i) => (
-                  <button key={i} data-testid="ai-chat-suggestion" onClick={() => send(s)} className="shrink-0 rounded-full border border-border bg-card px-3 h-9 text-xs text-foreground pressable">{s}</button>
+                  // Autofills the box rather than sending immediately, so
+                  // there's a chance to edit it first -- these are starting
+                  // points, not guaranteed-correct guesses about intent.
+                  <button key={i} data-testid="ai-chat-suggestion" onClick={() => { setInput(s); inputRef.current?.focus(); }} className="shrink-0 rounded-full border border-border bg-card px-3 h-9 text-xs text-foreground pressable">{s}</button>
                 ))}
               </div>
             )}
             <div className="glass rounded-2xl border border-border p-1.5 flex items-end gap-2">
               <textarea
+                ref={inputRef}
                 data-testid="ai-chat-input"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

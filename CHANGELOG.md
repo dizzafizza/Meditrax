@@ -3,6 +3,37 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Contextual autofill suggestions and interactive quick-reply questions
+
+### Added
+- **AI-generated, contextual suggestions above the chat box**, replacing the
+  fixed four-string list that had been there unchanged since the assistant
+  shipped. Grounded in this person's actual state — real medication names,
+  an effects session in progress, tolerance worth asking about, a taper
+  underway, refills coming due — instead of always the same generic
+  prompts. Cheap (light-tier model) and cached by a hash of that context, so
+  reopening the assistant with nothing changed costs nothing after the
+  first time. Tapping one **fills** the message box rather than sending
+  immediately — these are starting points, not guaranteed-correct guesses
+  about intent, so there's a chance to edit first.
+- **`ask_user`: the assistant can ask a question with tappable quick-reply
+  buttons** instead of only plain text — "which medication did you mean,"
+  "taken or skipped," confirming a value — answerable in one tap instead of
+  typing. It's a UI-only tool with no app-data effect: the loop ends the
+  turn the moment it's called (there's nothing to feed back yet — the
+  answer is whatever the user taps next, which arrives as an ordinary
+  message on the following exchange), so it composes with every existing
+  tool and the agentic tool-chaining from the previous change without any
+  special-casing elsewhere. The system prompt steers the model to reach for
+  it whenever a question has a short, enumerable set of likely answers, and
+  reserve plain text for genuinely open-ended ones.
+
+### Removed
+- The `getAiSuggestions` stub in `lib/api.js` (four hardcoded strings,
+  never actually wired to the UI — the chat box's suggestion row had its
+  own separate hardcoded list). Superseded by the contextual generator
+  above.
+
 ## 2026-07-26 — Interaction checks, taper adjustments, a scheduled digest, and a more agentic assistant
 
 ### Added
