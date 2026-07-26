@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getLogs, getMedications } from "@/lib/api";
+import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getPriorDoseTotalToday, getLogs, getMedications } from "@/lib/api";
 import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt } from "@/lib/effectsEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
@@ -278,6 +278,13 @@ function SessionDetail({ session, now }) {
     queryKey: ["medMaxDaily", session.medication_id],
     queryFn: () => getMedicationMaxDaily(session.medication_id),
   });
+  // Anything of this medication already taken earlier today outside this
+  // session, so a max-DAILY-dose check actually covers the day.
+  const { data: priorToday = 0 } = useQuery({
+    queryKey: ["priorDoseToday", session.medication_id, session.id],
+    queryFn: () => getPriorDoseTotalToday(session.medication_id, { excludeSessionId: session.id }),
+    staleTime: 0,
+  });
   const t = elapsedMin(session, now);
   const p = session.profile;
   // The session's effect is the sum of its primary dose and any redoses
@@ -330,16 +337,27 @@ function SessionDetail({ session, now }) {
   );
   const yGrid = yTicks.filter((v) => v > 0);
 
-  // Hourly gridline positions across the full curve (denser for short
-  // sessions) — a fixed set independent of the zoom, so tick spacing never
-  // reflows mid-animation; only which ones fall inside the current animated
-  // window (below) changes as it zooms.
+  // Where "0" sits on the time axis. With previous doses hidden the chart is
+  // zoomed to the current dose alone, so measuring from session start would
+  // label that dose's onset as (say) 6 h -- time that belongs to a curve
+  // that isn't even drawn. Rebasing on the dose being shown makes the axis
+  // read as time since *this* dose, and reverts to session-relative time when
+  // the earlier doses come back into view.
+  const timeOrigin = showPrevious ? 0 : lastOffset;
+
+  // Hourly gridline positions across the visible span (denser for short
+  // sessions), anchored to that origin so the labelled hours land on round
+  // numbers rather than wherever the redose happened to fall.
   const hourTicks = useMemo(() => {
-    const step = axisStepMin(chartEnd);
+    const step = axisStepMin(chartEnd - timeOrigin);
     const out = [];
-    for (let m = 0; m <= chartEnd; m += step) out.push(m);
+    for (let m = timeOrigin; m <= chartEnd; m += step) out.push(m);
     return out;
-  }, [chartEnd]);
+  }, [chartEnd, timeOrigin]);
+  const fmtAxis = useCallback((m) => {
+    const rel = Math.round(m - timeOrigin);
+    return rel === 0 ? "0" : rel % 60 === 0 ? `${rel / 60}h` : `${rel}m`;
+  }, [timeOrigin]);
 
   // Zoom the visible window to just the current dose when its predecessor is
   // hidden — nothing interesting happens before it (the plotted curve is flat
@@ -376,7 +394,7 @@ function SessionDetail({ session, now }) {
   // not just the effectSessions cache.
   const invalidateDoseChange = () => {
     invalidate();
-    ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions", "effectivenessSuggestion", "medicationTolerance"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions", "effectivenessSuggestion", "medicationTolerance", "priorDoseToday"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
   // "Undo" on the toast reopens the session — reverses both the completion
   // and (if nothing newer has touched the model since) the training it
@@ -440,8 +458,8 @@ function SessionDetail({ session, now }) {
   const redoseSafety = useMemo(() => {
     if (!redosing) return { warnings: [] };
     const at = redoseWhen && !isNaN(new Date(redoseWhen).getTime()) ? new Date(redoseWhen).toISOString() : null;
-    return redoseWarnings(session, { amount: redoseAmt, at }, maxDaily, session.unit);
-  }, [redosing, redoseWhen, redoseAmt, session, maxDaily]);
+    return redoseWarnings(session, { amount: redoseAmt, at }, maxDaily, session.unit, priorToday);
+  }, [redosing, redoseWhen, redoseAmt, session, maxDaily, priorToday]);
   const saveRedose = () => {
     const when = new Date(redoseWhen);
     if (!redoseWhen || isNaN(when.getTime())) { toast.error("Enter a valid date and time"); return; }
@@ -534,7 +552,7 @@ function SessionDetail({ session, now }) {
               </linearGradient>
             </defs>
             <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.55} strokeDasharray="2 4" horizontalValues={visibleYGrid} verticalValues={visibleHourTicks} />
-            <XAxis dataKey="t" type="number" domain={xDomain} allowDataOverflow ticks={visibleHourTicks} interval={0} tickFormatter={(m) => (m === 0 ? "0" : m % 60 === 0 ? `${m / 60}h` : `${m}m`)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} animationDuration={0} />
+            <XAxis dataKey="t" type="number" domain={xDomain} allowDataOverflow ticks={visibleHourTicks} interval={0} tickFormatter={fmtAxis} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} animationDuration={0} />
             <YAxis domain={[0, yMax + 5]} allowDataOverflow ticks={visibleYTicks} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} width={38} tickMargin={4} tickLine={false} axisLine={false} animationDuration={0} />
             <Tooltip
               contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}

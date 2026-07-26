@@ -3,6 +3,78 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — The curve is now a real PK/PD model, and tolerance follows daily exposure
+
+### Changed
+- **The intensity curve is a one-compartment pharmacokinetic model feeding an
+  Emax pharmacodynamic one, rather than three splines bolted together.**
+  Concentration follows first-order absorption and elimination (the Bateman
+  function), and effect follows from concentration through the same Emax
+  relationship the dose-response already uses — because it *is* the same
+  relationship, receptor occupancy against available drug. The old shape had
+  two features nothing in real pharmacology has: a dead-flat 100% plateau
+  holding for a third of the post-peak span, and a discontinuous step down
+  into a separate "after-effects" block that showed as a visible notch on
+  every chart. Both are gone; the curve now has a rounded peak and a
+  genuinely exponential decline.
+  - All three learned parameters are preserved *exactly*, each pinned to the
+    part of the model it actually corresponds to: `onset_min` is where effect
+    crosses the perception threshold (solved via C50), `peak_min` is
+    concentration tmax, `duration_min` is where effect has fallen back to a
+    small fraction. The learner, the phase labels and every caller are
+    untouched.
+  - The fit needs an absorption lag to be solvable at all — real for anything
+    swallowed, and without it a curve peaking at 75 minutes is already a
+    quarter of the way up at 8, so no threshold can place a fast onset. Rates
+    are solved by bisection and memoized per distinct profile, so each curve
+    costs one solve and then a couple of exponentials per sample.
+  - Where a profile asks for something a one-compartment curve genuinely
+    cannot deliver (a fast onset *and* a short duration around a late peak),
+    the fit takes the closest achievable shape rather than running off to a
+    nonsense extreme.
+- **Tolerance is driven by each day's total exposure rather than by counting
+  dose events.** Every dose used to contribute one unit regardless of size, so
+  someone splitting 8 g of kratom across four 2 g doses was modeled as *four
+  times* as tolerant as someone taking the same 8 g at once — backwards, since
+  tolerance follows total exposure, not dosing frequency. Doses are now
+  aggregated per local calendar day and weighted by that day's total against a
+  median typical day (median for the same reason the dose-response reference
+  is: an escalation shouldn't quietly redefine "typical" and hide itself).
+  Histories with no recorded amounts fall back to counting each *day* once,
+  still an improvement on counting each dose.
+- **A redose's strength now uses the same saturating dose-response as
+  everything else.** It scaled linearly and without bound, so a redose of four
+  times the primary was modeled as four times the effect.
+- **The x-axis is rebased on the dose being shown.** With previous doses
+  hidden the chart is zoomed to the current dose, but the axis still measured
+  from session start — so that dose's onset was labelled "6h", time belonging
+  to a curve that isn't even drawn. It now reads as time since *this* dose,
+  starting at 0, and reverts to session-relative time when earlier doses come
+  back into view.
+
+### Fixed
+- **The redose guardrails now check the whole day, not just the session.**
+  `redoseWarnings` compared its running total against `max_daily_dose` while
+  only ever seeing the current session, so a morning dose before an afternoon
+  session — or an entirely separate earlier session — counted for nothing
+  against a limit that is by definition daily. New `getPriorDoseTotalToday`
+  supplies the rest of the day's total, excluding the session's own logs so
+  nothing is double-counted.
+
+### Verified
+- Full suite: 328 tests passing (7 new). Curve coverage asserts the peak lands
+  exactly where learned, that there is a single rounded maximum rather than a
+  plateau, that the decline is monotone with no cliff anywhere across the
+  after-effects boundary, and that every category × form profile the engine
+  can produce stays well-formed. Tolerance coverage asserts that splitting a
+  day's amount across more doses gives the *same* tolerance, that a day
+  heavier than the person's own norm raises it, and that amount-less histories
+  still count each day once.
+- Browser-verified against the production build: the curve renders with a
+  rounded peak and continuous tail (no notch), and the axis reads
+  `0 · 1h · 2h … 6h` with the previous dose hidden, reverting to
+  `0 · 2h · 4h … 12h` when it's shown.
+
 ## 2026-07-26 — Saturating dose-response, and a preview that answers the right question
 
 Reported: doubling a kratom dose barely moved the predicted effect, which sat

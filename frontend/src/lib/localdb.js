@@ -717,13 +717,15 @@ const TOLERANCE_LOOKBACK_DAYS = 120;
 async function toleranceForMedication(med, { now = Date.now(), excludeLogId = null } = {}) {
   const logs = await getArr(pkey("logs"));
   const cutoff = now - TOLERANCE_LOOKBACK_DAYS * 86400000;
-  const doseTimes = logs
+  // Amounts travel with the timestamps so tolerance is driven by each day's
+  // total exposure rather than by how many separate times it was taken.
+  const doses = logs
     .filter((l) => l.medication_id === med.id && l.id !== excludeLogId && LOG_CONSUMING_STATUSES.includes(l.status))
-    .map((l) => new Date(l.timestamp).getTime())
-    .filter((t) => isFinite(t) && t >= cutoff && t <= now);
+    .map((l) => ({ t: new Date(l.timestamp).getTime(), amount: Number(l.dose_taken) }))
+    .filter((d) => isFinite(d.t) && d.t >= cutoff && d.t <= now);
   // Pass the whole medication, not just its category, so a substance with
   // its own tolerance constants (see SUBSTANCE_TOLERANCE) gets them.
-  return estimateTolerance(doseTimes, med, now);
+  return estimateTolerance(doses, med, now);
 }
 
 // Public read of a medication's current modeled tolerance -- independent of
@@ -1177,6 +1179,29 @@ export async function getInteractionsForMedication(medication_id, { withinHours 
 // The typical max daily dose for a medication, resolved from the catalog
 // entry it was created from (medications don't store it themselves). Used by
 // the redose safety guardrails. Returns a number or null.
+// How much of this medication was already taken earlier today *outside* a
+// given session -- so the redose guardrails can check a max-DAILY-dose limit
+// against the actual day rather than just the session in front of the user.
+// Excludes the session's own primary and redose logs to avoid double-counting.
+export async function getPriorDoseTotalToday(medication_id, { excludeSessionId = null, now = Date.now() } = {}) {
+  await ensureInit();
+  const today = localDateStr(new Date(now));
+  const excludedLogIds = new Set();
+  if (excludeSessionId) {
+    const s = (await getArr(pkey("effectSessions"))).find((x) => x.id === excludeSessionId);
+    if (s) {
+      if (s.log_id) excludedLogIds.add(s.log_id);
+      for (const r of s.redoses || []) if (r.log_id) excludedLogIds.add(r.log_id);
+    }
+  }
+  return (await getArr(pkey("logs")))
+    .filter((l) => l.medication_id === medication_id
+      && LOG_CONSUMING_STATUSES.includes(l.status)
+      && !excludedLogIds.has(l.id)
+      && timestampToLocalDate(l.timestamp) === today)
+    .reduce((sum, l) => sum + (isFinite(Number(l.dose_taken)) ? Number(l.dose_taken) : 0), 0);
+}
+
 export async function getMedicationMaxDaily(medication_id) {
   await ensureInit();
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);

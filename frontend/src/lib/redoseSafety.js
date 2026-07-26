@@ -8,7 +8,12 @@
 //      max daily dose.
 // These are soft warnings, never hard blocks: the user still chooses.
 
-export function redoseWarnings(session, { amount = null, at = null } = {}, maxDaily = null, unit = null) {
+// `priorToday` is the amount of this medication already taken earlier the same
+// day *outside* this session. Without it a max-DAILY-dose check only ever saw
+// the current session, so doses taken earlier that day -- a morning dose
+// before an afternoon session, or an entirely separate earlier session --
+// counted for nothing against a limit that is by definition daily.
+export function redoseWarnings(session, { amount = null, at = null } = {}, maxDaily = null, unit = null, priorToday = 0) {
   const warnings = [];
   if (!session) return { warnings, cumulative: null, maxDaily };
   const when = at && !isNaN(new Date(at).getTime()) ? new Date(at).getTime() : Date.now();
@@ -31,11 +36,13 @@ export function redoseWarnings(session, { amount = null, at = null } = {}, maxDa
   const primary = Number(session.dose) || 0;
   const priorRedoses = (session.redoses || []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   const addAmt = amount != null && amount !== "" && isFinite(Number(amount)) ? Number(amount) : primary;
-  const cumulative = primary + priorRedoses + addAmt;
+  const earlier = Number(priorToday);
+  const cumulative = primary + priorRedoses + addAmt + (isFinite(earlier) && earlier > 0 ? earlier : 0);
   const max = Number(maxDaily);
   if (isFinite(max) && max > 0 && cumulative > 0) {
-    if (cumulative > max) warnings.push({ type: "over_max", severity: "severe", cumulative: round2(cumulative), maxDaily: max, unit });
-    else if (cumulative >= max * 0.8) warnings.push({ type: "near_max", severity: "caution", cumulative: round2(cumulative), maxDaily: max, unit });
+    const priorAmt = isFinite(earlier) && earlier > 0 ? round2(earlier) : 0;
+    if (cumulative > max) warnings.push({ type: "over_max", severity: "severe", cumulative: round2(cumulative), maxDaily: max, unit, priorToday: priorAmt });
+    else if (cumulative >= max * 0.8) warnings.push({ type: "near_max", severity: "caution", cumulative: round2(cumulative), maxDaily: max, unit, priorToday: priorAmt });
   }
   return { warnings, cumulative: round2(cumulative), maxDaily: isFinite(max) ? max : null };
 }
