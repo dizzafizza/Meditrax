@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness } from "./effectsEngine";
 import { estimateTolerance } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -721,6 +721,38 @@ async function toleranceForMedication(med, { now = Date.now(), excludeLogId = nu
     .map((l) => new Date(l.timestamp).getTime())
     .filter((t) => isFinite(t) && t >= cutoff && t <= now);
   return estimateTolerance(doseTimes, med.category, now);
+}
+
+// Public read of a medication's current modeled tolerance -- independent of
+// any active effects session, so it can be shown on MedicationDetail even
+// when nothing is actively being tracked. Returns null both for a category
+// with no modeled tolerance at all (see toleranceEngine.js's TOLERANCE_PARAMS)
+// and for one with nothing meaningful to show yet -- callers don't need to
+// separately re-derive "is this worth surfacing."
+export async function getMedicationTolerance(medication_id) {
+  await ensureInit();
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
+  if (!med) return null;
+  const tolerance = await toleranceForMedication(med);
+  if (!tolerance.applicable) return null;
+  if (!tolerance.faded && tolerance.level < 0.15) return null;
+  return tolerance;
+}
+
+// A suggested (not authoritative) 1-10 starting point for QuickLogSheet's
+// effectiveness slider, from this medication's current tolerance and the
+// dose amount being logged -- see modeledEffectiveness in effectsEngine.js.
+// The user's own rating, once they touch the slider, is what actually gets
+// stored; this only pre-fills a smarter default than the fixed "7" so the
+// tool reflects what it already knows before asking the person to guess.
+export async function estimateDoseEffectiveness({ medication_id, dose = null } = {}) {
+  await ensureInit();
+  const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
+  if (!med) return null;
+  const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
+  const tolerance = await toleranceForMedication(med);
+  const profile = personalizedProfile(med, model, dose, tolerance);
+  return { suggested: modeledEffectiveness(profile.intensity_scale), intensityScale: profile.intensity_scale, tolerance: profile.tolerance || null };
 }
 
 // Forget everything learned about a medication's timing and fall back to the

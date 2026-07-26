@@ -13,7 +13,7 @@ jest.mock("localforage", () => {
 
 import {
   defaultPkProfile, personalizedProfile, intensityAt, phaseAt, curveSeries,
-  observationsFromSession, updateModel, modelConfidence, fmtMins,
+  observationsFromSession, updateModel, modelConfidence, fmtMins, modeledEffectiveness,
   CATEGORY_PK, FORM_SPEED, sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
 } from "../effectsEngine";
 import * as db from "../localdb";
@@ -286,6 +286,30 @@ describe("learning (updateModel)", () => {
   });
 });
 
+describe("modeledEffectiveness", () => {
+  test("an untouched intensity_scale (1) maps back to the app's long-standing default of 7", () => {
+    expect(modeledEffectiveness(1)).toBe(7);
+  });
+
+  test("a dampened curve (tolerance/smaller dose) suggests a lower rating", () => {
+    expect(modeledEffectiveness(0.5)).toBeLessThan(7);
+  });
+
+  test("a stronger curve (bigger dose) suggests a higher rating", () => {
+    expect(modeledEffectiveness(1.5)).toBeGreaterThan(7);
+  });
+
+  test("always clamped to the slider's 1-10 range even at extremes", () => {
+    expect(modeledEffectiveness(0)).toBe(1);
+    expect(modeledEffectiveness(10)).toBe(10);
+  });
+
+  test("a non-finite input falls back to the neutral default rather than NaN", () => {
+    expect(modeledEffectiveness(NaN)).toBe(7);
+    expect(modeledEffectiveness(undefined)).toBe(7);
+  });
+});
+
 describe("session lifecycle in localdb", () => {
   test("start → feedback events → gone ends the session and trains the model", async () => {
     const med = await db.createMedication({ name: "FxMed", strength: 20, unit: "mg", category: "stimulant", form: "tablet", times: ["09:00"], is_prn: true });
@@ -549,6 +573,38 @@ describe("tolerance wired into real sessions (localdb)", () => {
     const active = (await db.getActiveEffectSessions()).find((x) => x.id === s.id);
     expect(active.profile.learned).toBe(false);
     expect(active.profile.intensity_scale).toBe(dampedBefore);
+  });
+
+  test("getMedicationTolerance reads the same live value without needing an active session", async () => {
+    const med = await db.createMedication({ name: "ReadTolMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    expect(await db.getMedicationTolerance(med.id)).toBeNull(); // no history yet -> nothing worth showing
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    const t = await db.getMedicationTolerance(med.id);
+    expect(t.level).toBeGreaterThan(0);
+  });
+
+  test("getMedicationTolerance is null for a non-recreational category regardless of history", async () => {
+    const med = await db.createMedication({ name: "ReadTolSsri", strength: 10, unit: "mg", category: "antidepressant", form: "tablet", times: [], is_prn: true });
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    expect(await db.getMedicationTolerance(med.id)).toBeNull();
+  });
+
+  test("estimateDoseEffectiveness suggests lower for a heavily-used medication and higher for a bigger-than-usual dose", async () => {
+    const med = await db.createMedication({ name: "EffSuggestMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    const fresh = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(fresh.suggested).toBe(7); // no history at all -> neutral default
+
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
+    const afterFrequentUse = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    expect(afterFrequentUse.suggested).toBeLessThan(7);
+    expect(afterFrequentUse.tolerance.level).toBeGreaterThan(0);
+
+    // Establish a reference dose via a trained model, then ask about a much bigger dose.
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    await db.addEffectEvent(s.id, { kind: "onset" });
+    await db.addEffectEvent(s.id, { kind: "gone" });
+    const biggerDose = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 40 });
+    expect(biggerDose.suggested).toBeGreaterThan(afterFrequentUse.suggested);
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication } from "@/lib/api";
+import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness } from "@/lib/api";
 import { scheduleAllReminders } from "@/lib/push";
 import { Switch } from "@/components/ui/switch";
 import MedColorDot from "@/components/MedColorDot";
@@ -48,6 +48,7 @@ export default function QuickLogSheet() {
   const [notes, setNotes] = useState("");
   const [mood, setMood] = useState(null);
   const [effectiveness, setEffectiveness] = useState([7]);
+  const [effectivenessTouched, setEffectivenessTouched] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [trackEffects, setTrackEffects] = useState(false);
   // While true, the dose/quantity fields track the computed taper/cyclic-aware
@@ -73,6 +74,38 @@ export default function QuickLogSheet() {
   });
   const consumingStatus = status === "taken" || status === "partial";
   const showInteraction = !editLog && consumingStatus && interactions.length > 0;
+
+  // A starting point for the effectiveness slider, from this medication's
+  // current modeled tolerance and the dose amount being entered -- only for
+  // a brand-new log (never overrides an existing rating being edited), and
+  // only until the user actually touches the slider themselves. Recomputes as
+  // the dose amount changes, so it tracks "based off tolerance and dosage"
+  // live while the form is open.
+  //
+  // Deliberately NOT a react-query useQuery: the sheet can open, save, close
+  // and reopen for the same medication+dose within seconds (logging several
+  // doses back to back), each cycle re-enabling and immediately disabling the
+  // same query key -- overlapping lookups for that key can then resolve out
+  // of order, letting an earlier (pre-history) result land in the cache
+  // *after* a later, more accurate one and silently overwrite it. A plain
+  // effect with a monotonically increasing request id sidesteps that: only
+  // the result of the most recently *started* request is ever applied.
+  const [effSuggestion, setEffSuggestion] = useState(null);
+  const effReqRef = useRef(0);
+  const effectivenessTouchedRef = useRef(effectivenessTouched);
+  effectivenessTouchedRef.current = effectivenessTouched;
+  const doseNum = dose === "" ? null : Number(dose);
+  const effSuggestionEnabled = !!(ui.logSheet.open && !editLog && med?.is_prn && consumingStatus);
+  useEffect(() => {
+    if (!effSuggestionEnabled) { effReqRef.current++; setEffSuggestion(null); return; }
+    const reqId = ++effReqRef.current;
+    estimateDoseEffectiveness({ medication_id: med.id, dose: doseNum }).then((result) => {
+      if (reqId !== effReqRef.current) return; // superseded by a newer request
+      setEffSuggestion(result);
+      if (result && !effectivenessTouchedRef.current) setEffectiveness([result.suggested]);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effSuggestionEnabled, med?.id, doseNum]);
 
   useEffect(() => {
     if (!ui.logSheet.open || editLog || !autoDefault || !defaults) return;
@@ -106,6 +139,7 @@ export default function QuickLogSheet() {
     }
     setTrackEffects(false);
     setWhenTouched(false);
+    setEffectivenessTouched(false);
   }, [ui.logSheet.open]); // eslint-disable-line
 
   // Pill count and total amount are two views of the same thing, kept in sync
@@ -131,7 +165,7 @@ export default function QuickLogSheet() {
     if (s === "taken" && quantity === perDose / 2) changeQuantity(perDose);
   };
 
-  const invalidate = () => ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const invalidate = () => ["today", "logs", "analytics", "inventory", "medications", "medication", "activeSubstances", "interactions", "effectivenessSuggestion", "medicationTolerance"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const mutation = useMutation({
     mutationFn: (payload) => (editLog ? updateLog(editLog.id, payload) : createLog(payload)),
@@ -284,7 +318,17 @@ export default function QuickLogSheet() {
               {(med.is_prn || editLog?.effectiveness != null) && (
                 <div>
                   <Label className="text-xs text-muted-foreground">Effectiveness: {effectiveness[0]}/10</Label>
-                  <Slider value={effectiveness} onValueChange={setEffectiveness} min={1} max={10} step={1} className="mt-3" />
+                  <Slider
+                    value={effectiveness}
+                    onValueChange={(v) => { setEffectiveness(v); setEffectivenessTouched(true); }}
+                    min={1} max={10} step={1} className="mt-3"
+                    data-testid="quick-log-effectiveness-slider"
+                  />
+                  {!editLog && effSuggestion && !effectivenessTouched && (
+                    <p className="text-[11px] text-muted-foreground mt-1.5" data-testid="quick-log-effectiveness-suggestion">
+                      Starting point from your recent usage and dose — adjust to how it actually felt.
+                    </p>
+                  )}
                 </div>
               )}
               <div>
