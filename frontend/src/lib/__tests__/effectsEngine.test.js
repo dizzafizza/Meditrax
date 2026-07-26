@@ -998,6 +998,53 @@ describe("tolerance wired into real sessions (localdb)", () => {
   });
 });
 
+describe("describeActiveSession (feeds the AI assistant's get_active_effects tool)", () => {
+  const daysAgoIso = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
+  test("a redose is read as its own current dose, matching the Effects page rather than the session's original one", async () => {
+    const med = await db.createMedication({ name: "AiRedoseMed", strength: 10, unit: "mg", category: "stimulant-fast", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    // Backdate the start so the redose (added "now") lands a real 30 minutes
+    // into the session rather than at a near-zero real-clock gap, which in a
+    // fast test run can round to the same millisecond as the start itself.
+    const raw = (await db.exportData()).profileData;
+    const pid = Object.keys(raw)[0];
+    const stored = raw[pid].effectSessions.find((x) => x.id === s.id);
+    stored.started_at = new Date(Date.now() - 30 * 60000).toISOString();
+    const soloDescribe = db.describeActiveSession(stored, Date.now());
+    expect(soloDescribe.redose_count).toBe(0);
+
+    const withRedose = await db.addEffectDose(s.id, { amount: 10 });
+    const afterRedose = db.describeActiveSession(withRedose, Date.now());
+    expect(afterRedose.redose_count).toBe(1);
+    // Right after a same-size redose, the newest dose is at its own t=0 (not
+    // yet felt) -- if this were still reading the original dose's curve, or
+    // summing both, it would report a nonzero/plateaued intensity instead.
+    expect(afterRedose.phase).toBe("Not yet felt");
+    expect(afterRedose.intensity_pct).toBe(0);
+    // "Ends at" stretches to cover the redose's own tail, not the original
+    // dose's now-superseded end.
+    expect(new Date(afterRedose.predicted.ends_at).getTime()).toBeGreaterThan(new Date(soloDescribe.predicted.ends_at).getTime());
+  });
+
+  test("carries tolerance in the same plain terms as the tolerance meter, not a bare level", async () => {
+    const med = await db.createMedication({ name: "AiTolMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    for (let i = 10; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: daysAgoIso(i) });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    const d = db.describeActiveSession(s, Date.now());
+    expect(d.tolerance).not.toBeNull();
+    expect(["low", "moderate", "high", "very high"]).toContain(d.tolerance.band);
+    expect(d.tolerance.weaker_pct).toBeGreaterThan(0);
+    expect(d.tolerance.faded).toBe(false);
+  });
+
+  test("tolerance is null (not a zeroed object) for a non-recreational category", async () => {
+    const med = await db.createMedication({ name: "AiNoTolMed", strength: 10, unit: "mg", category: "antidepressant", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+    expect(db.describeActiveSession(s, Date.now()).tolerance).toBeNull();
+  });
+});
+
 describe("deleteEffectEvent (editing a session's feedback)", () => {
   test("removes a specific event without disturbing the others", async () => {
     const med = await db.createMedication({ name: "EditEvMed", strength: 10, unit: "mg", category: "stimulant", form: "tablet", times: [], is_prn: true });

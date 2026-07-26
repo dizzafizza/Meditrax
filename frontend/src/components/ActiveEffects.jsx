@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getPriorDoseTotalToday, getMedicationTolerance, getLogs, getMedications } from "@/lib/api";
 import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt } from "@/lib/effectsEngine";
+import { toleranceBand } from "@/lib/toleranceEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
@@ -761,17 +762,6 @@ function SessionDetail({ session, now }) {
 }
 
 // ---- redose safety guardrails ----
-// Plain-language band for a tolerance level, so the bare percentage isn't the
-// only thing to go on. This is the headline word ("high", "moderate") because
-// a raw number on a scale nobody has been told about is the thing people
-// misread.
-function toleranceBand(level) {
-  if (level >= 0.85) return "Very high";
-  if (level >= 0.6) return "High";
-  if (level >= 0.3) return "Moderate";
-  return "Low";
-}
-
 // The tolerance meter, shown wherever a dose is being considered: the effects
 // graph, the log sheet's dose preview, and the medication page. One shared
 // component precisely so the same number and the same words appear in all

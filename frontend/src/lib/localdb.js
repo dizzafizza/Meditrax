@@ -3,8 +3,8 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt } from "./effectsEngine";
-import { estimateTolerance } from "./toleranceEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt } from "./effectsEngine";
+import { estimateTolerance, toleranceBand } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
 import { interactionsWith } from "./interactions";
@@ -1173,6 +1173,42 @@ export async function getActiveEffectSessions() {
     out.push({ ...s, profile, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit });
   }
   return out;
+}
+
+// Plain-language summary of one active session's current state, for the AI
+// assistant's get_active_effects tool. Deliberately reuses the exact same
+// helpers the Effects page renders from (sessionDoseStack, phaseAt,
+// doseIntensityAt off the *newest* dose, stackChartEnd) so a redosed session
+// is read the same way here as on screen -- current phase and intensity
+// track the most recent dose, not the session's original one, and "ends at"
+// accounts for a redose extending the tail. Tolerance is reported in the
+// same terms as the tolerance meter (see ToleranceNote), not a bare level.
+export function describeActiveSession(session, now = Date.now()) {
+  const t = Math.max(0, (now - new Date(session.started_at).getTime()) / 60000);
+  const p = session.profile;
+  const stack = sessionDoseStack(session);
+  const newestIdx = stack.length - 1;
+  const lastOffset = stack[newestIdx].tOffset;
+  const phase = phaseAt(t - lastOffset, p);
+  const startMs = new Date(session.started_at).getTime();
+  const at = (mins) => new Date(startMs + mins * 60000).toISOString();
+  // profile.tolerance (from personalizedProfile) is omitted entirely for a
+  // non-applicable category -- its presence alone means "applicable", unlike
+  // estimateTolerance()'s raw result which carries an explicit flag.
+  const tol = p.tolerance;
+  return {
+    elapsed_min: Math.round(t),
+    phase: phase.label,
+    intensity_pct: Math.round(doseIntensityAt(t, p, stack, newestIdx)),
+    redose_count: Math.max(0, stack.length - 1),
+    predicted: { onset_at: at(p.onset_min), peak_at: at(p.peak_min), ends_at: at(stackChartEnd(p, stack)) },
+    personalized: p.learned ? `from ${p.samples} sessions (${p.confidence} confidence)` : "typical values (no personal data yet)",
+    tolerance: tol ? {
+      band: toleranceBand(tol.level).toLowerCase(),
+      weaker_pct: tol.maxDampening != null ? Math.round(tol.level * tol.maxDampening * 100) : null,
+      faded: !!tol.faded,
+    } : null,
+  };
 }
 
 // Substances considered "currently in the body" for interaction checking:

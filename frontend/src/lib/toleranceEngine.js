@@ -205,3 +205,14 @@ export function estimateTolerance(doseTimestamps, medOrCategory, now = Date.now(
     typicalDaily,
   };
 }
+
+// Plain-language band for a tolerance level (0-1), shared by every surface
+// that shows tolerance -- the UI meter, the medication page, and the AI
+// assistant's tool responses -- so the word used is never inconsistent with
+// the number next to it.
+export function toleranceBand(level) {
+  if (level >= 0.85) return "Very high";
+  if (level >= 0.6) return "High";
+  if (level >= 0.3) return "Moderate";
+  return "Low";
+}

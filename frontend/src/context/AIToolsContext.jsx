@@ -8,7 +8,9 @@ import { MED_COLORS, FREQUENCY_TIMES, WEEKDAYS } from "@/lib/format";
 import { suggestTaperParams } from "@/lib/taperEngine";
 import { analyzeMedication, analyzeAll, SAFETY_COPY } from "@/lib/behavior";
 import { unifyMoodEntries, moodDailySeries, moodTrend } from "@/lib/moodAnalytics";
-import { intensityAt, phaseAt, fmtMins } from "@/lib/effectsEngine";
+import { fmtMins } from "@/lib/effectsEngine";
+import { redoseWarnings } from "@/lib/redoseSafety";
+import { toleranceBand } from "@/lib/toleranceEngine";
 
 const AIToolsContext = createContext(null);
 export const useAITools = () => useContext(AIToolsContext);
@@ -29,7 +31,7 @@ export const TOOL_SCHEMA = [
   { type: "function", function: { name: "add_medication", description: "Add a medication to the active profile.", parameters: { type: "object", properties: { name: { type: "string" }, strength: { type: "number" }, unit: { type: "string" }, frequency: { type: "string", enum: ["once_daily", "twice_daily", "three_times_daily", "four_times_daily", "every_other_day", "weekly", "as_needed"] }, times: { type: "array", items: { type: "string" }, description: "24h HH:MM times" }, is_prn: { type: "boolean" }, category: { type: "string" }, instructions: { type: "string" } }, required: ["name"] } } },
   { type: "function", function: { name: "update_medication", description: "Update an existing medication (resolve by name or id).", parameters: { type: "object", properties: { name: { type: "string" }, id: { type: "string" }, strength: { type: "number" }, unit: { type: "string" }, frequency: { type: "string" }, times: { type: "array", items: { type: "string" } }, instructions: { type: "string" }, notes: { type: "string" } }, required: [] } } },
   { type: "function", function: { name: "delete_medication", description: "Delete a medication and its logs/plans (resolve by name or id).", parameters: { type: "object", properties: { name: { type: "string" }, id: { type: "string" } }, required: [] } } },
-  { type: "function", function: { name: "log_dose", description: "Log a dose for a medication. Supports retroactive logging via 'when'.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name" }, status: { type: "string", enum: ["taken", "skipped", "missed", "partial"] }, dose: { type: "number" }, time: { type: "string", description: "scheduled time HH:MM (optional)" }, when: { type: "string", description: "when the dose was actually taken, local datetime like 2026-07-15T21:30 (optional, defaults to now, must not be in the future)" } }, required: ["medication"] } } },
+  { type: "function", function: { name: "log_dose", description: "Log a dose for a medication. Supports retroactive logging via 'when'.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name" }, status: { type: "string", enum: ["taken", "skipped", "missed", "partial"] }, dose: { type: "number" }, time: { type: "string", description: "scheduled time HH:MM (optional)" }, when: { type: "string", description: "when the dose was actually taken, local datetime like 2026-07-15T21:30 (optional, defaults to now, must not be in the future)" }, track_effects: { type: "boolean", description: "Start an effects-tracking session for this dose (onset/peak/duration curve, tolerance, redosing). Only applies when status is taken or partial." } }, required: ["medication"] } } },
   { type: "function", function: { name: "create_taper_plan", description: "Create a tapering plan for a medication.", parameters: { type: "object", properties: { medication: { type: "string" }, method: { type: "string", enum: ["linear", "exponential", "hyperbolic"] }, initial_dose: { type: "number" }, final_dose: { type: "number" }, total_days: { type: "number" }, step_interval_days: { type: "number" } }, required: ["medication"] } } },
   { type: "function", function: { name: "get_today", description: "Get today's dose schedule and adherence summary for the active profile.", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "get_inventory", description: "Get inventory / refill projections for the active profile.", parameters: { type: "object", properties: {} } } },
@@ -39,7 +41,10 @@ export const TOOL_SCHEMA = [
   { type: "function", function: { name: "get_behavior_analysis", description: "Get the deterministic usage-pattern / dependency-signal analysis for the user's medications (educational, not diagnostic). Omit medication for all applicable meds.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name (optional)" } } } } },
   { type: "function", function: { name: "log_mood_checkin", description: "Save a standalone mood check-in for the user (mood 1=bad … 5=great; optional 1-5 dimensions).", parameters: { type: "object", properties: { mood: { type: "number", description: "1-5" }, energy: { type: "number" }, sleep: { type: "number" }, pain: { type: "number" }, anxiety: { type: "number" }, notes: { type: "string" } }, required: ["mood"] } } },
   { type: "function", function: { name: "get_mood_trends", description: "Get the user's mood trend (average, direction, recent daily values) from check-ins and dose logs.", parameters: { type: "object", properties: { days: { type: "number", description: "Window in days, default 30" } } } } },
-  { type: "function", function: { name: "get_active_effects", description: "Get the user's active effect-tracking sessions: current phase (onset/peak/wearing off), intensity %, and predicted onset/peak/end times based on their personalized model.", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "get_active_effects", description: "Get the user's active effect-tracking sessions: current phase (onset/peak/wearing off) and intensity % of the dose currently active (a redose supersedes the one before it, matching the Effects page), predicted onset/peak/end times, how many redoses are stacked, and current tolerance in plain terms.", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "get_medication_tolerance", description: "Get a medication's current modeled tolerance: a plain-language band (low/moderate/high/very high), roughly how much weaker a dose now lands because of it, and whether it looks recently faded after a gap in use (meaning the usual amount could hit harder than expected).", parameters: { type: "object", properties: { medication: { type: "string" } }, required: ["medication"] } } },
+  { type: "function", function: { name: "get_dose_effect_preview", description: "Preview how a specific dose amount is likely to land for this person before they take it: percent of their own recent usual dose (100% = normal for them, not a drug-naive baseline), whether it's calibrated from their own tracked sessions, and their current tolerance. Mirrors exactly what the log sheet shows when entering that dose.", parameters: { type: "object", properties: { medication: { type: "string" }, dose: { type: "number", description: "Dose amount to preview (optional — omit to preview their usual amount)" } }, required: ["medication"] } } },
+  { type: "function", function: { name: "add_redose", description: "Add a redose to a medication's currently active effects-tracking session (stacks a second dose on top of the running curve). Returns any safety warnings (too soon after the last dose, or over/near the typical daily maximum).", parameters: { type: "object", properties: { medication: { type: "string" }, amount: { type: "number", description: "Amount of this redose (optional — defaults to the same as the session's primary dose)" } }, required: ["medication"] } } },
 ];
 
 export function AIToolsProvider({ children }) {
@@ -151,9 +156,18 @@ export function AIToolsProvider({ children }) {
         const quantity = args.dose != null && isFinite(strength) && strength > 0
           ? Math.max(0, Math.round((Number(args.dose) / strength) * 4) / 4)
           : defaults?.quantity;
-        await db.createLog({ medication_id: med.id, status, dose_taken: doseTaken, unit: med.unit, scheduled_time: args.time || null, ...(quantity != null ? { quantity } : {}), ...(timestamp ? { timestamp } : {}) });
+        const log = await db.createLog({ medication_id: med.id, status, dose_taken: doseTaken, unit: med.unit, scheduled_time: args.time || null, ...(quantity != null ? { quantity } : {}), ...(timestamp ? { timestamp } : {}) });
+        let tracking = null;
+        // Mirrors the log sheet's "Track effects" toggle: starts an effects
+        // session tied to this exact log, timed from when the dose was
+        // actually taken -- only for a dose genuinely consumed, matching the
+        // toggle's own gating.
+        if (args.track_effects && ["taken", "partial"].includes(status)) {
+          const session = await db.startEffectSession({ medication_id: med.id, dose: doseTaken, unit: med.unit, log_id: log.id, started_at: log.timestamp });
+          tracking = { session_id: session.id };
+        }
         invalidateAll();
-        return { ok: true, logged: med.name, status, dose: doseTaken, ...(timestamp ? { at: timestamp } : {}) };
+        return { ok: true, logged: med.name, status, dose: doseTaken, ...(timestamp ? { at: timestamp } : {}), ...(tracking ? { tracking_effects: tracking } : {}) };
       }
       case "create_taper_plan": {
         const med = await resolveMed(args.medication || args.name);
@@ -245,19 +259,74 @@ export function AIToolsProvider({ children }) {
         const now = Date.now();
         return {
           active_sessions: sessions.map((s) => {
-            const t = Math.max(0, (now - new Date(s.started_at).getTime()) / 60000);
-            const p = s.profile;
-            const startMs = new Date(s.started_at).getTime();
-            const at = (mins) => new Date(startMs + mins * 60000).toISOString();
+            const d = db.describeActiveSession(s, now);
             return {
               medication: s.medication_name, dose: s.dose, unit: s.unit,
-              started_at: s.started_at, elapsed: fmtMins(t),
-              phase: phaseAt(t, p).label,
-              intensity_pct: Math.round(intensityAt(t, p) * (p.intensity_scale || 1)),
-              predicted: { onset_at: at(p.onset_min), peak_at: at(p.peak_min), ends_at: at(p.duration_min) },
-              personalized: p.learned ? `from ${p.samples} sessions (${p.confidence} confidence)` : "typical values (no personal data yet)",
+              started_at: s.started_at, elapsed: fmtMins(d.elapsed_min),
+              phase: d.phase, intensity_pct: d.intensity_pct,
+              ...(d.redose_count ? { redose_count: d.redose_count } : {}),
+              predicted: d.predicted,
+              personalized: d.personalized,
+              tolerance: d.tolerance,
             };
           }),
+        };
+      }
+      case "get_medication_tolerance": {
+        const med = await resolveMed(args.medication || args.name);
+        if (!med) return { error: "medication not found" };
+        const tolerance = await db.getMedicationTolerance(med.id);
+        if (!tolerance) return { medication: med.name, applicable: false, note: "No meaningful tolerance modeled right now (not enough recent use, or this category isn't modeled)." };
+        return {
+          medication: med.name,
+          applicable: true,
+          band: toleranceBand(tolerance.level).toLowerCase(),
+          weaker_pct: tolerance.maxDampening != null ? Math.round(tolerance.level * tolerance.maxDampening * 100) : null,
+          faded: !!tolerance.faded,
+          days_since_last_dose: tolerance.daysSinceLast,
+          note: tolerance.faded
+            ? "Tolerance has dropped since a gap in use -- the usual amount could hit harder than recently."
+            : "This is how much recent use has blunted this substance, capped by how far this substance's own tolerance can go -- not a percentage drop in effect on its own.",
+        };
+      }
+      case "get_dose_effect_preview": {
+        const med = await resolveMed(args.medication || args.name);
+        if (!med) return { error: "medication not found" };
+        const r = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: args.dose != null ? Number(args.dose) : null });
+        if (!r) return { error: "could not estimate — medication not found" };
+        return {
+          medication: med.name,
+          dose: args.dose ?? null,
+          pct_of_usual: Math.round((r.relativeToUsual ?? 1) * 100),
+          calibrated: r.calibrated,
+          // r.tolerance (from personalizedProfile's snapshot) omits itself
+          // entirely for a non-applicable category, rather than carrying an
+          // explicit flag -- its presence is the signal.
+          tolerance: r.tolerance ? {
+            band: toleranceBand(r.tolerance.level).toLowerCase(),
+            weaker_pct: r.factors?.toleranceDampening != null ? Math.round(r.factors.toleranceDampening * 100) : null,
+            faded: !!r.tolerance.faded,
+          } : null,
+          note: "100% means this dose should feel like this person's own recent usual dose, not a drug-naive baseline. Tolerance normally cancels out of this comparison since the usual dose carries the same tolerance -- except when tolerance has faded after a gap, where the comparison is against the higher tolerance built up before the break.",
+        };
+      }
+      case "add_redose": {
+        const sessions = await db.getActiveEffectSessions();
+        const med = await resolveMed(args.medication || args.name);
+        if (!med) return { error: "medication not found" };
+        const session = sessions.find((s) => s.medication_id === med.id);
+        if (!session) return { error: `No active effects session for "${med.name}". Log a dose with track_effects true first.` };
+        const [maxDaily, priorToday] = await Promise.all([
+          db.getMedicationMaxDaily(med.id),
+          db.getPriorDoseTotalToday(med.id, { excludeSessionId: session.id }),
+        ]);
+        const { warnings, cumulative } = redoseWarnings(session, { amount: args.amount ?? null }, maxDaily, med.unit, priorToday);
+        const updated = await db.addEffectDose(session.id, { amount: args.amount != null ? Number(args.amount) : null });
+        invalidateAll();
+        return {
+          ok: true, medication: med.name, session_id: updated.id,
+          ...(cumulative != null ? { session_total: cumulative, unit: med.unit } : {}),
+          ...(warnings.length ? { warnings: warnings.map((w) => w.type) } : {}),
         };
       }
       default:
