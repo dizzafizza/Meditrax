@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness } from "@/lib/api";
+import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness, getSettings, updateSettings } from "@/lib/api";
 import { ToleranceNote } from "@/components/ActiveEffects";
 import { scheduleAllReminders } from "@/lib/push";
 import { Switch } from "@/components/ui/switch";
@@ -18,7 +18,7 @@ import InteractionAlert from "@/components/InteractionAlert";
 import { doseLabel, fmtTime12, toDatetimeLocal } from "@/lib/format";
 import { pillsFromAmount } from "@/lib/predictor";
 import { cn } from "@/lib/utils";
-import { Check, X, SkipForward, MinusCircle, PlusCircle, Trash2 } from "lucide-react";
+import { Check, X, SkipForward, MinusCircle, PlusCircle, Trash2, Info } from "lucide-react";
 
 const MOODS = [
   { v: "great", e: "😊", l: "Great" },
@@ -35,6 +35,16 @@ const STATUSES = [
   { v: "missed", l: "Missed", icon: X },
 ];
 
+// True once there's actually something worth showing in the preview below --
+// the dose entered deviates from typical, or tolerance has something to say.
+// Shared by the preview itself and the one-time intro (which should only
+// ever appear alongside real content, not on its own).
+function isDoseEffectMeaningful(suggestion) {
+  if (!suggestion) return false;
+  const { intensityScale, tolerance } = suggestion;
+  return Math.abs(intensityScale - 1) >= 0.05 || !!(tolerance && (tolerance.level >= 0.15 || tolerance.faded));
+}
+
 // A live preview of how this dose is likely to land -- for ANY medication
 // with enough history to say something (scheduled or PRN, however long it's
 // been logged), not just ones actively using the effects tracker. Reuses the
@@ -42,23 +52,55 @@ const STATUSES = [
 // "predicted effect" here means exactly the same thing it means everywhere
 // else in the app. Quiet by design: renders nothing unless the dose entered
 // actually deviates from typical, or tolerance has something to say.
+//
+// Says plainly where the number comes from: population-typical research
+// until the effects tracker has calibrated to this person specifically
+// (modelConfidence "medium"+, i.e. 3+ tracked sessions -- see
+// estimateDoseEffectiveness, which is deliberately conservative about
+// trusting a single noisy self-reported timing over the researched default).
 function DoseEffectPreview({ suggestion }) {
-  if (!suggestion) return null;
-  const { intensityScale, tolerance } = suggestion;
-  const meaningfulDose = Math.abs(intensityScale - 1) >= 0.05;
-  const meaningfulTolerance = tolerance && (tolerance.level >= 0.15 || tolerance.faded);
-  if (!meaningfulDose && !meaningfulTolerance) return null;
+  const [showInfo, setShowInfo] = useState(false);
+  if (!isDoseEffectMeaningful(suggestion)) return null;
+  const { intensityScale, tolerance, calibrated } = suggestion;
   const pct = Math.round(intensityScale * 100);
   return (
     <div className="mt-4 rounded-xl bg-muted/40 px-3 py-2.5" data-testid="dose-effect-preview">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Predicted effect</span>
+        <button type="button" onClick={() => setShowInfo((v) => !v)} className="flex items-center gap-1 text-muted-foreground" aria-label="What is this?" data-testid="dose-effect-info-toggle">
+          Predicted effect <Info className="h-3 w-3" />
+        </button>
         <span className="font-medium">{pct}% of typical</span>
       </div>
       <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
         <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
+      <p className="mt-1 text-[10px] text-muted-foreground/80" data-testid="dose-effect-source">
+        {calibrated ? "Based on your calibrated effects-tracker data" : "Based on typical values for this category"}
+      </p>
+      {showInfo && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug animate-rise" data-testid="dose-effect-info-text">
+          Estimated from how strongly this typically affects people in this category, adjusted for your own logged dose amounts{calibrated ? " and your personal onset/peak/duration timing, calibrated from your tracked sessions" : ""}.
+          {!calibrated && " Track effects on a few doses (Onset → Peak → Gone) to calibrate the timing to you specifically."} It's a helpful guide, not a guarantee — always start low if you're unsure.
+        </p>
+      )}
       <ToleranceNote tolerance={tolerance} />
+    </div>
+  );
+}
+
+// Shown exactly once, the first time the preview above has something to say,
+// so the explanation appears in context rather than as a cold, out-of-place
+// popup. Dismissing persists to settings (seen_dose_effect_intro) so it
+// never shows again; the (i) toggle on the preview itself remains available
+// any time afterward for anyone who wants a refresher.
+function DoseEffectIntro({ onDismiss }) {
+  return (
+    <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="dose-effect-intro">
+      <p className="text-xs font-semibold text-primary">New: a preview of how this dose may feel</p>
+      <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+        Meditrax now estimates predicted effect and tolerance from your own dose history right when you log — and calibrates to your personal timing once you've tracked a few effects-tracker sessions. Tap the <Info className="h-3 w-3 inline align-text-bottom" /> next to "Predicted effect" anytime for details.
+      </p>
+      <button onClick={onDismiss} className="mt-2 text-xs font-medium text-primary" data-testid="dose-effect-intro-dismiss">Got it</button>
     </div>
   );
 }
@@ -85,6 +127,13 @@ export default function QuickLogSheet() {
   const [autoDefault, setAutoDefault] = useState(true);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // One-time intro for the dose-effect preview (see DoseEffectIntro below).
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: getSettings, enabled: ui.logSheet.open });
+  const dismissIntro = useMutation({
+    mutationFn: () => updateSettings({ seen_dose_effect_intro: true }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
 
   // Taper/cyclic-aware default for today — the med objects passed in by the
   // various entry points don't carry plan info, so the sheet resolves it.
@@ -322,6 +371,9 @@ export default function QuickLogSheet() {
             </div>
           )}
 
+          {!editLog && isDoseEffectMeaningful(effSuggestion) && settings && !settings.seen_dose_effect_intro && (
+            <DoseEffectIntro onDismiss={() => dismissIntro.mutate()} />
+          )}
           {!editLog && <DoseEffectPreview suggestion={effSuggestion} />}
 
           {!editLog && (status === "taken" || status === "partial") && (

@@ -3,6 +3,63 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Confidence-gated calibration, and a first-time explainer
+
+### Added
+- **A one-time intro explains the dose-effect preview the first time it has
+  something to show**, instead of a new UI element just quietly appearing.
+  A dismissible card ("New: a preview of how this dose may feel...") shows
+  in context — right alongside the first real preview, not as a cold
+  standalone popup — and a new `seen_dose_effect_intro` settings flag means
+  it never shows again once dismissed. A persistent (i) toggle next to
+  "Predicted effect" remains available afterward for anyone who wants a
+  refresher on what the numbers mean.
+- **The preview now says plainly where its number comes from.** A small
+  line under the bar reads "Based on typical values for this category" or
+  "Based on your calibrated effects-tracker data," so it's never ambiguous
+  whether a given estimate reflects population research or this person's
+  own tracked timing.
+
+### Fixed
+- **The preview could call a medication "calibrated" off a single, noisy
+  data point.** `personalizedProfile`'s onset/peak/duration_min come from
+  timing self-reports, EWMA-learned -- and the very first observation is
+  *adopted outright*, with no averaging at all (see `updateModel`), so one
+  session's reported timing is exactly as noisy as a single self-report can
+  be. `estimateDoseEffectiveness` now only trusts those learned values over
+  the researched category default once `modelConfidence` reaches "medium"
+  (3+ tracked sessions) — below that, the population-typical curve is
+  genuinely more accurate than an under-sampled personal one. This is
+  deliberately scoped to the new preview only, not `personalizedProfile`
+  itself or the real effects-tracker curve, which are unaffected and keep
+  their existing (and separately well-tested) behavior everywhere else.
+  `ref_dose` (how much was actually taken -- a plain recorded number, not a
+  fuzzy timing estimate) is a different kind of signal and is still trusted
+  starting from a single session, learned or, as before, averaged from plain
+  log history when no effects-tracker model exists at all.
+- **MDMA's tolerance-decay estimate was too optimistic.** `empathogen`'s
+  `decayDays` was 14 -- but harm-reduction guidance for MDMA specifically
+  recommends waiting *months*, not weeks, between sessions for fuller
+  subjective recovery (the well-documented "can't recreate the magic"
+  phenomenon). Raised to 30 days and `maxDampening` to 0.6 so the estimate
+  errs toward the more conservative, better-supported end rather than
+  implying tolerance resets quickly. Reviewed every other category's
+  formation/decay constants against known pharmacology in the same pass;
+  none of the others showed a clear enough discrepancy to justify changing
+  an already-cited estimate.
+
+### Verified
+- New test: a model trained with one atypical session (adopted outright,
+  per `updateModel`'s no-averaging-on-first-sample behavior) is correctly
+  reported as `calibrated: false` and doesn't affect `intensityScale`
+  relative to a same-size dose; three sessions (samples=3, medium
+  confidence) flips it to `calibrated: true`. Full suite: 290 tests passing.
+- Browser-verified against the production build: the one-time intro appears
+  exactly once (persists dismissed across sheet reopens), the info toggle
+  reveals detail text, the source line reads "typical values" before any
+  effects-tracker use and switches to "your calibrated effects-tracker data"
+  after three tracked sessions on the same medication.
+
 ## 2026-07-26 — A live dose-effect preview when logging, for any schedule
 
 ### Added

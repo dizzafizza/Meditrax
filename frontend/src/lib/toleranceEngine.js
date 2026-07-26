@@ -42,7 +42,7 @@
 // never implies "you won't feel it at all."
 export const TOLERANCE_PARAMS = {
   psychedelic: { formationDays: 1, decayDays: 6, maxDampening: 0.7 }, // near-total tachyphylaxis after one dose; classic ~3-7 day reset
-  empathogen: { formationDays: 3, decayDays: 14, maxDampening: 0.55 }, // MDMA's well-documented fast-diminishing "magic," slow recovery
+  empathogen: { formationDays: 3, decayDays: 30, maxDampening: 0.6 }, // MDMA's well-documented fast-diminishing "magic"; harm-reduction guidance typically recommends months (not weeks) between sessions for fuller recovery, so this errs toward the longer/more conservative end rather than implying a quick reset
   "stimulant-fast": { formationDays: 1, decayDays: 3, maxDampening: 0.5 }, // acute within-binge tachyphylaxis (cocaine)
   stimulant: { formationDays: 4, decayDays: 10, maxDampening: 0.45 },
   opioid: { formationDays: 4, decayDays: 10, maxDampening: 0.6 }, // fast-forming and fast-fading -- the classic post-break-overdose mechanism
