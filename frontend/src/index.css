@@ -108,10 +108,7 @@
 
 @layer base {
   * { @apply border-border; }
-  /* overscroll-behavior needs to be set on both html and body to suppress
-     scroll chaining/bounce for the whole page in every engine -- some only
-     treat body as the document's scrolling box, others html. */
-  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overscroll-behavior-y: none; }
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
