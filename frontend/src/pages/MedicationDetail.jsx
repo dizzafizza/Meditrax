@@ -136,7 +136,7 @@ export default function MedicationDetail() {
         {tolerance && (
           <div className="card-soft p-4" data-testid="medication-tolerance-card">
             <div className="flex items-center gap-2 mb-2"><Activity className="h-4 w-4 text-primary" /><p className="font-semibold">Tolerance</p></div>
-            <ToleranceNote tolerance={tolerance} />
+            <ToleranceNote tolerance={tolerance} label={null} />
           </div>
         )}
 

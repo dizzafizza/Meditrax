@@ -96,12 +96,28 @@ function DoseEffectPreview({ suggestion }) {
         {calibrated ? "Based on your calibrated effects-tracker data" : "Based on typical values for this category"}
       </p>
       {showInfo && (
-        <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug animate-rise" data-testid="dose-effect-info-text">
-          Compares this dose against the amount you usually take, on a saturating dose-response curve — so each extra unit adds less than the one before it{calibrated ? ", using your personal timing calibrated from your tracked sessions" : ""}.
-          {" "}It also accounts for your current tolerance{(factors?.toleranceDampening ?? 0) >= 0.05 ? ` (currently blunting effect by about ${Math.round(factors.toleranceDampening * 100)}%)` : ""} and for any drug still active from a recent dose.
-          {" "}100% means a normal dose for you; because tolerance affects your usual dose too, it mostly cancels out of this comparison — the meter below shows it on its own.
-          {!calibrated && " Track effects on a few doses (Onset → Peak → Gone) to calibrate the timing to you specifically."} It's a helpful guide, not a guarantee — always start low if you're unsure.
-        </p>
+        <div className="mt-1.5 space-y-1 text-[11px] text-muted-foreground leading-snug animate-rise" data-testid="dose-effect-info-text">
+          <p>
+            <span className="font-medium text-foreground">What 100% means.</span>{" "}
+            What your usual dose does for you right now — not a drug-free maximum. Above 100% means this dose should land stronger than you're used to, below means weaker.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">What moves it.</span>{" "}
+            The amount, on a saturating dose-response curve — each extra unit adds less than the one before it, so doubling a dose is well short of doubling the effect — plus any drug still active from a recent dose{calibrated ? ", timed with your own calibration from tracked sessions" : ""}.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Where tolerance fits.</span>{" "}
+            {tolerance?.faded
+              ? "Your tolerance looks like it has faded since your last dose, so this is compared against the tolerance you had built up before the break, not the little you have now. That's why it reads high — the same amount really will land harder than you're used to."
+              : (factors?.toleranceDampening ?? 0) >= 0.05
+                ? `Tolerance is blunting doses by about ${Math.round(factors.toleranceDampening * 100)}% right now — but it blunts your usual dose by the same amount, so it cancels out of this comparison rather than dragging the number down. The meter below tracks it on its own.`
+                : "Tolerance blunts this dose and your usual dose alike, so it cancels out of this comparison rather than dragging the number down. The meter below tracks it on its own."}
+          </p>
+          <p>
+            {!calibrated && "Track effects on a few doses (Onset → Peak → Gone) to calibrate the timing to you specifically. "}
+            It's a helpful guide, not a guarantee — always start low if you're unsure.
+          </p>
+        </div>
       )}
       <ToleranceNote tolerance={tolerance} />
     </div>

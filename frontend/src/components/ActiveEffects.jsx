@@ -15,7 +15,7 @@ import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
 import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { Activity, AlertTriangle, ChevronRight, ChevronDown, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus } from "lucide-react";
+import { Activity, AlertTriangle, ChevronRight, ChevronDown, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus, Info } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceDot, CartesianGrid } from "recharts";
 
 // Re-render on a timer so curves/labels track the clock while a session runs.
@@ -761,32 +761,75 @@ function SessionDetail({ session, now }) {
 }
 
 // ---- redose safety guardrails ----
-// Usage-based tolerance, computed from this medication's own recent dose
-// history (toleranceEngine.js) and baked into the session's profile at start
-// time. Two distinct states, deliberately different in tone: a routine,
-// muted note when tolerance is simply dampening the modeled curve (expected,
-// not alarming), and a caution box -- same visual language as
-// RedoseSafetyBox -- when tolerance looks like it's faded since a gap,
-// because that's the one that matters for safety (a usual dose can hit much
-// harder than expected).
-// A thin percentage bar -- the app's existing 0-100% idiom (same pattern as
-// the intensity bar on the home-screen card) -- plus a short caption. Only
-// rendered once there's something worth showing (meaningful tolerance, or a
-// faded one) so a first-time/rarely-used medication's session stays quiet.
-// When tolerance has faded, a marker at the recent peak level shows "it used
-// to be this high, now it's back down to here" visually, not just in prose.
-export function ToleranceNote({ tolerance }) {
+// Plain-language band for a tolerance level, so the bare percentage isn't the
+// only thing to go on. This is the headline word ("high", "moderate") because
+// a raw number on a scale nobody has been told about is the thing people
+// misread.
+function toleranceBand(level) {
+  if (level >= 0.85) return "Very high";
+  if (level >= 0.6) return "High";
+  if (level >= 0.3) return "Moderate";
+  return "Low";
+}
+
+// The tolerance meter, shown wherever a dose is being considered: the effects
+// graph, the log sheet's dose preview, and the medication page. One shared
+// component precisely so the same number and the same words appear in all
+// three places.
+//
+// Two distinct states, deliberately different in tone: a routine, muted note
+// for ordinary built-up tolerance (expected, not alarming), and a caution box
+// -- same visual language as RedoseSafetyBox -- when tolerance looks like it
+// has faded across a gap, because that's the one that matters for safety (a
+// usual dose can hit much harder than expected). When it has faded, a marker
+// at the recent peak level shows "it used to be this high, now it's back down
+// to here" visually, not just in prose.
+//
+// Three things about this number are easy to misread, so all three are stated
+// on the face of the component rather than implied:
+//
+//   - The percentage is *how far along this substance's own tolerance range*
+//     you are, not how much weaker things feel. They aren't the same: each
+//     substance has a ceiling on how much tolerance can blunt it (opioids
+//     ~60%, antihistamines ~30%), so 91% tolerance on an opioid means doses
+//     land roughly 55% weaker, not 91% weaker. The "% weaker" figure is what
+//     people actually mean by "my tolerance", so that's what's shown next to
+//     the band; the raw level is relegated to the bar and its scale caption.
+//   - The bar's scale is labelled ("none" -> "most this can build") instead of
+//     being left as an unmarked 0-100, which reads as a share of something.
+//   - It is *not* what shrinks the effects curve above it. That curve is drawn
+//     against the user's own usual dose, which carries the same tolerance, so
+//     it cancels out there -- a normal dose peaks at 100% however tolerant you
+//     are. The copy used to claim the opposite, which stopped being true once
+//     the curve was rebaselined against the user's own usual dose.
+export function ToleranceNote({ tolerance, label = "Tolerance" }) {
+  const [showInfo, setShowInfo] = useState(false);
   if (!tolerance) return null;
-  const { level, faded, recentPeakLevel, daysSinceLast } = tolerance;
+  const { level, faded, recentPeakLevel, daysSinceLast, maxDampening } = tolerance;
   if (!faded && level < 0.15) return null;
   const pct = Math.round(level * 100);
   const peakPct = faded && recentPeakLevel != null ? Math.round(recentPeakLevel * 100) : null;
+  // How much weaker doses actually land -- what people mean when they ask what
+  // their tolerance "is", and the same quantity the dose preview reports as
+  // factors.toleranceDampening, so the two surfaces never disagree.
+  const weakerPct = maxDampening != null ? Math.round(level * maxDampening * 100) : null;
 
   return (
     <div className="mt-2" data-testid="tolerance-meter">
       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>Tolerance{faded ? " (faded)" : ""}</span>
-        <span className={faded ? "font-medium text-[hsl(var(--warning))]" : ""}>{pct}%</span>
+        {/* `label` is dropped where the surrounding card already says
+            "Tolerance", so the word doesn't appear twice in a row. */}
+        <button type="button" onClick={() => setShowInfo((v) => !v)} className="flex items-center gap-1" aria-label="What does tolerance mean?" data-testid="tolerance-info-toggle">
+          {label ? `${label}${faded ? " (faded)" : ""} ` : faded ? "Faded " : ""}<Info className="h-3 w-3" />
+        </button>
+        {/* Faded leads with the drop rather than the (now tiny) "% weaker",
+            which next to the caution box below would read as "nothing to see
+            here" -- the opposite of the point. */}
+        <span className={faded ? "font-medium text-[hsl(var(--warning))]" : "font-medium text-foreground"} data-testid="tolerance-pct">
+          {faded && peakPct != null
+            ? `${toleranceBand(level)} now · was ${toleranceBand(recentPeakLevel).toLowerCase()}`
+            : `${toleranceBand(level)}${weakerPct != null ? ` · doses land ~${weakerPct}% weaker` : ` · ${pct}%`}`}
+        </span>
       </div>
       <div className="relative mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
         <div
@@ -794,8 +837,14 @@ export function ToleranceNote({ tolerance }) {
           style={{ width: `${pct}%` }}
         />
         {peakPct != null && peakPct > pct && (
-          <div className="absolute inset-y-0 w-0.5 bg-muted-foreground/60" style={{ left: `${peakPct}%` }} title={`Recent peak tolerance: ~${peakPct}%`} />
+          <div className="absolute inset-y-0 w-0.5 bg-muted-foreground/60" style={{ left: `${peakPct}%` }} title={`Recent peak tolerance: ~${peakPct}% of this substance's range`} />
         )}
+      </div>
+      {/* The bar's scale, spelled out -- an unlabelled 0-100% bar is what made
+          this number ambiguous in the first place. */}
+      <div className="mt-0.5 flex items-center justify-between text-[9px] text-muted-foreground/70" data-testid="tolerance-scale">
+        <span>no tolerance</span>
+        <span>{pct}% of the most this substance can build</span>
       </div>
       {faded ? (
         <div className="mt-2 rounded-xl border border-[hsl(var(--warning-border))] bg-[hsl(var(--warning-surface))] p-2.5" data-testid="tolerance-faded-note">
@@ -803,12 +852,33 @@ export function ToleranceNote({ tolerance }) {
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--warning))]" />
             <p className="text-[11px] text-muted-foreground leading-snug">
               <span className="font-semibold text-[hsl(var(--warning))]">Tolerance may have faded — </span>
-              it's been {Math.round(daysSinceLast)} day{Math.round(daysSinceLast) === 1 ? "" : "s"} since your last dose. If you'd built up tolerance, the usual amount could hit stronger than you're used to — consider starting lower.
+              it's been {Math.round(daysSinceLast)} day{Math.round(daysSinceLast) === 1 ? "" : "s"} since your last dose, so your tolerance has dropped from about {peakPct}% to {pct}% of this substance's range. The amount you used to take could now hit stronger than you're used to — consider starting lower.
             </p>
           </div>
         </div>
       ) : (
-        <p className="mt-1 text-[11px] text-muted-foreground" data-testid="tolerance-note">Recent use may be dampening this curve.</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug" data-testid="tolerance-note">
+          {weakerPct != null
+            ? `Your recent use has built up tolerance, so a dose now lands about ${weakerPct}% weaker than the same dose would with no tolerance.`
+            : "Your recent use has built up tolerance, so a dose now lands weaker than the same dose would with no tolerance."}
+        </p>
+      )}
+      {showInfo && (
+        <div className="mt-1.5 space-y-1 text-[11px] text-muted-foreground leading-snug animate-rise" data-testid="tolerance-info-text">
+          <p>
+            <span className="font-medium text-foreground">What it measures.</span>{" "}
+            How much your recent use has blunted this substance for you. Every substance has a ceiling on how far tolerance can go — opioids can blunt effects by roughly 60%, antihistamines by roughly 30% — and the bar shows how close to that ceiling you are, not how much weaker doses feel.
+            {weakerPct != null && ` At ${pct}% of the range, doses land about ${weakerPct}% weaker — not ${pct}% weaker.`}
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Where it comes from.</span>{" "}
+            Your own logged doses: how much you take per day (not how many separate times you dose), weighted toward the last few days and fading as you go without.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">What it does not change.</span>{" "}
+            Predicted effect and the effects curve are measured against your own usual dose, which already carries this same tolerance — so it cancels out there and a usual dose still reads 100%. Tolerance is shown separately here because it's the part that changes what a given amount is worth.
+          </p>
+        </div>
       )}
     </div>
   );
