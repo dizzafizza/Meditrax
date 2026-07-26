@@ -159,15 +159,68 @@ describe("defaultPkProfile", () => {
 describe("intensity curve & phases", () => {
   const p = { onset_min: 30, peak_min: 90, duration_min: 300 };
 
-  test("rises through onset to a 100 plateau then decays to a small tail", () => {
+  test("honours the three learned parameters it is fitted to", () => {
     expect(intensityAt(0, p)).toBe(0);
-    expect(intensityAt(15, p)).toBeGreaterThan(0);
-    expect(intensityAt(15, p)).toBeLessThanOrEqual(12);
-    expect(intensityAt(90, p)).toBe(100);
-    expect(intensityAt(120, p)).toBe(100); // plateau
-    expect(intensityAt(299, p)).toBeLessThan(5);
-    expect(intensityAt(310, p)).toBeLessThanOrEqual(8); // after-effects tail
-    expect(intensityAt(400, p)).toBe(0);
+    expect(intensityAt(p.peak_min, p)).toBe(100); // peak lands exactly where learned
+    expect(intensityAt(p.onset_min, p)).toBeGreaterThan(4); // perceptible at onset
+    expect(intensityAt(p.onset_min, p)).toBeLessThan(20); // but only just
+    // Largely worn off by duration_min, with the after-effects window easing
+    // out what's left. Not near-zero: a one-compartment curve that peaks this
+    // early cannot decline faster than this by then, so the fit takes the
+    // fastest decay available rather than pretending to an exact target.
+    expect(intensityAt(p.duration_min, p)).toBeLessThan(25);
+    expect(intensityAt(p.duration_min, p)).toBeLessThan(intensityAt(p.peak_min, p) / 3);
+    expect(intensityAt(p.duration_min * 1.25, p)).toBe(0); // and fully out by the tail's end
+  });
+
+  test("has a single rounded peak, not a flat plateau", () => {
+    // The old spline held exactly 100 for a third of the post-peak span,
+    // which no real concentration-effect curve does. A one-compartment curve
+    // touches its maximum once and immediately begins declining.
+    const atPeak = intensityAt(p.peak_min, p);
+    expect(intensityAt(p.peak_min + 40, p)).toBeLessThan(atPeak);
+    expect(intensityAt(p.peak_min - 20, p)).toBeLessThan(atPeak);
+  });
+
+  test("declines continuously, with no step into the after-effects tail", () => {
+    // Regression: the tail used to be a separate 8%-of-peak block, so the
+    // curve jumped discontinuously at duration_min -- a visible notch on
+    // every chart. Sampling across that boundary should now be smooth.
+    let prev = intensityAt(p.peak_min, p);
+    let biggestDrop = 0;
+    for (let t = p.peak_min + 1; t <= p.duration_min * 1.25; t++) {
+      const v = intensityAt(t, p);
+      biggestDrop = Math.max(biggestDrop, prev - v);
+      expect(v).toBeLessThanOrEqual(prev + 0.15); // monotone down throughout
+      prev = v;
+    }
+    expect(biggestDrop).toBeLessThan(3); // no cliff anywhere, including at duration_min
+  });
+
+  test("rises monotonically from zero to the peak", () => {
+    let prev = -1;
+    for (let t = 0; t <= p.peak_min; t++) {
+      const v = intensityAt(t, p);
+      expect(v).toBeGreaterThanOrEqual(prev - 0.15);
+      prev = v;
+    }
+  });
+
+  test("stays well-formed across every profile the engine can produce", () => {
+    for (const category of Object.keys(CATEGORY_PK)) {
+      for (const form of ["tablet", "smoked/vaporized", "edible", "patch", undefined]) {
+        const prof = defaultPkProfile({ category, form });
+        expect(intensityAt(prof.peak_min, prof)).toBe(100);
+        expect(intensityAt(0, prof)).toBe(0);
+        expect(intensityAt(prof.duration_min * 1.25, prof)).toBe(0);
+        for (const t of [1, prof.onset_min, prof.peak_min, prof.duration_min]) {
+          const v = intensityAt(t, prof);
+          expect(Number.isFinite(v)).toBe(true);
+          expect(v).toBeGreaterThanOrEqual(0);
+          expect(v).toBeLessThanOrEqual(100);
+        }
+      }
+    }
   });
 
   test("phases progress in order", () => {
@@ -208,7 +261,11 @@ describe("redosing (stacked dose curves)", () => {
     const stack = sessionDoseStack(session);
     expect(stack).toHaveLength(2);
     expect(stack[1].tOffset).toBe(120);
-    expect(stack[1].scale).toBeCloseTo(0.5, 5); // half the primary amount
+    // Half the primary amount, but on a saturating dose-response curve rather
+    // than a linear one -- so noticeably more than half the effect, the same
+    // way half a normal dose isn't half as strong.
+    expect(stack[1].scale).toBeGreaterThan(0.5);
+    expect(stack[1].scale).toBeLessThan(1);
     // At t=120 the primary is well past peak but still contributing; the
     // redose has only just been taken (its own t=0 → 0), so the stacked value
     // equals the primary's own value at 120.
@@ -217,7 +274,7 @@ describe("redosing (stacked dose curves)", () => {
     // contribute in full, so the total exceeds either dose alone.
     const at150 = stackedIntensityAt(150, profile, stack);
     expect(at150).toBeGreaterThan(intensityAt(150, profile));
-    expect(at150).toBeCloseTo(intensityAt(150, profile) + intensityAt(30, profile) * 0.5, 1);
+    expect(at150).toBeCloseTo(intensityAt(150, profile) + intensityAt(30, profile) * stack[1].scale, 1);
   });
 
   test("a redose of an unknown amount is assumed equal to the primary (same scale)", () => {

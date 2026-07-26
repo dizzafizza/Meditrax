@@ -40,6 +40,8 @@
 // fraction. maxDampening caps how much the modeled peak intensity can be
 // reduced at full tolerance — tolerance is essentially never total, so this
 // never implies "you won't feel it at all."
+import { localDateStr } from "./dates";
+
 export const TOLERANCE_PARAMS = {
   psychedelic: { formationDays: 1, decayDays: 6, maxDampening: 0.7 }, // near-total tachyphylaxis after one dose; classic ~3-7 day reset
   empathogen: { formationDays: 3, decayDays: 30, maxDampening: 0.6 }, // MDMA's well-documented fast-diminishing "magic"; harm-reduction guidance typically recommends months (not weeks) between sessions for fuller recovery, so this errs toward the longer/more conservative end rather than implying a quick reset
@@ -90,31 +92,87 @@ export function toleranceParamsFor(medOrCategory) {
 // applied to a tolerance "load" instead of a plasma concentration. Unbounded
 // (frequent-enough dosing can push it arbitrarily high), which is deliberate:
 // the saturation into a 0-1 level happens in toleranceLevel below.
-function toleranceLoad(doseTimesMs, at, decayDays) {
+// Doses are aggregated into *days* before this, and each day contributes in
+// proportion to how much was taken that day rather than how many times the
+// bottle was opened. Counting dose events instead meant someone splitting
+// 8 g of kratom across four 2 g doses looked four times as tolerant as
+// someone taking it in one go -- backwards, since tolerance follows total
+// exposure, not dosing frequency.
+function toleranceLoad(days, at, decayDays) {
   let sum = 0;
-  const cutoffDays = decayDays * 8; // contributions beyond this are <1% of an impulse; skip for sanity
-  for (const t of doseTimesMs) {
-    if (t > at) continue;
-    const days = (at - t) / DAY_MS;
-    if (days > cutoffDays) continue;
-    sum += Math.exp(-days / decayDays);
+  const cutoffDays = decayDays * 8; // contributions beyond this are <1% of a day's impulse; skip for sanity
+  for (const d of days) {
+    if (d.t > at) continue;
+    const ago = (at - d.t) / DAY_MS;
+    if (ago > cutoffDays) continue;
+    sum += d.weight * Math.exp(-ago / decayDays);
   }
   return sum;
 }
 
-// Saturating 0-1 tolerance level at time `at`, given every prior dose
-// timestamp (ms) and this category's time constants. A single dose today
-// already gives 1-exp(-1/formationDays) -- e.g. ~63% for a formationDays=1
-// category (psychedelics), ~22% for formationDays=4 (opioids) -- and repeated
-// recent doses push it higher, saturating toward 1.
-export function toleranceLevel(doseTimesMs, at, { formationDays, decayDays }) {
-  const load = toleranceLoad(doseTimesMs, at, decayDays);
+// Group doses into local calendar days, each weighted by that day's total
+// amount relative to a typical day. Median rather than mean for the same
+// reason the dose-response reference uses one: a recent escalation shouldn't
+// quietly redefine what "typical" means and hide itself.
+//
+// Accepts either bare timestamps (no amounts recorded, so every day counts
+// as one typical day) or {t, amount} entries.
+export function dailyExposure(doses = [], now = Date.now()) {
+  const byDay = new Map();
+  let anyAmount = false;
+  for (const entry of doses) {
+    const raw = entry && typeof entry === "object" && !(entry instanceof Date) ? entry : { t: entry };
+    const t = new Date(raw.t).getTime();
+    if (!isFinite(t) || t > now) continue;
+    const amount = Number(raw.amount);
+    const hasAmount = isFinite(amount) && amount > 0;
+    if (hasAmount) anyAmount = true;
+    const key = localDateStr(new Date(t));
+    const day = byDay.get(key) || { t, total: 0, count: 0 };
+    day.t = Math.max(day.t, t); // most recent dose that day anchors its decay
+    day.total += hasAmount ? amount : 0;
+    day.count += 1;
+    byDay.set(key, day);
+  }
+  const rows = [...byDay.values()].sort((a, b) => a.t - b.t);
+  if (!rows.length) return { days: [], typicalDaily: null, lastDoseMs: null };
+  // With no amounts anywhere, fall back to counting each day as one typical
+  // day -- still an improvement on counting every dose separately.
+  const values = anyAmount ? rows.map((r) => r.total).filter((v) => v > 0) : [];
+  let typicalDaily = null;
+  if (values.length) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    typicalDaily = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  const days = rows.map((r) => ({
+    t: r.t,
+    weight: typicalDaily > 0 && r.total > 0 ? r.total / typicalDaily : 1,
+  }));
+  return { days, typicalDaily, lastDoseMs: rows[rows.length - 1].t };
+}
+
+// Saturating 0-1 tolerance level at time `at`, from per-day exposure and this
+// category's time constants. A single typical day already gives
+// 1-exp(-1/formationDays) -- e.g. ~63% for formationDays=1 (psychedelics),
+// ~22% for formationDays=4 (opioids) -- and repeated recent days push it
+// higher, saturating toward 1. Heavier days weigh proportionally more.
+//
+// Accepts either the aggregated day list from dailyExposure or, for
+// convenience and backward compatibility, a bare array of dose timestamps.
+export function toleranceLevel(daysOrTimestamps, at, { formationDays, decayDays }) {
+  const days = Array.isArray(daysOrTimestamps) && daysOrTimestamps.every((d) => d && typeof d === "object" && "weight" in d)
+    ? daysOrTimestamps
+    : dailyExposure(daysOrTimestamps || [], at).days;
+  const load = toleranceLoad(days, at, decayDays);
   return 1 - Math.exp(-load / formationDays);
 }
 
 // Full tolerance report for one medication at time `now`, from its own
-// consuming-dose timestamps (ms since epoch; any order, future doses
-// ignored). Returns `{ applicable, level, maxDampening, daysSinceLast, faded,
+// consuming doses -- either bare timestamps or {t, amount} entries, in any
+// order, future doses ignored. Amounts are aggregated per calendar day, so
+// what drives tolerance is how much was taken each day rather than how many
+// separate times it was taken. Returns `{ applicable, level, maxDampening, daysSinceLast, faded,
 // recentPeakLevel }`.
 //   - `applicable`: false for categories with no modeled tolerance (the
 //     curve/intensity is left completely untouched).
@@ -128,17 +186,14 @@ export function toleranceLevel(doseTimesMs, at, { formationDays, decayDays }) {
 export function estimateTolerance(doseTimestamps, medOrCategory, now = Date.now()) {
   const params = toleranceParamsFor(medOrCategory);
   if (!params) return { applicable: false, level: 0, maxDampening: 0, daysSinceLast: null, faded: false, recentPeakLevel: 0 };
-  const past = (doseTimestamps || [])
-    .map((t) => new Date(t).getTime())
-    .filter((t) => isFinite(t) && t <= now)
-    .sort((a, b) => a - b);
-  const level = toleranceLevel(past, now, params);
-  if (!past.length) {
-    return { applicable: true, level: 0, maxDampening: params.maxDampening, daysSinceLast: null, faded: false, recentPeakLevel: 0 };
+  const { days, typicalDaily, lastDoseMs } = dailyExposure(doseTimestamps || [], now);
+  const level = toleranceLevel(days, now, params);
+  if (!days.length) {
+    return { applicable: true, level: 0, maxDampening: params.maxDampening, daysSinceLast: null, faded: false, recentPeakLevel: 0, typicalDaily: null };
   }
-  const lastDose = past[past.length - 1];
+  const lastDose = lastDoseMs;
   const daysSinceLast = (now - lastDose) / DAY_MS;
-  const recentPeakLevel = toleranceLevel(past, lastDose, params); // level as of the last dose itself (its own freshest impulse included)
+  const recentPeakLevel = toleranceLevel(days, lastDose, params); // level as of the last dose itself (its own freshest impulse included)
   const faded = recentPeakLevel >= 0.35 && recentPeakLevel - level >= 0.2;
   return {
     applicable: true,
@@ -147,5 +202,6 @@ export function estimateTolerance(doseTimestamps, medOrCategory, now = Date.now(
     daysSinceLast: round1(daysSinceLast),
     faded,
     recentPeakLevel: round2(recentPeakLevel),
+    typicalDaily,
   };
 }

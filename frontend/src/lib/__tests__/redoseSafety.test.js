@@ -85,3 +85,32 @@ describe("redoseWarnings — combined / edge cases", () => {
     expect(clean.warnings).toEqual([]);
   });
 });
+
+describe("redoseWarnings — the day's total, not just the session's", () => {
+  const profile = { onset_min: 30, peak_min: 90, duration_min: 300, intensity_scale: 1 };
+  const base = "2026-07-24T12:00:00.000Z";
+  const plus = (min) => new Date(new Date(base).getTime() + min * 60000).toISOString();
+  const session = { started_at: base, dose: 30, profile, redoses: [] };
+
+  test("doses taken earlier the same day count toward a max-DAILY-dose limit", () => {
+    // 30 primary + 30 proposed = 60, comfortably under 100 on its own...
+    expect(redoseWarnings(session, { amount: 30, at: plus(120) }, 100).warnings.find((w) => w.type.endsWith("max"))).toBeFalsy();
+    // ...but with 50 already taken this morning the day totals 110, over the limit.
+    const { warnings, cumulative } = redoseWarnings(session, { amount: 30, at: plus(120) }, 100, "mg", 50);
+    expect(cumulative).toBe(110);
+    const w = warnings.find((x) => x.type === "over_max");
+    expect(w).toBeTruthy();
+    expect(w.priorToday).toBe(50);
+  });
+
+  test("a smaller earlier amount can still push the day into the near-max band", () => {
+    const { warnings } = redoseWarnings(session, { amount: 20, at: plus(120) }, 100, "mg", 32);
+    expect(warnings.find((x) => x.type === "near_max")).toBeTruthy();
+  });
+
+  test("omitted or nonsensical prior totals are ignored rather than corrupting the sum", () => {
+    for (const prior of [undefined, 0, -5, NaN, null]) {
+      expect(redoseWarnings(session, { amount: 30, at: plus(120) }, 100, "mg", prior).cumulative).toBe(60);
+    }
+  });
+});

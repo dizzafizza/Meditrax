@@ -273,6 +273,10 @@ export function personalizedProfile(med, model = null, dose = null, tolerance = 
   return {
     onset_min: Math.round(onset), peak_min: Math.round(peak), duration_min: Math.round(duration),
     intensity_scale: round1(intensityScale),
+    // Carried onto the session snapshot so its curve is shaped by the same
+    // receptor-occupancy slope the dose-response uses (see curveModel).
+    hill: doseResponseFor(med).hill,
+    typicalFraction: doseResponseFor(med).typicalFraction,
     learned: !!model && (model.samples || 0) > 0,
     samples: model?.samples || 0,
     confidence: modelConfidence(model),
@@ -294,19 +298,135 @@ export function modeledEffectiveness(intensityScale) {
 // ---- curve & phases ----
 const smooth = (x) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); }; // smoothstep
 
+// ---- the curve: one-compartment PK, then Emax PD ----
+// The shape used to be three splines bolted together, which produced two
+// artifacts nothing in real pharmacology has: a dead-flat 100% plateau for a
+// third of the post-peak span, and a discontinuous step down into a separate
+// "after-effects" block that showed up as a visible notch on every chart.
+//
+// It's now the textbook structure instead: concentration follows a
+// one-compartment model with first-order absorption and elimination (the
+// Bateman function, C ∝ e^(-ke·t) - e^(-ka·t)), and effect follows from
+// concentration through the same Emax relationship used for dose-response
+// above -- because it *is* the same relationship, receptor occupancy against
+// available drug. That gives a rounded peak, a genuinely exponential decline,
+// and a continuous low tail, all for free.
+//
+// The three learned parameters are preserved exactly, each pinned to the part
+// of the model it actually corresponds to:
+//   onset_min     effect crosses the perception threshold (a PD property --
+//                 solved for via C50)
+//   peak_min      concentration tmax (a PK property -- solved for via ka/ke)
+//   duration_min  effect has fallen back to ONSET_FRACTION (PK: elimination)
+// so the learner, the phase labels and every caller are untouched.
+const ONSET_FRACTION = 0.10; // effect at onset_min, as a fraction of peak
+// Effect remaining at duration_min. Not zero: duration_min is where the user
+// reported it "gone", and the after-effects window that follows eases the
+// remainder out. A one-compartment curve peaking early genuinely cannot fall
+// much below this by then -- absorption fast enough to peak at 75 min forces
+// a tail -- so aiming lower would just make the fit infeasible for the very
+// substances that need it most.
+const END_FRACTION = 0.12;
+const TAIL_SPAN = 0.25; // after-effects window, as a fraction of duration
+
+const bateman = (t, ka, ke) => Math.exp(-ke * t) - Math.exp(-ka * t);
+const emax = (c, c50, h) => (c <= 0 ? 0 : Math.pow(c, h) / (Math.pow(c50, h) + Math.pow(c, h)));
+
+// Bisection on a monotone function — small, dependency-free, and plenty
+// precise for curve fitting at minute resolution. Not every profile admits an
+// exact fit (a fast-onset, short-duration substance can ask for a decay no
+// one-compartment curve peaking that late can deliver), so an unbracketed
+// target returns the closest endpoint rather than letting the search run off
+// to a nonsense extreme.
+function bisect(f, lo, hi, iterations = 40) {
+  let a = lo, b = hi;
+  const fa = f(a), fb = f(b);
+  if (!isFinite(fa) || !isFinite(fb)) return lo;
+  if (Math.sign(fa) === Math.sign(fb)) return Math.abs(fa) <= Math.abs(fb) ? lo : hi;
+  for (let i = 0; i < iterations; i++) {
+    const m = (a + b) / 2;
+    if (Math.sign(f(m)) === Math.sign(fa)) a = m; else b = m;
+  }
+  return (a + b) / 2;
+}
+
+const curveCache = new Map();
+
+// Fit ka, ke and C50 to a profile. Memoized: the solve runs once per distinct
+// profile, then every sample of that curve is a couple of exponentials.
+export function curveModel(profile = {}) {
+  const on = Math.max(1, profile.onset_min ?? 30);
+  const pk = Math.max(on + 5, profile.peak_min ?? 90);
+  const dur = Math.max(pk + 15, profile.duration_min ?? 360);
+  const h = Math.max(0.5, profile.hill ?? 1.2);
+  const key = `${on}|${pk}|${dur}|${h}|${profile.typicalFraction ?? 0.6}`;
+  const cached = curveCache.get(key);
+  if (cached) return cached;
+
+  // C50 is not fitted — it follows from where a peak dose sits on the
+  // occupancy curve, which is exactly the `typicalFraction` already used for
+  // dose-response. Solving 1/(C50^h + 1) = typicalFraction gives it directly.
+  const tf = clamp(profile.typicalFraction ?? 0.6, 0.05, 0.95);
+  const c50 = Math.pow((1 - tf) / tf, 1 / h);
+  const eAtPeak = emax(1, c50, h);
+
+  // Two free parameters for two constraints:
+  //   tlag  an absorption lag (real for anything swallowed — gastric
+  //         emptying), which is what lets a drug felt within minutes of a
+  //         much later peak be represented at all. Without it a Bateman
+  //         curve peaking at 75 min is already a quarter of the way up at
+  //         8 min, and no PD threshold can pull the onset back.
+  //   r     ka/ke, the absorption:elimination ratio, which sets how long the
+  //         tail runs.
+  // They interact (tlag shifts the peak, which changes the rates), so the two
+  // one-dimensional solves are alternated to convergence rather than nested.
+  const ratesFor = (r, tlag) => {
+    const tmax = Math.max(1, pk - tlag);
+    const ke = Math.log(r) / (tmax * (r - 1));
+    return { ka: ke * r, ke, tlag };
+  };
+  const shapeFor = (r, tlag) => {
+    const { ka, ke } = ratesFor(r, tlag);
+    const cAtPeak = bateman(Math.max(1, pk - tlag), ka, ke);
+    if (!(cAtPeak > 1e-12)) return () => 0;
+    return (t) => {
+      const u = t - tlag;
+      if (u <= 0) return 0;
+      const c = bateman(u, ka, ke) / cAtPeak; // 0..1, exactly 1 at pk
+      return c <= 0 ? 0 : emax(c, c50, h) / eAtPeak;
+    };
+  };
+
+  let r = 20;
+  let tlag = 0;
+  for (let i = 0; i < 6; i++) {
+    // Longer tail as r grows, so effect-at-duration is increasing in r.
+    r = bisect((rr) => shapeFor(rr, tlag)(dur) - END_FRACTION, 1.05, 2000, 44);
+    // Later onset as the lag grows. Capped short of onset itself so the curve
+    // is never flat-zero at the very moment the user reported feeling it.
+    tlag = bisect((tl) => shapeFor(r, tl)(on) - ONSET_FRACTION, 0, on * 0.95, 40);
+  }
+  const shape = shapeFor(r, tlag);
+  const endMin = dur * (1 + TAIL_SPAN);
+  const model = { shape, endMin, dur, ...ratesFor(r, tlag), c50, hill: h };
+  // Bounded so a long session that edits its dose repeatedly can't grow this
+  // without limit; curves are cheap to re-solve if one is evicted.
+  if (curveCache.size > 512) curveCache.clear();
+  curveCache.set(key, model);
+  return model;
+}
+
 // Relative intensity 0..100 at t minutes after the dose.
 export function intensityAt(tMin, profile) {
-  const { onset_min: on, peak_min: pk, duration_min: dur } = profile;
-  const plateauEnd = pk + (dur - pk) * 0.35;
-  if (tMin <= 0) return 0;
-  if (tMin < on) return round1(12 * smooth(tMin / on)); // pre-onset trickle
-  if (tMin < pk) return round1(12 + 88 * smooth((tMin - on) / (pk - on)));
-  if (tMin < plateauEnd) return 100;
-  if (tMin < dur) return round1(100 * (1 - smooth((tMin - plateauEnd) / (dur - plateauEnd))));
-  // after-effects tail fades over 25% of the duration
-  const tail = dur * 0.25;
-  if (tMin < dur + tail) return round1(8 * (1 - smooth((tMin - dur) / tail)));
-  return 0;
+  if (!(tMin > 0)) return 0;
+  const m = curveModel(profile);
+  if (tMin >= m.endMin) return 0;
+  let e = m.shape(tMin);
+  // Taper the last stretch smoothly to zero. Exponential decline never
+  // actually reaches nothing, and a curve that just stops mid-air is the
+  // artifact this replaced -- so the after-effects window eases it out.
+  if (tMin > m.dur) e *= 1 - smooth((tMin - m.dur) / (m.endMin - m.dur));
+  return round1(clamp(e * 100, 0, 100));
 }
 
 export const PHASES = [
@@ -351,11 +471,18 @@ export function sessionDoseStack(session) {
   const baseScale = session.profile?.intensity_scale || 1;
   const primaryAmt = Number(session.dose);
   const stack = [{ tOffset: 0, scale: baseScale }];
+  // A redose's strength relative to the primary follows the same saturating
+  // dose-response as everything else. It used to scale linearly and without
+  // bound, so a redose of four times the primary was modeled as four times
+  // the effect -- the same fault fixed in personalizedProfile.
+  const dr = { hill: session.profile?.hill ?? 1.2, typicalFraction: session.profile?.typicalFraction ?? 0.6 };
   for (const r of session.redoses || []) {
     const tOffset = Math.max(0, (new Date(r.at).getTime() - start) / 60000);
     let scale = baseScale;
     const ra = Number(r.amount);
-    if (isFinite(primaryAmt) && primaryAmt > 0 && isFinite(ra) && ra > 0) scale = baseScale * (ra / primaryAmt);
+    if (isFinite(primaryAmt) && primaryAmt > 0 && isFinite(ra) && ra > 0) {
+      scale = baseScale * doseResponse(Math.min(10, Math.max(0.1, ra / primaryAmt)), dr);
+    }
     stack.push({ tOffset, scale, id: r.id });
   }
   return stack;

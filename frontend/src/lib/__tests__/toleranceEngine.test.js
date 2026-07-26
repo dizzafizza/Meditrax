@@ -162,3 +162,57 @@ describe("per-substance tolerance overrides", () => {
     expect(toleranceParamsFor(null)).toBeNull();
   });
 });
+
+describe("daily exposure (metabolism, not dose-counting)", () => {
+  test("splitting the same daily amount across more doses gives the same tolerance", () => {
+    // The whole point: tolerance follows total exposure, not how many separate
+    // times the bottle was opened. One 8 g day and a 4x2 g day are the same day.
+    // Same last-dose-of-day time in both, so the only thing differing is
+    // whether the day's 8 g arrived in one dose or four.
+    const day = (n, hours, amount) => hours.map((h) => ({ t: daysAgo(n) + h * 3600000, amount }));
+    const oneBigDose = [], fourSmaller = [];
+    for (let d = 10; d >= 1; d--) {
+      oneBigDose.push(...day(d, [9], 8));
+      fourSmaller.push(...day(d, [6, 7, 8, 9], 2));
+    }
+    const a = estimateTolerance(oneBigDose, "opioid", now);
+    const b = estimateTolerance(fourSmaller, "opioid", now);
+    expect(a.level).toBeCloseTo(b.level, 2);
+  });
+
+  test("doubling the daily amount raises tolerance; halving it lowers it", () => {
+    const build = (amount) => {
+      const out = [];
+      for (let d = 14; d >= 1; d--) out.push({ t: daysAgo(d), amount });
+      return out;
+    };
+    // A day's weight is relative to that history's own typical day, so a
+    // uniformly larger dose is still a typical day for that person -- what
+    // moves the level is a day heavier than their own norm.
+    const uniform = estimateTolerance(build(2), "opioid", now);
+    const escalatedTail = estimateTolerance([...build(2), { t: daysAgo(0.2), amount: 8 }], "opioid", now);
+    const lightTail = estimateTolerance([...build(2), { t: daysAgo(0.2), amount: 0.5 }], "opioid", now);
+    expect(escalatedTail.level).toBeGreaterThan(uniform.level);
+    expect(escalatedTail.level).toBeGreaterThan(lightTail.level);
+  });
+
+  test("reports the typical daily amount it measured", () => {
+    const doses = [
+      { t: daysAgo(3), amount: 2 }, { t: daysAgo(3) + 3600000, amount: 2 }, // a 4 g day
+      { t: daysAgo(2), amount: 4 },
+      { t: daysAgo(1), amount: 4 },
+    ];
+    expect(estimateTolerance(doses, "opioid", now).typicalDaily).toBe(4);
+  });
+
+  test("still works with no amounts recorded at all, counting each day once", () => {
+    const bare = [daysAgo(3), daysAgo(3) + 3600000, daysAgo(2), daysAgo(1)];
+    const r = estimateTolerance(bare, "opioid", now);
+    expect(r.applicable).toBe(true);
+    expect(r.level).toBeGreaterThan(0);
+    expect(r.typicalDaily).toBeNull();
+    // Two doses on the same day must not count as two separate days.
+    const oneEach = [daysAgo(3), daysAgo(2), daysAgo(1)];
+    expect(r.level).toBeCloseTo(estimateTolerance(oneEach, "opioid", now).level, 5);
+  });
+});
