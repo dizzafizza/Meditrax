@@ -3,6 +3,21 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — The tolerance meter reads the same everywhere
+
+### Fixed
+- **The tolerance meter beside the effects graph disagreed with the identical
+  meter in the log sheet** — 81% against 88% in a reproduced session. The
+  effects graph was reading the tolerance snapshot stored on the session's
+  profile, which is frozen at the moment the session started and deliberately
+  excludes the session's own dose. That is the right input for *dampening
+  that dose's curve*, but wrong for a meter labelled "Tolerance": it goes
+  stale as the session runs and never counts a redose logged during it. The
+  graph now reads current tolerance from the same source as the log sheet and
+  the medication page, under the same query key, so all three share one cache
+  entry and can't drift apart. The curve itself still uses the snapshot, which
+  is what it should be dampened by.
+
 ## 2026-07-26 — Chart tooltip now reads on the same scale as the axis
 
 ### Fixed
