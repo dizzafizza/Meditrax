@@ -3,6 +3,59 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Saturating dose-response, and a preview that answers the right question
+
+Reported: doubling a kratom dose barely moved the predicted effect, which sat
+in the 30-60% band regardless. Reproducing it turned up three separate
+faults, each independently enough to flatten the number.
+
+### Fixed
+- **Dose scaling was linear and then hard-clamped at 1.5x.** Doubling and
+  quadrupling a dose produced *identical* output (both 67% in the reported
+  scenario), because both saturated the clamp. Real dose-response is neither
+  linear nor abruptly clipped — it saturates smoothly, because receptors are
+  finite. Replaced with the standard Hill/Emax equation,
+  `E = Emax·Dʰ / (ED50ʰ + Dʰ)`, normalized so a typical dose is exactly 1.0.
+  Each category (and, where it matters, each substance) now carries a Hill
+  slope and a "where a typical dose already sits on the curve" fraction — the
+  latter being what sets the headroom:
+  - **Buprenorphine** gets a genuine ceiling. As a partial agonist its curve
+    flattens hard past a moderate dose, which is exactly why it's used for
+    maintenance; doubling now moves it under 15%.
+  - **NSAIDs** get their well-known analgesic ceiling, for the same reason.
+  - **Psychedelics and dissociatives** get steep slopes — the gap between "a
+    bit more" and "far too much" is genuinely narrow for both.
+  - **Kratom** gets more headroom than a conventional oral opioid, since its
+    effect keeps climbing past a typical dose as the opioid-like side takes
+    over from the stimulant-like one.
+- **The reference dose was the mean of all logged amounts**, so escalating
+  dragged the baseline up along with you and a genuinely doubled dose read as
+  only slightly above "typical". Now the median, which the escalation being
+  measured can't pull.
+- **The headline was an absolute number, and tolerance dominated it.** For a
+  daily user with saturated tolerance, "% of typical" was pinned near 40%
+  whatever they did — it was describing an opioid-naive stranger, not them,
+  and left no room for the dose to matter. It now reads **against their own
+  recent normal**: 100% means a usual dose, above means stronger. Tolerance
+  cancels out of that comparison exactly (it's still reported, in full, by
+  the tolerance meter directly below), *except* after a detected break, where
+  the pre-break tolerance is the honest baseline and the dose really will
+  land harder. The bar runs 0-200% with a marker at 100%, so a normal dose
+  sits mid-track with visible headroom rather than pinning full.
+
+### Verified
+- Full suite: 317 tests passing (9 new), covering: a typical dose is exactly
+  the reference point for any parameters; the curve is monotonic with each
+  doubling buying strictly less than the last; it saturates at the ceiling
+  its parameters imply and never beyond; ceiling-effect substances stay flat
+  while high-headroom ones climb; and the median reference resists the
+  escalation it's measuring.
+- Browser-verified against the production build, reproducing the reported
+  setup (21 days of daily 2 g kratom, then sweeping the amount):
+  1 g → 53%, 2 g → 100%, 3 g → 131%, 4 g → 152%, 6 g → 176%, 8 g → 189%.
+  Previously 4 g and 8 g both read 67%. Tolerance still reported separately
+  at 88%.
+
 ## 2026-07-26 — Per-substance pharmacology, and two engine logic fixes
 
 Audit of the effects engine's accuracy against published pharmacology,

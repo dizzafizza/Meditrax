@@ -41,8 +41,8 @@ const STATUSES = [
 // ever appear alongside real content, not on its own).
 function isDoseEffectMeaningful(suggestion) {
   if (!suggestion) return false;
-  const { intensityScale, tolerance } = suggestion;
-  return Math.abs(intensityScale - 1) >= 0.05 || !!(tolerance && (tolerance.level >= 0.15 || tolerance.faded));
+  const { relativeToUsual, tolerance } = suggestion;
+  return Math.abs((relativeToUsual ?? 1) - 1) >= 0.05 || !!(tolerance && (tolerance.level >= 0.15 || tolerance.faded));
 }
 
 // A live preview of how this dose is likely to land -- for ANY medication
@@ -61,25 +61,37 @@ function isDoseEffectMeaningful(suggestion) {
 function DoseEffectPreview({ suggestion }) {
   const [showInfo, setShowInfo] = useState(false);
   if (!isDoseEffectMeaningful(suggestion)) return null;
-  const { intensityScale, tolerance, calibrated } = suggestion;
-  const pct = Math.round(intensityScale * 100);
+  const { relativeToUsual, tolerance, calibrated } = suggestion;
+  const pct = Math.round((relativeToUsual ?? 1) * 100);
+  const stronger = pct >= 110;
+  // The track runs 0-200% so a usual dose sits mid-bar with visible headroom
+  // above it -- a full bar at "normal" would leave nowhere to show stronger.
+  const fill = Math.min(100, pct / 2);
   return (
     <div className="mt-4 rounded-xl bg-muted/40 px-3 py-2.5" data-testid="dose-effect-preview">
       <div className="flex items-center justify-between text-xs">
         <button type="button" onClick={() => setShowInfo((v) => !v)} className="flex items-center gap-1 text-muted-foreground" aria-label="What is this?" data-testid="dose-effect-info-toggle">
           Predicted effect <Info className="h-3 w-3" />
         </button>
-        <span className="font-medium">{pct}% of typical</span>
+        <span className={cn("font-medium", stronger && "text-[hsl(var(--warning))]")} data-testid="dose-effect-pct">
+          {pct}% of your usual
+        </span>
       </div>
-      <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
-        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${Math.min(100, pct)}%` }} />
+      <div className="relative mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-[width] duration-300", stronger ? "bg-[hsl(var(--warning))]" : "bg-primary")}
+          style={{ width: `${fill}%` }}
+        />
+        {/* Where a usual dose lands, so a half-filled bar reads as "normal". */}
+        <div className="absolute inset-y-0 left-1/2 w-px bg-muted-foreground/40" />
       </div>
       <p className="mt-1 text-[10px] text-muted-foreground/80" data-testid="dose-effect-source">
         {calibrated ? "Based on your calibrated effects-tracker data" : "Based on typical values for this category"}
       </p>
       {showInfo && (
         <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug animate-rise" data-testid="dose-effect-info-text">
-          Estimated from how strongly this typically affects people in this category, adjusted for your own logged dose amounts{calibrated ? " and your personal onset/peak/duration timing, calibrated from your tracked sessions" : ""}.
+          Compares this dose against the amount you usually take, on a saturating dose-response curve — so each extra unit adds less than the one before it{calibrated ? ", using your personal timing calibrated from your tracked sessions" : ""}.
+          {" "}100% means a normal dose for you; your tolerance is shown separately below.
           {!calibrated && " Track effects on a few doses (Onset → Peak → Gone) to calibrate the timing to you specifically."} It's a helpful guide, not a guarantee — always start low if you're unsure.
         </p>
       )}

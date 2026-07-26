@@ -68,10 +68,16 @@ export const SUBSTANCE_PK = {
   // opioid-like high). The curve models the timing, which is similar across
   // that range; the *character* change with dose isn't something a single
   // intensity curve can express, so it's documented rather than faked.
-  kratom: { onset: 8, peak: 75, duration: 330, form: "other" },
+  // Effect keeps climbing well past a typical dose as the opioid-like side
+  // takes over from the stimulant-like one, so it has more headroom than a
+  // conventional oral opioid rather than less.
+  kratom: { onset: 8, peak: 75, duration: 330, form: "other", doseResponse: { hill: 1.4, typicalFraction: 0.45 } },
   // Very slow mu-receptor dissociation -- effects long outlast plasma levels,
-  // and the generic 4.5 h opioid bucket was badly wrong here.
-  buprenorphine: { onset: 30, peak: 120, duration: 1440, form: "tablet" },
+  // and the generic 4.5 h opioid bucket was badly wrong here. As a partial
+  // agonist it also has a genuine ceiling: past a moderate dose the curve
+  // flattens and more buys essentially nothing, which is precisely why it's
+  // used for maintenance. Modeled as sitting high on its own curve already.
+  buprenorphine: { onset: 30, peak: 120, duration: 1440, form: "tablet", doseResponse: { hill: 1, typicalFraction: 0.88 } },
   tramadol: { onset: 60, peak: 150, duration: 360, form: "tablet" }, // prodrug; slower than most oral opioids
   oxycodone: { onset: 15, peak: 60, duration: 270, form: "tablet" }, // immediate-release
   codeine: { onset: 40, peak: 75, duration: 300, form: "tablet" },
@@ -125,8 +131,70 @@ const SUBSTANCE_ALIASES = {
   flexeril: "cyclobenzaprine", provigil: "modafinil",
 };
 
+// ---- dose-response ----
+// Real dose-response is saturating, not linear: receptors are finite, so
+// each additional unit buys less than the one before it. The standard
+// description is the Hill/Emax equation, E = Emax·D^h / (ED50^h + D^h).
+//
+//   hill            slope of the curve. ~1 is classic hyperbolic; higher is
+//                   steeper/more threshold-like (psychedelics and
+//                   dissociatives are famously steep -- the gap between "a
+//                   bit more" and "far too much" is narrow).
+//   typicalFraction where a *typical* dose already sits on that curve, as a
+//                   fraction of maximal effect. This is what sets the
+//                   headroom: a drug typically taken near its plateau
+//                   (an NSAID, buprenorphine) has almost nothing left to
+//                   gain from more, while one typically taken well below
+//                   plateau still climbs meaningfully.
+export const DOSE_RESPONSE = {
+  // Recreational / acute -- typically taken below plateau, so real headroom.
+  opioid: { hill: 1.3, typicalFraction: 0.5 },
+  "stimulant-fast": { hill: 1.5, typicalFraction: 0.5 },
+  stimulant: { hill: 1.4, typicalFraction: 0.5 },
+  psychedelic: { hill: 1.6, typicalFraction: 0.45 },
+  empathogen: { hill: 1.5, typicalFraction: 0.55 },
+  dissociative: { hill: 1.8, typicalFraction: 0.45 },
+  depressant: { hill: 1.5, typicalFraction: 0.5 },
+  cannabis: { hill: 1.2, typicalFraction: 0.55 },
+  benzodiazepine: { hill: 1.2, typicalFraction: 0.6 },
+  // Therapeutic -- usually dosed at or near the plateau on purpose, so more
+  // mostly buys side effects rather than effect. NSAIDs in particular have a
+  // well-known analgesic ceiling.
+  nsaid: { hill: 1.0, typicalFraction: 0.8 },
+  antihistamine: { hill: 1.0, typicalFraction: 0.75 },
+  "sleep-aid": { hill: 1.2, typicalFraction: 0.7 },
+  "muscle-relaxant": { hill: 1.0, typicalFraction: 0.7 },
+  antidepressant: { hill: 1.0, typicalFraction: 0.85 },
+  antipsychotic: { hill: 1.0, typicalFraction: 0.8 },
+  anticonvulsant: { hill: 1.0, typicalFraction: 0.8 },
+  other: { hill: 1.2, typicalFraction: 0.6 },
+};
+const DOSE_RESPONSE_DEFAULT = { hill: 1.2, typicalFraction: 0.6 };
+
+export function doseResponseFor(med = {}) {
+  const substance = substancePkFor(med);
+  if (substance?.doseResponse) return substance.doseResponse;
+  return DOSE_RESPONSE[med.category] || DOSE_RESPONSE_DEFAULT;
+}
+
+// Effect at `ratio` times a typical dose, relative to that typical dose
+// (so doseResponse(1) === 1 exactly, whatever the parameters).
+//
+// Deriving it: with a typical dose sitting at fraction f of Emax, that dose
+// is a = f/(1-f) in units of ED50^hill. Substituting into the Hill equation
+// and normalizing by the typical dose's own effect gives the form below.
+// It saturates at 1 + 1/a as the dose grows without bound -- so the ceiling
+// falls out of the pharmacology rather than being an arbitrary clamp.
+export function doseResponse(ratio, { hill = 1.2, typicalFraction = 0.6 } = {}) {
+  if (!(ratio > 0)) return 0;
+  const a = typicalFraction / (1 - typicalFraction);
+  const x = Math.pow(ratio, hill);
+  return (x * (a + 1)) / (x * a + 1);
+}
+
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const round1 = (x) => Math.round(x * 10) / 10;
+const round2 = (x) => Math.round(x * 100) / 100;
 const normalizeName = (s) => String(s ?? "").trim().toLowerCase();
 
 // The substance-specific profile for a medication, or null to fall back to
@@ -192,9 +260,12 @@ export function personalizedProfile(med, model = null, dose = null, tolerance = 
   const ref = Number(model?.ref_dose);
   const dv = Number(dose);
   if (isFinite(ref) && ref > 0 && isFinite(dv) && dv > 0) {
-    const ratio = clamp(dv / ref, 0.25, 4);
+    // A wide guard rail only, not the shape of the response -- the Hill
+    // curve below saturates on its own, so this exists purely to keep a
+    // typo'd dose from producing an absurd curve.
+    const ratio = clamp(dv / ref, 0.1, 10);
     duration = duration * clamp(Math.pow(ratio, 0.3), 0.75, 1.5);
-    intensityScale = clamp(ratio, 0.5, 1.5);
+    intensityScale = doseResponse(ratio, doseResponseFor(med));
   }
   if (tolerance?.applicable) intensityScale *= 1 - tolerance.level * tolerance.maxDampening;
   peak = Math.max(peak, onset + 5);
