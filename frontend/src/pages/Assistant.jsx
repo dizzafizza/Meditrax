@@ -148,7 +148,7 @@ export default function Assistant() {
   const suggestions = chatSuggestions || FALLBACK_SUGGESTIONS;
 
   return (
-    <div className="flex flex-col" style={{ height: "100vh" }}>
+    <div className="flex flex-col" style={{ height: "100dvh" }}>
       <PageHeader
         title={personaName}
         subtitle={modelUsed ? `via ${modelUsed}` : "Your AI medication companion"}

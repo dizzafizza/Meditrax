@@ -3,6 +3,29 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Fix the phantom scroll gap under fixed bars on iOS
+
+### Fixed
+- **A blank gap could open up below the last message/card and above the
+  fixed bottom tab bar or the assistant's input box**, most visible after
+  scrolling on an installed (home-screen) iOS PWA. The cause: every
+  full-height container in the app (`.App`, the page shell in `Layout.jsx`,
+  the Assistant page's own wrapper, the toast viewport) sized itself with
+  `100vh`/`min-h-screen`, and iOS Safari defines `1vh` against the largest
+  possible viewport — chrome hidden — not the one actually visible. That
+  made the document taller than the real screen, so it could be dragged
+  past its own content into blank space while `position: fixed` elements
+  stayed pinned to the true viewport, opening a gap between them and
+  whatever content was last on screen. Replaced with `dvh` (dynamic
+  viewport height), which tracks the real visible viewport and updates
+  live as the browser chrome shows or hides, everywhere `vh`-based sizing
+  was used to fill the screen — with a `100vh` fallback kept for any
+  browser old enough not to support `dvh`. Also added `overscroll-behavior-y:
+  none` to `html` (previously only on `body`) per the standard's own
+  guidance for suppressing page-level scroll bounce across every engine,
+  since which of the two elements is "the document's scrolling box" isn't
+  fully consistent between them.
+
 ## 2026-07-26 — Contextual autofill suggestions and interactive quick-reply questions
 
 ### Added
