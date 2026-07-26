@@ -1,4 +1,4 @@
-import { estimateTolerance, toleranceLevel, TOLERANCE_PARAMS } from "../toleranceEngine";
+import { estimateTolerance, toleranceLevel, toleranceParamsFor, TOLERANCE_PARAMS, SUBSTANCE_TOLERANCE } from "../toleranceEngine";
 
 const DAY = 86400000;
 const now = new Date("2026-07-24T12:00:00.000Z").getTime();
@@ -123,5 +123,42 @@ describe("estimateTolerance — faded tolerance after a gap", () => {
     const doses = [daysAgo(4), daysAgo(3), daysAgo(2), daysAgo(1), daysAgo(0.05)];
     const r = estimateTolerance(doses, "opioid", now);
     expect(r.faded).toBe(false);
+  });
+});
+
+describe("per-substance tolerance overrides", () => {
+  test("every entry has sane, boundable parameters", () => {
+    Object.values(SUBSTANCE_TOLERANCE).forEach((p) => {
+      expect(p.formationDays).toBeGreaterThan(0);
+      expect(p.decayDays).toBeGreaterThan(0);
+      expect(p.maxDampening).toBeGreaterThan(0);
+      expect(p.maxDampening).toBeLessThanOrEqual(1);
+    });
+  });
+
+  test("nicotine is modeled despite its category modeling nothing", () => {
+    // "other" holds chronic-condition medications and correctly models no
+    // tolerance -- but nicotine, which lives there, is among the most
+    // tolerance-forming substances in the catalog.
+    expect(TOLERANCE_PARAMS.other).toBeUndefined();
+    const byCategoryAlone = estimateTolerance([daysAgo(1), daysAgo(0.5)], "other", now);
+    expect(byCategoryAlone.applicable).toBe(false);
+
+    const med = { name: "Nicotine", category: "other" };
+    expect(toleranceParamsFor(med)).toBe(SUBSTANCE_TOLERANCE.nicotine);
+    const r = estimateTolerance([daysAgo(1), daysAgo(0.5), daysAgo(0.2)], med, now);
+    expect(r.applicable).toBe(true);
+    expect(r.level).toBeGreaterThan(0);
+  });
+
+  test("a substance with no override still uses its category's constants", () => {
+    const med = { name: "Oxycodone", category: "opioid" };
+    expect(toleranceParamsFor(med)).toBe(TOLERANCE_PARAMS.opioid);
+  });
+
+  test("a bare category string still works (backward compatible)", () => {
+    expect(toleranceParamsFor("opioid")).toBe(TOLERANCE_PARAMS.opioid);
+    expect(toleranceParamsFor("antidepressant")).toBeNull();
+    expect(toleranceParamsFor(null)).toBeNull();
   });
 });

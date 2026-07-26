@@ -30,6 +30,20 @@ function useNow(intervalMs = 30000) {
 
 const elapsedMin = (session, now) => Math.max(0, (now - new Date(session.started_at).getTime()) / 60000);
 
+// X-axis tick spacing, chosen to keep the label count bounded however long
+// the curve runs. Short and medium sessions keep the spacing they always had;
+// the longer tiers exist because genuinely long-acting substances (a
+// buprenorphine curve plots a ~30 h window) would otherwise emit a dozen-plus
+// ticks, which on the combined chart -- whose labels are full clock times
+// rather than short "6h" offsets -- collide into an unreadable smear.
+function axisStepMin(chartEnd) {
+  if (chartEnd <= 150) return 30;
+  if (chartEnd <= 720) return 60;
+  if (chartEnd <= 1080) return 120;
+  if (chartEnd <= 2160) return 360;
+  return 720;
+}
+
 // True once a session's curve has actually finished playing out, tracked by
 // the same client-side clock the card renders from -- independent of the
 // effectSessions query's own (slower, polled) auto-complete check. Lets the
@@ -321,7 +335,7 @@ function SessionDetail({ session, now }) {
   // reflows mid-animation; only which ones fall inside the current animated
   // window (below) changes as it zooms.
   const hourTicks = useMemo(() => {
-    const step = chartEnd <= 150 ? 30 : chartEnd > 720 ? 120 : 60;
+    const step = axisStepMin(chartEnd);
     const out = [];
     for (let m = 0; m <= chartEnd; m += step) out.push(m);
     return out;
@@ -834,7 +848,7 @@ function CombinedEffectsChart({ sessions, now }) {
     () => Math.max(60, ...sessions.map((s, i) => offsets[i] + stackChartEnd(s.profile, stacks[i]))),
     [sessions, offsets, stacks]
   );
-  const hourStep = chartEnd <= 150 ? 30 : chartEnd > 720 ? 120 : 60;
+  const hourStep = axisStepMin(chartEnd);
   const hourTicks = useMemo(() => {
     const out = [];
     for (let m = 0; m <= chartEnd; m += hourStep) out.push(m);

@@ -42,14 +42,126 @@ export const FORM_SPEED = {
   "smoked/vaporized": 0.15, insufflated: 0.35, edible: 2.5,
 };
 
+// ---- per-substance profiles ----
+// A category is a coarse bucket, and for a meaningful number of real
+// substances it is simply wrong -- buprenorphine's effects outlast a generic
+// oral opioid's by roughly 5x, psilocybin's fall short of a generic
+// psychedelic's by nearly half, nicotine's are over in under an hour where
+// its "other" bucket says six. Where a substance has well-characterized
+// timings of its own, they're recorded here and take precedence over
+// CATEGORY_PK; the categories stay as the prior for substances we have no
+// specific data on (a user-added custom drug, say).
+//
+// Keyed by lowercased name/generic_name, so an existing medication picks its
+// profile up automatically with no migration or catalog re-seed.
+//
+// `form` names the route these numbers actually describe. That matters:
+// FORM_SPEED is applied *relative* to it, so a profile already measured for
+// smoked material isn't sped up a second time when the medication is (also)
+// marked smoked. Same UX-prior-not-medicine caveat as CATEGORY_PK -- these
+// are population-typical values to make a first curve plausible, and the
+// personal model takes over from the user's own reported timings.
+export const SUBSTANCE_PK = {
+  // Opioids / opioid-like
+  // Kratom's alkaloids absorb far faster than a typical oral opioid, and its
+  // effects are famously dose-dependent (stimulant-leaning low, sedative and
+  // opioid-like high). The curve models the timing, which is similar across
+  // that range; the *character* change with dose isn't something a single
+  // intensity curve can express, so it's documented rather than faked.
+  kratom: { onset: 8, peak: 75, duration: 330, form: "other" },
+  // Very slow mu-receptor dissociation -- effects long outlast plasma levels,
+  // and the generic 4.5 h opioid bucket was badly wrong here.
+  buprenorphine: { onset: 30, peak: 120, duration: 1440, form: "tablet" },
+  tramadol: { onset: 60, peak: 150, duration: 360, form: "tablet" }, // prodrug; slower than most oral opioids
+  oxycodone: { onset: 15, peak: 60, duration: 270, form: "tablet" }, // immediate-release
+  codeine: { onset: 40, peak: 75, duration: 300, form: "tablet" },
+
+  // Psychedelics -- LSD runs roughly twice as long as psilocybin, so one
+  // bucket can't serve both.
+  lsd: { onset: 45, peak: 150, duration: 540, form: "other" },
+  "psilocybin mushrooms": { onset: 30, peak: 105, duration: 300, form: "other" },
+
+  // Stimulants -- the spread here is enormous (nicotine minutes,
+  // lisdexamfetamine most of a day), so nearly all get their own numbers.
+  caffeine: { onset: 20, peak: 45, duration: 240, form: "tablet" },
+  modafinil: { onset: 45, peak: 180, duration: 660, form: "tablet" },
+  methamphetamine: { onset: 20, peak: 120, duration: 600, form: "tablet" },
+  lisdexamfetamine: { onset: 90, peak: 210, duration: 780, form: "capsule" }, // prodrug: slow, deliberately blunted onset
+  "amphetamine/dextroamphetamine": { onset: 40, peak: 150, duration: 300, form: "tablet" },
+  methylphenidate: { onset: 25, peak: 90, duration: 240, form: "tablet" }, // immediate-release
+  // Effects are over in well under an hour even though plasma nicotine takes
+  // hours to clear -- the "other" category's 6 h was one of the worst misses.
+  nicotine: { onset: 2, peak: 8, duration: 45, form: "smoked/vaporized" },
+
+  // Sedatives / depressants
+  clonazepam: { onset: 40, peak: 150, duration: 720, form: "tablet" }, // much longer-acting than the benzo bucket
+  lorazepam: { onset: 30, peak: 120, duration: 480, form: "tablet" },
+  zolpidem: { onset: 20, peak: 75, duration: 420, form: "tablet" },
+  cyclobenzaprine: { onset: 60, peak: 240, duration: 900, form: "tablet" }, // ~18 h half-life; the 5 h bucket was far short
+  "ghb / gbl": { onset: 15, peak: 45, duration: 150, form: "liquid" },
+  // Alcohol is deliberately left on the category default: it follows
+  // zero-order kinetics (a roughly fixed amount cleared per hour regardless
+  // of how much was drunk), so its duration scales with amount far more
+  // steeply than personalizedProfile's sub-linear dose scaling models. The
+  // category value is a reasonable few-drinks prior; anything more precise
+  // would overstate what this curve can represent.
+
+  // Dissociatives / cannabis -- both already route-specific, which is
+  // exactly why they need an explicit reference form (see above).
+  ketamine: { onset: 7, peak: 25, duration: 60, form: "insufflated" },
+  "cannabis (thc)": { onset: 8, peak: 25, duration: 180, form: "smoked/vaporized" },
+};
+
+// Alternate names that should resolve to a SUBSTANCE_PK entry above.
+const SUBSTANCE_ALIASES = {
+  suboxone: "buprenorphine", subutex: "buprenorphine", "buprenorphine/naloxone": "buprenorphine",
+  psilocybin: "psilocybin mushrooms", shrooms: "psilocybin mushrooms", mushrooms: "psilocybin mushrooms",
+  acid: "lsd", "lysergic acid diethylamide": "lsd",
+  thc: "cannabis (thc)", cannabis: "cannabis (thc)", marijuana: "cannabis (thc)", weed: "cannabis (thc)",
+  ghb: "ghb / gbl", gbl: "ghb / gbl",
+  adderall: "amphetamine/dextroamphetamine", vyvanse: "lisdexamfetamine",
+  ritalin: "methylphenidate", concerta: "methylphenidate",
+  ambien: "zolpidem", klonopin: "clonazepam", ativan: "lorazepam",
+  flexeril: "cyclobenzaprine", provigil: "modafinil",
+};
+
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const round1 = (x) => Math.round(x * 10) / 10;
+const normalizeName = (s) => String(s ?? "").trim().toLowerCase();
+
+// The substance-specific profile for a medication, or null to fall back to
+// its category. Matches generic_name first (the more canonical of the two),
+// then the display name, then a small alias list of brand/street names.
+export function substancePkFor(med = {}) {
+  const keys = [normalizeName(med.generic_name), normalizeName(med.name)].filter(Boolean);
+  for (const k of keys) if (SUBSTANCE_PK[k]) return SUBSTANCE_PK[k];
+  for (const k of keys) if (SUBSTANCE_ALIASES[k]) return SUBSTANCE_PK[SUBSTANCE_ALIASES[k]];
+  return null;
+}
 
 export function defaultPkProfile(med = {}) {
-  const base = CATEGORY_PK[med.category] || CATEGORY_PK.other;
-  const speed = FORM_SPEED[med.form] ?? 1;
+  const substance = substancePkFor(med);
+  const base = substance || CATEGORY_PK[med.category] || CATEGORY_PK.other;
+  // For a substance profile, only the difference between the route it was
+  // measured for and the route actually being used should apply -- otherwise
+  // e.g. smoked-referenced numbers get sped up again by the smoked form
+  // multiplier. With no substance match this reduces to the plain category
+  // behavior (refSpeed 1).
+  const refSpeed = substance ? (FORM_SPEED[substance.form] ?? 1) : 1;
+  const speed = (FORM_SPEED[med.form] ?? refSpeed) / refSpeed;
   const onset = clamp(Math.round(base.onset * speed), 2, 360);
-  const peak = clamp(Math.round(base.peak * Math.sqrt(speed)), onset + 5, 720);
+  // Peak is derived as onset plus a scaled come-up, rather than scaled from
+  // zero independently. Scaling both from zero let onset (linear in speed)
+  // outrun peak (sqrt) once a route change was large enough -- a swallowed
+  // profile compared against a smoked one, say -- and the ordering clamp
+  // below would then silently crush the come-up to its 5-minute floor,
+  // yielding a curve that spikes the instant it starts. Shifting the whole
+  // curve back by the absorption delay keeps its shape intact and keeps
+  // onset < peak true by construction for any ratio.
+  const comeUp = Math.max(0, base.peak - base.onset);
+  const peak = clamp(Math.round(onset + comeUp * Math.sqrt(speed)), onset + 5, 720);
+  // Only slower routes stretch the tail: a faster route front-loads the
+  // curve, but elimination still takes as long as it takes.
   const duration = clamp(Math.round(base.duration * (speed > 1 ? Math.sqrt(speed) : 1)), peak + 15, 2880);
   return { onset_min: onset, peak_min: peak, duration_min: duration };
 }

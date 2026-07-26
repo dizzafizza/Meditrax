@@ -721,7 +721,9 @@ async function toleranceForMedication(med, { now = Date.now(), excludeLogId = nu
     .filter((l) => l.medication_id === med.id && l.id !== excludeLogId && LOG_CONSUMING_STATUSES.includes(l.status))
     .map((l) => new Date(l.timestamp).getTime())
     .filter((t) => isFinite(t) && t >= cutoff && t <= now);
-  return estimateTolerance(doseTimes, med.category, now);
+  // Pass the whole medication, not just its category, so a substance with
+  // its own tolerance constants (see SUBSTANCE_TOLERANCE) gets them.
+  return estimateTolerance(doseTimes, med, now);
 }
 
 // Public read of a medication's current modeled tolerance -- independent of
