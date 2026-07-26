@@ -29,6 +29,7 @@ export default function Assistant() {
   const sid = useRef(sessionId());
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const inputBarRef = useRef(null);
   const { tools, executeTool } = useAITools();
   const { activeId } = useProfiles();
   const { data: config } = useQuery({ queryKey: ["aiConfig"], queryFn: getAiConfig });
@@ -39,6 +40,27 @@ export default function Assistant() {
   const [toolEvents, setToolEvents] = useState([]);
   const [modelUsed, setModelUsed] = useState(null);
   const [quickReplies, setQuickReplies] = useState([]);
+  // The fixed bar's real height (suggestion chips + input, which changes
+  // with conversation state and textarea line count) -- measured rather
+  // than guessed, so the scroll list's reserved bottom space always
+  // matches exactly instead of leaving a gap (too generous) or clipping
+  // the last message (too tight).
+  const [inputBarHeight, setInputBarHeight] = useState(96);
+
+  const keyReady = hasKey(config);
+  const agentMode = config?.advanced !== false;
+
+  useEffect(() => {
+    const el = inputBarRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => setInputBarHeight(entry.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+    // config starts undefined until the aiConfig query resolves, so the bar
+    // (and its ref) doesn't exist on the very first render -- re-running
+    // this once keyReady flips true is what actually attaches the observer,
+    // not the initial mount.
+  }, [keyReady]);
 
   useEffect(() => {
     getChat(sid.current).then((h) => setMessages(h.map((m) => ({ role: m.role, content: m.content }))));
@@ -47,9 +69,6 @@ export default function Assistant() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, streaming, toolEvents]);
-
-  const keyReady = hasKey(config);
-  const agentMode = config?.advanced !== false;
 
   // Contextual "what could I ask?" chips for a blank conversation -- real
   // and grounded in this person's own state (see lib/chatSuggestions.js),
@@ -148,7 +167,7 @@ export default function Assistant() {
   const suggestions = chatSuggestions || FALLBACK_SUGGESTIONS;
 
   return (
-    <div className="flex flex-col" style={{ height: "100dvh" }}>
+    <div className="flex flex-col" style={{ height: "100vh" }}>
       <PageHeader
         title={personaName}
         subtitle={modelUsed ? `via ${modelUsed}` : "Your AI medication companion"}
@@ -171,7 +190,7 @@ export default function Assistant() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-y px-4 py-4 space-y-3" style={{ paddingBottom: keyReady ? "180px" : "24px" }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-y px-4 py-4 space-y-3" style={{ paddingBottom: keyReady ? `calc(var(--tabbar-h) + var(--sab) + ${inputBarHeight}px + 12px)` : "24px" }}>
         {!keyReady && (
           <div className="card-soft p-5 text-center mt-6" data-testid="assistant-setup-card">
             <div className="h-16 w-16 mx-auto rounded-3xl bg-primary/12 text-primary flex items-center justify-center"><KeyRound className="h-8 w-8" /></div>
@@ -245,7 +264,7 @@ export default function Assistant() {
       </div>
 
       {keyReady && (
-        <div className="fixed left-0 right-0 z-30" style={{ bottom: "calc(var(--tabbar-h) + var(--sab))" }}>
+        <div ref={inputBarRef} className="fixed left-0 right-0 z-30" style={{ bottom: "calc(var(--tabbar-h) + var(--sab))" }}>
           <div className="mx-auto max-w-2xl px-3 pb-2">
             {empty && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">

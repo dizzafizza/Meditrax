@@ -3,28 +3,33 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 2026-07-26 — Fix the phantom scroll gap under fixed bars on iOS
+## 2026-07-26 — Revert the vh→dvh change; fix the assistant's real bottom-padding mismatch instead
 
 ### Fixed
-- **A blank gap could open up below the last message/card and above the
-  fixed bottom tab bar or the assistant's input box**, most visible after
-  scrolling on an installed (home-screen) iOS PWA. The cause: every
-  full-height container in the app (`.App`, the page shell in `Layout.jsx`,
-  the Assistant page's own wrapper, the toast viewport) sized itself with
-  `100vh`/`min-h-screen`, and iOS Safari defines `1vh` against the largest
-  possible viewport — chrome hidden — not the one actually visible. That
-  made the document taller than the real screen, so it could be dragged
-  past its own content into blank space while `position: fixed` elements
-  stayed pinned to the true viewport, opening a gap between them and
-  whatever content was last on screen. Replaced with `dvh` (dynamic
-  viewport height), which tracks the real visible viewport and updates
-  live as the browser chrome shows or hides, everywhere `vh`-based sizing
-  was used to fill the screen — with a `100vh` fallback kept for any
-  browser old enough not to support `dvh`. Also added `overscroll-behavior-y:
-  none` to `html` (previously only on `body`) per the standard's own
-  guidance for suppressing page-level scroll bounce across every engine,
-  since which of the two elements is "the document's scrolling box" isn't
-  fully consistent between them.
+- **The previous `100vh` → `dvh` swap made scrolling feel worse, not
+  better, and was reverted in full** (`.App`, the `Layout.jsx` shell, the
+  Assistant page's wrapper, and the toast viewport are back to plain
+  `100vh`/`min-h-screen`, and `overscroll-behavior-y` is back to `body`
+  only). Two screenshots of the same scroll position, taken before and
+  after that change, showed an *identical* gap — meaning `dvh` never
+  touched the actual reported defect — while live scrolling reportedly got
+  glitchier. The likely mechanism: `dvh` is a genuinely *dynamic* value,
+  and having two nested containers (`.App` and its `<main>`) both track it
+  live gives the browser two dependent layouts to recompute against a
+  value that can change mid-gesture, which is a known source of scroll-time
+  jank on iOS — a worse trade for a bug this specific fallback didn't even
+  fix.
+- **The real defect**: the assistant's message list reserved a hardcoded
+  `180px` of bottom padding to keep the last message clear of the fixed
+  input bar below it — a guess that didn't track the bar's actual height,
+  which changes with conversation state (the suggestion-chip row only
+  shows on an empty chat) and would drift further out of sync on any
+  device with different safe-area insets. Replaced the guess with a real
+  measurement: a `ResizeObserver` on the fixed bar reports its live height,
+  and the message list's reserved space is computed from that plus the tab
+  bar and safe-area variables already used to position the bar itself —
+  so the reserved space always matches exactly, with a small fixed margin,
+  regardless of device or conversation state.
 
 ## 2026-07-26 — Contextual autofill suggestions and interactive quick-reply questions
 
