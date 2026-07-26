@@ -1142,13 +1142,37 @@ export async function getActiveEffectSessions() {
     if (now > endsAt) { s.status = "completed"; s.ended_at = nowIso(); changed = true; }
   });
   if (changed) await setArr(pkey("effectSessions"), sessions);
-  return sessions
+  const models = await getArr(pkey("effectModels"));
+  const active = sessions
     .filter((s) => s.status === "active")
-    .sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""))
-    .map((s) => {
-      const m = meds.find((x) => x.id === s.medication_id);
-      return { ...s, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit };
-    });
+    .sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+
+  const out = [];
+  for (const s of active) {
+    const m = meds.find((x) => x.id === s.medication_id);
+    let profile = s.profile;
+    // The *timing* of a running session stays snapshotted -- a curve that
+    // shifted underneath you mid-session would be worse than useless. Its
+    // height does not: intensity_scale is just a function of the dose and
+    // current tolerance, both of which we can recompute. Without this, a
+    // session started before a change to how that scale is derived keeps the
+    // old value baked in until it ends, which is exactly how a curve could
+    // still be drawn against a stale baseline hours later.
+    if (m && profile) {
+      const model = models.find((x) => x.medication_id === s.medication_id) || null;
+      const tolerance = await toleranceForMedication(m, { now, excludeLogId: s.log_id });
+      const fresh = personalizedProfile(m, model, s.dose, tolerance);
+      profile = {
+        ...profile,
+        intensity_scale: fresh.intensity_scale,
+        tolerance: fresh.tolerance,
+        hill: fresh.hill,
+        typicalFraction: fresh.typicalFraction,
+      };
+    }
+    out.push({ ...s, profile, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit });
+  }
+  return out;
 }
 
 // Substances considered "currently in the body" for interaction checking:
