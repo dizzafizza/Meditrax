@@ -6,7 +6,26 @@ import { localDateStr } from "./dates";
 
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OR_MODELS_URL = "https://openrouter.ai/api/v1/models";
-const MAX_TOOL_ITERS = 5;
+// The tool surface has grown well past a single lookup-then-answer turn
+// (resolve a medication, then check tolerance, then interactions, then
+// preview a dose, then act) -- 5 iterations was tight enough that a
+// multi-medication request could get cut off mid-chain with tool calls
+// still pending. This only bounds a runaway loop; a normal exchange ends
+// in 1-3 turns long before it matters.
+const MAX_TOOL_ITERS = 10;
+
+// The single chat thread the assistant reads/writes to, on this device --
+// shared by the interactive Assistant page and the background digest (see
+// digest.js) so a proactively-generated digest shows up as a message
+// waiting in the same conversation, not a separate silo.
+export function sessionId() {
+  let s = localStorage.getItem("meditrax-ai-session");
+  if (!s) {
+    s = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    localStorage.setItem("meditrax-ai-session", s);
+  }
+  return s;
+}
 
 export const CURATED_MODELS = [
   { id: "openrouter/auto", label: "Auto — let OpenRouter choose" },
@@ -103,8 +122,32 @@ export async function completeJSON({ config, tier = "light", system, user, tempe
   return { parsed, model: data?.model || model };
 }
 
+// One-shot plain-text completion — same shape as completeJSON but for
+// prose (the periodic digest; anything that isn't structured extraction).
+// Non-streaming: this runs in the background with no UI to stream into.
+export async function completeText({ config, tier = "standard", system, user, temperature = 0.5, maxTokens = 1200, signal }) {
+  const apiKey = (config?.apiKeys?.openrouter || "").trim();
+  if (!apiKey) throw new Error("No OpenRouter API key set. Add one in Settings.");
+  const model = resolveModelForTask(config, tier);
+  let resp;
+  try {
+    resp = await fetch(OR_URL, {
+      method: "POST", headers: headers(apiKey), signal,
+      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: user }], temperature, max_tokens: maxTokens }),
+    });
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
+    throw new Error("Network error reaching OpenRouter. Check your connection.");
+  }
+  if (!resp.ok) { let j = null; try { j = await resp.json(); } catch (e) { /* ignore */ } throw new Error(mapOpenRouterError(resp.status, j)); }
+  const data = await resp.json();
+  const text = (data?.choices?.[0]?.message?.content || "").trim();
+  if (!text) throw new Error("AI returned an empty response. Please try again.");
+  return { text, model: data?.model || model };
+}
+
 // ---- one streaming round-trip ----
-async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperature = 0.5, maxTokens = 2048, signal, onDelta }) {
+async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperature = 0.5, maxTokens = 2048, signal, onDelta, webAccess = false }) {
   // IMPORTANT: always send an explicit max_tokens. When omitted, OpenRouter
   // pre-authorizes the request against the model's maximum possible output
   // length (which can be 60k-200k+ tokens for some models) rather than what
@@ -113,6 +156,10 @@ async function streamOnce({ apiKey, model, messages, tools, toolChoice, temperat
   // reply. Bounding max_tokens keeps that pre-flight cost estimate realistic.
   const body = { model, messages, stream: true, temperature, max_tokens: maxTokens };
   if (tools && tools.length) { body.tools = tools; body.tool_choice = toolChoice || "auto"; }
+  // OpenRouter's web plugin: a real internet search the model can draw on
+  // (e.g. a recent recall, current guidance) alongside the app's own tools,
+  // gated by the user's own toggle in Settings since it costs extra per call.
+  if (webAccess) body.plugins = [{ id: "web", max_results: 3 }];
 
   let resp;
   try {
@@ -202,7 +249,7 @@ export async function runAssistantLoop({ config, messages, tools, executeTool, o
     const { content, toolCalls, model: usedModel } = await streamOnce({
       apiKey, model, messages: working,
       tools: useTools ? tools : undefined,
-      maxTokens, onDelta, signal,
+      maxTokens, onDelta, signal, webAccess: !!config?.webAccess,
     });
     if (usedModel) onEvent?.({ type: "model", model: usedModel });
 
@@ -229,7 +276,7 @@ export async function runAssistantLoop({ config, messages, tools, executeTool, o
 }
 
 // ---- system prompt builder ----
-export function buildSystemPrompt({ personality = {}, context = {}, toolsEnabled = false }) {
+export function buildSystemPrompt({ personality = {}, context = {}, toolsEnabled = false, webAccess = false }) {
   const p = personality;
   const warmth = Number(p.warmth ?? 70);
   const tone = warmth > 66 ? "warm, encouraging and human" : warmth > 33 ? "balanced and clear" : "concise and matter-of-fact";
@@ -256,10 +303,12 @@ export function buildSystemPrompt({ personality = {}, context = {}, toolsEnabled
   ];
   if (toolsEnabled) {
     lines.push(
-      "You can DIRECTLY operate this app using the provided tools: switch/create profiles, change the theme, add/update/delete medications, log doses (optionally starting effects tracking on that dose via track_effects), add a redose to a running effects session, log mood check-ins, create taper plans, and navigate between pages. You can also READ computed analytics: get_refill_prediction (run-out/refill-by dates), get_behavior_analysis (usage-pattern signals — always relay these as educational patterns to discuss with a prescriber, never as a diagnosis), get_mood_trends, get_today, get_inventory, get_analytics, get_active_effects (live effects-tracker sessions), get_medication_tolerance and get_dose_effect_preview. When the user asks you to do something in the app, CALL the appropriate tool and then confirm what you did in plain language. Resolve a medication by name with list_medications first when needed. Prefer doing the action with a tool over telling the user to do it manually.",
+      "You can DIRECTLY operate this app using the provided tools: switch/create profiles, change the theme, add/update/delete medications, log doses (optionally starting effects tracking on that dose via track_effects), add a redose to a running effects session, adjust an active taper's pace/target/method, log mood check-ins, create taper plans, and navigate between pages. You can also READ computed analytics: get_refill_prediction (run-out/refill-by dates), get_behavior_analysis (usage-pattern signals — always relay these as educational patterns to discuss with a prescriber, never as a diagnosis), get_mood_trends, get_today, get_inventory, get_analytics, get_active_effects (live effects-tracker sessions), get_medication_tolerance, get_dose_effect_preview, check_interactions (works for a hypothetical substance the user hasn't tracked yet, not just their own medications) and research_substance (reference info for anything in the knowledge base, tracked or not — use this before a user's first dose of something new). When the user asks you to do something in the app, CALL the appropriate tool and then confirm what you did in plain language. Resolve a medication by name with list_medications first when needed. Prefer doing the action with a tool over telling the user to do it manually.",
+      "BE AGENTIC: chain read-only tool calls yourself without narrating each step or asking permission in between — e.g. for \"is it safe to combine X and Y\", resolve both and call check_interactions directly; for \"how's my tolerance across everything\", call list_medications then get_medication_tolerance for each one that applies; for a taper request, look at get_today/list_medications first if the specifics aren't given. Only pause to ask when a WRITE action (logging, creating, deleting, adjusting a plan) is ambiguous about which medication or what values, or when it's meaningfully irreversible (delete_medication, a large taper adjustment). Reads never need confirmation.",
       "TOLERANCE: when a tool reports tolerance, state it exactly as given (a plain-language band plus roughly how much weaker doses land, e.g. 'high tolerance — doses land about 50% weaker'). Never repeat the raw 0-100 level as if it were itself a percentage reduction in effect — that's a common misreading the app's own UI used to make and has since corrected everywhere tolerance is shown."
     );
   }
+  if (webAccess) lines.push("You also have live web search (the 'web' plugin) for anything outside the app's own data — recent recalls, current guidance, news. Use it when the user asks about something time-sensitive or unfamiliar; app data always takes priority for anything about this user's own history.");
   if (p.customInstructions) lines.push(`User's custom instructions: ${p.customInstructions}`);
   if (context.profileName) lines.push(`Active profile: ${context.profileName}.`);
   if (context.medsSummary) lines.push(`Current medications for this profile: ${context.medsSummary}`);

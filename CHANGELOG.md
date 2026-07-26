@@ -3,6 +3,68 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-26 — Interaction checks, taper adjustments, a scheduled digest, and a more agentic assistant
+
+### Added
+- **`check_interactions` tool.** The app has had a category-level interaction
+  checker since the combined-effects chart shipped, but the assistant had no
+  way to use it. Works two ways: given just a medication, checks it against
+  everything currently active in the body (mirrors the in-app warning);
+  given a second substance too, checks that specific pair directly — which
+  works even for something the user hasn't added as a tracked medication,
+  e.g. "what if I combine my kratom with alcohol" resolves alcohol from the
+  knowledge base rather than requiring it to exist as a medication first.
+- **`research_substance` tool.** Reference lookup (typical dosing, expected
+  onset/peak/duration timing, risk level, dependency risk, side effects,
+  warnings) for anything in the knowledge base, tracked or not — meant for
+  "what should I expect from X" before a first dose, which previously had no
+  grounded answer beyond the model's own (unsourced) knowledge.
+- **`adjust_taper_plan` tool, and `adjustTaper` underneath it.** The assistant
+  could create a taper but never change one — "slow my taper down" had no
+  path but delete-and-restart, which loses history. `adjustTaper` reshapes
+  the *remaining* schedule from today's actual dose forward to an optionally
+  new target/duration/method/step size, in place (same id, notes intact);
+  didn't exist at the data layer at all before this, since `updateTaper` only
+  ever touched `is_active`/`is_paused`/notes.
+- **A scheduled AI digest**, in Settings → AI Digest: daily or weekly, a
+  time (and weekday, for weekly), and a custom-instructions box — the same
+  idea as ChatGPT's scheduled tasks. Delivered as a proactive message in the
+  assistant's own chat thread plus a local notification, not a separate
+  report screen. Its payload includes active effects-tracker sessions and
+  tolerance (in the same plain-language terms as the tolerance meter),
+  alongside the existing adherence/refill/mood/behaviour data the on-demand
+  insights already used. Since this is a client-only app with no server to
+  run it on a real clock, it's checked best-effort on every app open —
+  unlike a reminder notification (which is simply missed if the app wasn't
+  open at that exact moment), a digest whose scheduled time already passed
+  is generated late on the next open rather than silently skipped. A failed
+  generation leaves the schedule untouched so it's retried, not lost, for
+  that period. A "Send a digest now" button sends one immediately (still
+  using the same custom instructions) for testing without waiting.
+- **Web access, actually wired up.** The AI config has had a `webAccess`
+  flag since the assistant shipped, with no UI to set it and nothing reading
+  it — a dead setting. It now has a toggle in Settings and, when on, adds
+  OpenRouter's `web` plugin to chat requests, so the assistant can look up
+  something time-sensitive (a recall, current guidance) instead of relying
+  only on its training data or the app's own stored data.
+
+### Changed
+- **More agentic tool use.** The system prompt now explicitly tells the
+  model to chain read-only tool calls on its own — resolve a medication,
+  then check its tolerance, then check interactions, then preview a dose —
+  without narrating each step or asking permission in between, reserving
+  confirmation for ambiguous or genuinely irreversible writes. The tool-loop
+  iteration cap went from 5 to 10 turns, since a single request can now
+  reasonably chain several of the tools above in sequence before it would
+  have been cut off mid-chain with calls still pending.
+
+### Fixed
+- **`sessionId()` (the shared chat-thread id) could throw in any environment
+  without a global `crypto`**, silently breaking whatever called it — moved
+  out of the Assistant page (where it was previously a private, untested
+  helper) into `lib/ai.js`, shared with the new digest, and given a real
+  guard instead of assuming `crypto` exists.
+
 ## 2026-07-26 — The AI assistant catches up to the effects tracker
 
 ### Fixed

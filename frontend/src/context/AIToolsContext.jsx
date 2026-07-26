@@ -8,9 +8,10 @@ import { MED_COLORS, FREQUENCY_TIMES, WEEKDAYS } from "@/lib/format";
 import { suggestTaperParams } from "@/lib/taperEngine";
 import { analyzeMedication, analyzeAll, SAFETY_COPY } from "@/lib/behavior";
 import { unifyMoodEntries, moodDailySeries, moodTrend } from "@/lib/moodAnalytics";
-import { fmtMins } from "@/lib/effectsEngine";
+import { fmtMins, defaultPkProfile } from "@/lib/effectsEngine";
 import { redoseWarnings } from "@/lib/redoseSafety";
 import { toleranceBand } from "@/lib/toleranceEngine";
+import { checkInteractions } from "@/lib/interactions";
 
 const AIToolsContext = createContext(null);
 export const useAITools = () => useContext(AIToolsContext);
@@ -45,6 +46,9 @@ export const TOOL_SCHEMA = [
   { type: "function", function: { name: "get_medication_tolerance", description: "Get a medication's current modeled tolerance: a plain-language band (low/moderate/high/very high), roughly how much weaker a dose now lands because of it, and whether it looks recently faded after a gap in use (meaning the usual amount could hit harder than expected).", parameters: { type: "object", properties: { medication: { type: "string" } }, required: ["medication"] } } },
   { type: "function", function: { name: "get_dose_effect_preview", description: "Preview how a specific dose amount is likely to land for this person before they take it: percent of their own recent usual dose (100% = normal for them, not a drug-naive baseline), whether it's calibrated from their own tracked sessions, and their current tolerance. Mirrors exactly what the log sheet shows when entering that dose.", parameters: { type: "object", properties: { medication: { type: "string" }, dose: { type: "number", description: "Dose amount to preview (optional — omit to preview their usual amount)" } }, required: ["medication"] } } },
   { type: "function", function: { name: "add_redose", description: "Add a redose to a medication's currently active effects-tracking session (stacks a second dose on top of the running curve). Returns any safety warnings (too soon after the last dose, or over/near the typical daily maximum).", parameters: { type: "object", properties: { medication: { type: "string" }, amount: { type: "number", description: "Amount of this redose (optional — defaults to the same as the session's primary dose)" } }, required: ["medication"] } } },
+  { type: "function", function: { name: "check_interactions", description: "Check for known interaction risk. With just 'medication', checks it against everything currently active in the user's body (recent doses / running effects sessions). With both 'medication' and 'with', checks that specific pair directly instead — works even for a substance the user hasn't added as a tracked medication (e.g. a hypothetical 'what if I combine my kratom with alcohol'). This is a category-level harm-reduction heuristic, not an exhaustive clinical interaction database — say so if nothing is flagged.", parameters: { type: "object", properties: { medication: { type: "string" }, with: { type: "string", description: "A second substance to check directly against (optional)" } }, required: ["medication"] } } },
+  { type: "function", function: { name: "adjust_taper_plan", description: "Change an active taper's pace, target dose, or method going forward — e.g. 'slow my taper down' or 'extend it another 3 weeks'. Reshapes the remaining schedule from today's actual dose to the (optionally new) final dose over the (optionally new) duration; does not rewrite progress already made. Only one of the fields needs to be given — omitted ones keep their current value.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication whose active taper should be adjusted" }, total_days: { type: "number", description: "New total remaining days for the taper, counted from today" }, final_dose: { type: "number", description: "New target dose to taper down to" }, step_interval_days: { type: "number", description: "New number of days between dose steps" }, method: { type: "string", enum: ["linear", "exponential", "hyperbolic"] } }, required: ["medication"] } } },
+  { type: "function", function: { name: "research_substance", description: "Look up reference information for a medication or recreational substance from the app's knowledge base, whether or not the user has added it as a tracked medication yet: typical dosing, expected onset/peak/duration timing, risk level, dependency risk, side effects and warnings. Use this before a user's first dose of something new, or to answer general questions about a substance they aren't tracking.", parameters: { type: "object", properties: { substance: { type: "string" }, form: { type: "string", description: "Route/form to estimate timing for, e.g. oral, smoked, insufflated (optional — defaults to the substance's typical form)" } }, required: ["substance"] } } },
 ];
 
 export function AIToolsProvider({ children }) {
@@ -70,6 +74,25 @@ export function AIToolsProvider({ children }) {
       null
     );
   }, []);
+
+  // Resolves a name to *something* interaction-checkable even when it isn't
+  // one of the user's own tracked medications -- e.g. "alcohol" in "what if
+  // I combine my kratom with alcohol", which check_interactions needs to
+  // work for without requiring the user to add it as a medication first.
+  // Prefers an existing medication (richer, personalized) over the generic
+  // knowledge-base entry for the same substance.
+  const resolveSubstance = useCallback(async (ref) => {
+    if (!ref) return null;
+    const med = await resolveMed(ref);
+    if (med) return { id: med.id, name: med.name, generic_name: med.generic_name, category: med.category, tracked: true };
+    const catalog = await db.getKnowledge();
+    const r = String(ref).toLowerCase();
+    const c = catalog.find((x) => x.name_lower === r)
+      || catalog.find((x) => (x.name || "").toLowerCase().includes(r))
+      || catalog.find((x) => (x.street_names || []).some((s) => (s || "").toLowerCase() === r));
+    if (!c) return null;
+    return { id: c.id, name: c.name, generic_name: c.generic_name, category: c.category, tracked: false };
+  }, [resolveMed]);
 
   const executeTool = useCallback(async (name, args = {}) => {
     switch (name) {
@@ -329,10 +352,82 @@ export function AIToolsProvider({ children }) {
           ...(warnings.length ? { warnings: warnings.map((w) => w.type) } : {}),
         };
       }
+      case "check_interactions": {
+        const a = await resolveSubstance(args.medication || args.name);
+        if (!a) return { error: `Unknown substance "${args.medication}". Try research_substance first, or check the spelling.` };
+        if (args.with) {
+          const b = await resolveSubstance(args.with);
+          if (!b) return { error: `Unknown substance "${args.with}". Try research_substance first, or check the spelling.` };
+          const findings = checkInteractions([a, b]);
+          return {
+            checked: [a.name, b.name],
+            findings: findings.map((f) => ({ severity: f.severity, reason: f.reason })),
+            ...(findings.length ? {} : { note: "No known category-level or specific interaction flagged between these two -- this is a harm-reduction heuristic, not an exhaustive interaction database." }),
+          };
+        }
+        // Without a second substance, "check against everything active"
+        // only means something for the user's own tracked medications --
+        // there's no "currently active" for a substance they aren't logging.
+        if (!a.tracked) return { error: `"${a.name}" isn't one of the user's tracked medications, so there's nothing "currently active" to check it against. Use the 'with' parameter to check it against a specific substance directly instead.` };
+        const findings = await db.getInteractionsForMedication(a.id);
+        return {
+          medication: a.name,
+          checked_against: "everything currently active in the body",
+          findings: findings.map((f) => ({ with: f.otherName, severity: f.severity, reason: f.reason })),
+          ...(findings.length ? {} : { note: "Nothing currently active flags a known interaction with this." }),
+        };
+      }
+      case "adjust_taper_plan": {
+        const med = await resolveMed(args.medication || args.name);
+        if (!med) return { error: "medication not found" };
+        const tapers = await db.getTapers();
+        const taper = tapers.find((t) => t.medication_id === med.id && t.is_active);
+        if (!taper) return { error: `No active taper found for "${med.name}".` };
+        const patch = {};
+        ["total_days", "final_dose", "step_interval_days"].forEach((k) => { if (args[k] != null) patch[k] = Number(args[k]); });
+        if (args.method) patch.method = args.method;
+        let updated;
+        try { updated = await db.adjustTaper(taper.id, patch); }
+        catch (e) { return { error: String(e?.message || e) }; }
+        invalidateAll();
+        return {
+          ok: true, medication: med.name, taper_id: updated.id,
+          new_current_dose: updated.initial_dose, final_dose: updated.final_dose,
+          total_days: updated.total_days, method: updated.method, steps: updated.schedule.steps.length,
+        };
+      }
+      case "research_substance": {
+        const q = String(args.substance || args.name || "").trim();
+        if (!q) return { error: "substance name required" };
+        const hits = await db.getKnowledge(q);
+        const c = hits[0];
+        if (!c) return { error: `No knowledge-base entry found for "${q}".` };
+        const form = args.form || c.default_form || "oral";
+        const pk = defaultPkProfile({ name: c.name, generic_name: c.generic_name, category: c.category, form });
+        const med = await resolveMed(q);
+        return {
+          name: c.name,
+          also_known_as: [...(c.brand_names || []), ...(c.street_names || [])].slice(0, 8),
+          category: c.category,
+          typical_dosing: c.typical_dosing,
+          common_dosages: c.common_dosages,
+          max_daily_dose: c.max_daily_dose,
+          typical_timing: { form, onset_min: pk.onset_min, peak_min: pk.peak_min, duration_min: pk.duration_min },
+          risk_level: c.risk_level,
+          dependency_risk_category: c.dependency_risk_category,
+          common_side_effects: c.common_side_effects,
+          serious_side_effects: c.serious_side_effects,
+          warnings: c.warnings,
+          mechanism: c.mechanism,
+          half_life: c.half_life,
+          already_tracked: !!med,
+          note: "Educational reference only, population-typical -- not personalized to this user until tracked with the effects tracker.",
+        };
+      }
       default:
         return { error: `Unknown tool: ${name}` };
     }
-  }, [profiles, switchProfile, addProfile, setTheme, navigate, invalidateAll, resolveMed]);
+  }, [profiles, switchProfile, addProfile, setTheme, navigate, invalidateAll, resolveMed, resolveSubstance]);
 
   return (
     <AIToolsContext.Provider value={{ tools: TOOL_SCHEMA, executeTool }}>

@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { ProfileProvider } from "@/context/ProfileContext";
 import { AIToolsProvider } from "@/context/AIToolsContext";
 import { scheduleAllReminders } from "@/lib/push";
+import { maybeRunDigest } from "@/lib/digest";
 import Layout from "@/components/Layout";
 import Today from "@/pages/Today";
 import Medications from "@/pages/Medications";
@@ -39,8 +40,9 @@ function App() {
         navigator.serviceWorker.register("/sw.js").catch(() => {});
       });
     }
-    // Schedule local (on-device) reminders while the app is open / installed.
-    const run = () => { scheduleAllReminders().catch(() => {}); };
+    // Schedule local (on-device) reminders while the app is open / installed,
+    // and check whether a scheduled AI digest is due (see lib/digest.js).
+    const run = () => { scheduleAllReminders().catch(() => {}); maybeRunDigest().catch(() => {}); };
     run();
     const onVis = () => { if (document.visibilityState === "visible") run(); };
     document.addEventListener("visibilitychange", onVis);

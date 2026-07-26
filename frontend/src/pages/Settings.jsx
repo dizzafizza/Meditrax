@@ -12,10 +12,11 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getSettings, updateSettings, exportData, importData, testPush, getAiConfig, updateAiConfig } from "@/lib/api";
 import { testConnection, CURATED_MODELS, TASK_TIER_DEFAULTS, TIER_LABELS } from "@/lib/ai";
+import { sendDigestNow } from "@/lib/digest";
 import { useTheme } from "@/context/ThemeContext";
 import { pushStatus, enablePush, disablePush, isIOS, isStandalone, showLocalNotification, scheduleAllReminders } from "@/lib/push";
 import { cn } from "@/lib/utils";
-import { Bell, Sun, Moon, Monitor, Download, Upload, ShieldCheck, Smartphone, Send, Sparkles, KeyRound, Eye, EyeOff, Bot, Wand2, CheckCircle2 } from "lucide-react";
+import { Bell, Sun, Moon, Monitor, Download, Upload, ShieldCheck, Smartphone, Send, Sparkles, KeyRound, Eye, EyeOff, Bot, Wand2, CheckCircle2, Globe, CalendarClock } from "lucide-react";
 
 const PERSONAS = [
   { v: "supportive", l: "Supportive companion" },
@@ -28,6 +29,10 @@ const VERBOSITY = [
   { v: "brief", l: "Brief" },
   { v: "balanced", l: "Balanced" },
   { v: "detailed", l: "Detailed" },
+];
+const WEEKDAY_OPTIONS = [
+  { v: "mon", l: "Monday" }, { v: "tue", l: "Tuesday" }, { v: "wed", l: "Wednesday" }, { v: "thu", l: "Thursday" },
+  { v: "fri", l: "Friday" }, { v: "sat", l: "Saturday" }, { v: "sun", l: "Sunday" },
 ];
 
 export default function Settings() {
@@ -48,6 +53,17 @@ export default function Settings() {
 
   const setAiField = (patch) => setAi((a) => ({ ...a, ...patch }));
   const setPersona = (patch) => setAi((a) => ({ ...a, personality: { ...a.personality, ...patch } }));
+  const setDigest = (patch) => setAi((a) => ({ ...a, digest: { ...a.digest, ...patch } }));
+
+  const sendDigest = useMutation({
+    mutationFn: () => sendDigestNow(ai),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["aiConfig"] });
+      setAi((a) => ({ ...a, digest: { ...a.digest, last_generated_at: new Date().toISOString() } }));
+      toast.success("Digest sent — check the Assistant tab");
+    },
+    onError: (e) => toast.error(e?.message || "Could not generate digest"),
+  });
 
   const saveAi = useMutation({
     mutationFn: () => updateAiConfig(ai),
@@ -187,6 +203,12 @@ export default function Settings() {
             <Switch data-testid="ai-agent-switch" checked={ai?.advanced !== false} onCheckedChange={(v) => setAiField({ advanced: v })} />
           </div>
 
+          {/* Web access */}
+          <div className="flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2.5">
+            <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" /><div><p className="text-sm font-medium">Web access</p><p className="text-xs text-muted-foreground">Let it search the web for things outside your data (recalls, current guidance)</p></div></div>
+            <Switch data-testid="ai-webaccess-switch" checked={!!ai?.webAccess} onCheckedChange={(v) => setAiField({ webAccess: v })} />
+          </div>
+
           {/* Personality */}
           <div className="rounded-xl border border-border p-3 space-y-3">
             <div className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Personality</p></div>
@@ -234,6 +256,62 @@ export default function Settings() {
               {saveAi.isPending ? "Saving…" : "Save assistant"}
             </Button>
           </div>
+        </div>
+
+        {/* AI Digest — a periodic proactive summary, delivered into the
+            Assistant chat (see lib/digest.js). No server exists to run this
+            on a real clock, so it's checked best-effort whenever the app is
+            opened and generated late if the scheduled time already passed. */}
+        <div className="card-soft p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-primary" /><p className="font-semibold">AI Digest</p></div>
+            <Switch data-testid="digest-enable-switch" checked={!!ai?.digest?.enabled} onCheckedChange={(v) => setDigest({ enabled: v })} />
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">A proactive summary of adherence, refills, mood, and effects/tolerance trends, sent as a message from the assistant. Generated the next time you open the app after the scheduled time — this is a client-only app, so it can't run in the background.</p>
+          {ai?.digest?.enabled && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Frequency</Label>
+                  <Select value={ai?.digest?.frequency || "weekly"} onValueChange={(v) => setDigest({ frequency: v })}>
+                    <SelectTrigger data-testid="digest-frequency-select" className="h-10 rounded-xl mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Time</Label>
+                  <Input data-testid="digest-time-input" type="time" value={ai?.digest?.time || "09:00"} onChange={(e) => setDigest({ time: e.target.value })} className="h-10 rounded-xl mt-1" />
+                </div>
+              </div>
+              {ai?.digest?.frequency === "weekly" && (
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Day</Label>
+                  <Select value={ai?.digest?.weekday || "mon"} onValueChange={(v) => setDigest({ weekday: v })}>
+                    <SelectTrigger data-testid="digest-weekday-select" className="h-10 rounded-xl mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>{WEEKDAY_OPTIONS.map((w) => <SelectItem key={w.v} value={w.v}>{w.l}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Custom instructions</Label>
+                <Textarea data-testid="digest-prompt-input" value={ai?.digest?.customPrompt || ""} onChange={(e) => setDigest({ customPrompt: e.target.value })} placeholder="e.g. Focus on my sleep and mood, skip adherence — I already know I'm consistent." className="rounded-xl mt-1" />
+              </div>
+              {ai?.digest?.last_generated_at && (
+                <p className="text-[11px] text-muted-foreground">Last sent {new Date(ai.digest.last_generated_at).toLocaleString()}.</p>
+              )}
+              <div className="flex gap-3">
+                <Button variant="secondary" className="flex-1 h-11 rounded-xl" onClick={() => sendDigest.mutate()} disabled={sendDigest.isPending || !ai?.apiKeys?.openrouter} data-testid="digest-send-now-button">
+                  {sendDigest.isPending ? "Generating…" : <><Send className="h-4 w-4 mr-1" />Send a digest now</>}
+                </Button>
+                <Button className="flex-1 h-11 rounded-xl" onClick={() => saveAi.mutate()} disabled={saveAi.isPending || !ai} data-testid="digest-save-button">
+                  {saveAi.isPending ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Notifications */}

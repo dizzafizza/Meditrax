@@ -3,7 +3,7 @@
 // risk itself; it only narrates numbers we hand it. Results are cached in
 // localdb keyed by a hash of the payload, so repeat visits cost nothing and
 // a Refresh with unchanged data is a cache hit.
-import { completeJSON } from "./ai";
+import { completeJSON, completeText } from "./ai";
 import { SAFETY_COPY } from "./behavior";
 import { getInsight, saveInsight } from "./localdb";
 import { localDateStr } from "./dates";
@@ -103,4 +103,38 @@ export async function generateMedicationInsights({ config, medicationId, payload
 export async function getCachedOverview() {
   const cached = await getInsight("overview");
   return cached ? { ...cached.result, _cached: true, _generated_at: cached.generated_at, _model: cached.model } : null;
+}
+
+// ---- periodic digest (see lib/digest.js for scheduling) ----
+// Same compact, number-first shape as buildInsightsPayload, plus the
+// effects-tracker state that only exists for medications with real dose
+// history -- the digest is the one place this app proactively reaches out,
+// so it should be able to say "your kratom tolerance is climbing" the same
+// way the in-app meters do, not just adherence/refills. activeEffects/
+// tolerance arrive pre-shaped by the caller (already in plain-language
+// band/weaker_pct form) so this file doesn't need to know how tolerance
+// math works, only how to report it.
+export function buildDigestPayload({ activeEffects = [], tolerance = [], ...base }) {
+  return {
+    ...buildInsightsPayload(base),
+    active_effects: activeEffects.map((e) => ({ medication: e.medication, phase: e.phase, intensity_pct: e.intensity_pct })),
+    tolerance: tolerance.filter((t) => t.applicable).map((t) => ({ medication: t.medication, band: t.band, weaker_pct: t.weaker_pct, faded: t.faded })),
+  };
+}
+
+const DIGEST_SYSTEM_PROMPT = [
+  "You are writing a periodic personal digest for Meditrax, a medication and effects tracker.",
+  "You receive PRE-COMPUTED statistics (adherence, refill predictions, mood trends, behaviour-pattern signals, active effects-tracker sessions, and substance tolerance). Narrate them plainly; do not invent numbers, do not recompute, do not speculate beyond the data.",
+  "SAFETY RULES (non-negotiable):",
+  "- Educational information only, never diagnosis. Behaviour signals are 'patterns worth discussing with a prescriber', never 'addiction' or 'abuse'.",
+  "- Never advise starting, stopping, or changing a dose.",
+  "- When stating tolerance, use exactly the band and '% weaker' figure given in the data -- never restate the raw tolerance level as if it were itself a percentage reduction in effect.",
+  `- Keep this framing in mind: ${SAFETY_COPY.framing}`,
+  "Write this as a short, warm, proactive message you are sending the user -- not a report they asked for. Clean Markdown, a heading or two and bullets where useful, 150-300 words unless the user's own focus below asks for more detail. Skip any section with nothing worth saying rather than padding it out.",
+].join("\n");
+
+export async function generateDigest({ config, payload, customPrompt, signal }) {
+  const user = "Here is my current data:\n" + JSON.stringify(payload)
+    + (customPrompt ? `\n\nThe user asked this digest to specifically focus on: ${customPrompt}` : "");
+  return completeText({ config, tier: "standard", system: DIGEST_SYSTEM_PROMPT, user, temperature: 0.5, maxTokens: 900, signal });
 }

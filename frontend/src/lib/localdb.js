@@ -53,6 +53,18 @@ const DEFAULT_AI_CONFIG = {
     emoji: false,
     customInstructions: "",
   },
+  // Periodic AI-written summary, delivered as a proactive message in the
+  // assistant chat (plus a local notification) -- checked best-effort
+  // whenever the app is opened/foregrounded, same as reminders, since there
+  // is no server to run this on a real clock. See lib/digest.js.
+  digest: {
+    enabled: false,
+    frequency: "weekly",   // daily | weekly
+    time: "09:00",          // local HH:MM
+    weekday: "mon",         // used when frequency is weekly
+    customPrompt: "",       // e.g. "focus on my sleep and mood, skip adherence"
+    last_generated_at: null,
+  },
 };
 
 const DEFAULT_SETTINGS = {
@@ -137,8 +149,8 @@ export async function deleteProfile(id) {
 // ---- settings / ai config ----
 export async function getSettings() { await ensureInit(); return { ...DEFAULT_SETTINGS, ...((await store.getItem("appSettings")) || {}) }; }
 export async function updateSettings(patch) { await ensureInit(); const s = await getSettings(); const merged = { ...s, ...patch }; await store.setItem("appSettings", merged); return merged; }
-export async function getAiConfig() { await ensureInit(); const c = (await store.getItem("aiConfig")) || {}; return { ...DEFAULT_AI_CONFIG, ...c, apiKeys: { ...DEFAULT_AI_CONFIG.apiKeys, ...(c.apiKeys || {}) }, personality: { ...DEFAULT_AI_CONFIG.personality, ...(c.personality || {}) }, modelTiers: { ...DEFAULT_AI_CONFIG.modelTiers, ...(c.modelTiers || {}) } }; }
-export async function updateAiConfig(patch) { await ensureInit(); const c = await getAiConfig(); const merged = { ...c, ...patch, apiKeys: { ...c.apiKeys, ...(patch.apiKeys || {}) }, personality: { ...c.personality, ...(patch.personality || {}) }, modelTiers: { ...c.modelTiers, ...(patch.modelTiers || {}) } }; await store.setItem("aiConfig", merged); return merged; }
+export async function getAiConfig() { await ensureInit(); const c = (await store.getItem("aiConfig")) || {}; return { ...DEFAULT_AI_CONFIG, ...c, apiKeys: { ...DEFAULT_AI_CONFIG.apiKeys, ...(c.apiKeys || {}) }, personality: { ...DEFAULT_AI_CONFIG.personality, ...(c.personality || {}) }, modelTiers: { ...DEFAULT_AI_CONFIG.modelTiers, ...(c.modelTiers || {}) }, digest: { ...DEFAULT_AI_CONFIG.digest, ...(c.digest || {}) } }; }
+export async function updateAiConfig(patch) { await ensureInit(); const c = await getAiConfig(); const merged = { ...c, ...patch, apiKeys: { ...c.apiKeys, ...(patch.apiKeys || {}) }, personality: { ...c.personality, ...(patch.personality || {}) }, modelTiers: { ...c.modelTiers, ...(patch.modelTiers || {}) }, digest: { ...c.digest, ...(patch.digest || {}) } }; await store.setItem("aiConfig", merged); return merged; }
 
 // ---- profile (active) ----
 export async function getProfile() { await ensureInit(); const profiles = await getArr("profiles"); return profiles.find((p) => p.id === _activeId); }
@@ -585,6 +597,46 @@ export async function updateTaper(id, patch) {
   }
   return tapers[idx];
 }
+// Regenerate a taper's remaining schedule from today's actual dose forward
+// -- changing pace, target, or method without discarding progress already
+// made or starting an entirely separate plan (previously the only way to
+// change a taper's core parameters at all: `updateTaper` only ever touched
+// is_active/is_paused/notes). Whatever dose today's existing schedule calls
+// for becomes the new starting point; only the remainder is reshaped. Used
+// by the AI's adjust_taper_plan tool.
+export async function adjustTaper(id, patch = {}) {
+  await ensureInit();
+  const tapers = await getArr(pkey("tapers"));
+  const idx = tapers.findIndex((t) => t.id === id);
+  if (idx === -1) throw new Error("Taper not found");
+  const t = tapers[idx];
+  if (!t.is_active) throw new Error("Only an active taper can be adjusted");
+  const today = todayStr();
+  // While paused, the dose has been frozen at the pause date -- that's the
+  // real jumping-off point, not whatever today's now-stale schedule implies.
+  const currentDose = t.is_paused && t.paused_on && t.paused_on < today ? taperDoseOnDate(t, t.paused_on) : taperDoseOnDate(t, today);
+  const final_dose = patch.final_dose != null ? Number(patch.final_dose) : t.final_dose;
+  const total_days = patch.total_days != null ? Number(patch.total_days) : t.total_days;
+  const step_interval_days = patch.step_interval_days != null ? Number(patch.step_interval_days) : t.step_interval_days;
+  const method = patch.method || t.method;
+  // Validates dose/duration bounds and throws a clear error if the request
+  // doesn't make sense (e.g. a final dose above where the taper already is).
+  const schedule = generateTaperSchedule({ initialDose: currentDose, finalDose: final_dose, startDate: today, stepIntervalDays: step_interval_days, totalDays: total_days, method, unit: t.unit, customSteps: null });
+  t.initial_dose = currentDose;
+  t.final_dose = final_dose;
+  t.total_days = total_days;
+  t.step_interval_days = step_interval_days;
+  t.method = method;
+  t.start_date = today;
+  t.custom_steps = null;
+  t.is_paused = false;
+  t.paused_on = null;
+  t.schedule = schedule;
+  t.updated_at = nowIso();
+  await setArr(pkey("tapers"), tapers);
+  return tapers[idx];
+}
+
 export async function deleteTaper(id) {
   await ensureInit();
   let tapers = await getArr(pkey("tapers"));
