@@ -14,7 +14,7 @@ jest.mock("localforage", () => {
 import {
   defaultPkProfile, personalizedProfile, intensityAt, phaseAt, curveSeries,
   observationsFromSession, updateModel, modelConfidence, fmtMins, modeledEffectiveness,
-  CATEGORY_PK, FORM_SPEED, SUBSTANCE_PK, substancePkFor,
+  CATEGORY_PK, FORM_SPEED, SUBSTANCE_PK, substancePkFor, DOSE_RESPONSE, doseResponse,
   sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
 } from "../effectsEngine";
 import * as db from "../localdb";
@@ -385,8 +385,73 @@ describe("learning (updateModel)", () => {
   test("tolerance dampening composes with dose-ratio scaling", () => {
     const model = { onset_min: 20, peak_min: 60, duration_min: 240, ref_dose: 20, samples: 4 };
     const tolerance = { applicable: true, level: 1, maxDampening: 0.5, faded: false, daysSinceLast: 0 };
-    const p = personalizedProfile(med, model, 40, tolerance); // dose ratio 2x -> intensity_scale 1.5 before tolerance, then halved -> 0.75, rounded to 1dp
-    expect(p.intensity_scale).toBeCloseTo(0.8, 5);
+    const undamped = personalizedProfile(med, model, 40).intensity_scale;
+    const p = personalizedProfile(med, model, 40, tolerance);
+    // Full tolerance at maxDampening 0.5 halves whatever the dose response
+    // was. Both ends are rounded to 1dp independently, so allow for that
+    // rather than asserting exact arithmetic on already-rounded values.
+    expect(Math.abs(p.intensity_scale - undamped * 0.5)).toBeLessThanOrEqual(0.06);
+    expect(p.intensity_scale).toBeLessThan(undamped);
+  });
+});
+
+describe("dose-response (Emax/Hill)", () => {
+  test("a typical dose is exactly the reference point, for any parameters", () => {
+    for (const params of [...Object.values(DOSE_RESPONSE), { hill: 3, typicalFraction: 0.1 }]) {
+      expect(doseResponse(1, params)).toBeCloseTo(1, 10);
+    }
+  });
+
+  test("is monotonic and saturating -- more always helps, but less and less", () => {
+    const params = { hill: 1.3, typicalFraction: 0.5 };
+    const at = [0.5, 1, 2, 4, 8, 100].map((r) => doseResponse(r, params));
+    for (let i = 1; i < at.length; i++) expect(at[i]).toBeGreaterThan(at[i - 1]);
+    // Each doubling buys strictly less than the previous doubling did.
+    const gain1 = at[2] - at[1]; // 1x -> 2x
+    const gain2 = at[3] - at[2]; // 2x -> 4x
+    const gain3 = at[4] - at[3]; // 4x -> 8x
+    expect(gain2).toBeLessThan(gain1);
+    expect(gain3).toBeLessThan(gain2);
+  });
+
+  test("saturates at the ceiling its typicalFraction implies, never beyond", () => {
+    const params = { hill: 1.3, typicalFraction: 0.5 };
+    const ceiling = 1 + (1 - params.typicalFraction) / params.typicalFraction; // 1 + 1/a
+    expect(doseResponse(1e6, params)).toBeLessThanOrEqual(ceiling);
+    expect(doseResponse(1e6, params)).toBeCloseTo(ceiling, 4);
+  });
+
+  test("a drug typically taken near its plateau has little left to gain", () => {
+    const nearPlateau = doseResponse(2, { hill: 1, typicalFraction: 0.88 }); // buprenorphine-like
+    const wellBelow = doseResponse(2, { hill: 1.4, typicalFraction: 0.45 }); // kratom-like
+    expect(nearPlateau).toBeLessThan(1.15);
+    expect(wellBelow).toBeGreaterThan(1.4);
+  });
+
+  test("doubling a real dose moves the curve meaningfully (the old linear cap did not)", () => {
+    const med = { name: "Kratom", category: "opioid" };
+    const model = { ref_dose: 2, samples: 4 };
+    const usual = personalizedProfile(med, model, 2).intensity_scale;
+    const doubled = personalizedProfile(med, model, 4).intensity_scale;
+    const quadrupled = personalizedProfile(med, model, 8).intensity_scale;
+    expect(doubled).toBeGreaterThan(usual * 1.3);
+    // The old model clamped at 1.5, making 2x and 4x indistinguishable.
+    expect(quadrupled).toBeGreaterThan(doubled);
+  });
+
+  test("buprenorphine's ceiling effect means doubling barely moves it", () => {
+    const med = { name: "Buprenorphine", category: "opioid" };
+    const model = { ref_dose: 8, samples: 4 };
+    const usual = personalizedProfile(med, model, 8).intensity_scale;
+    const doubled = personalizedProfile(med, model, 16).intensity_scale;
+    expect(doubled / usual).toBeLessThan(1.15);
+  });
+
+  test("an NSAID's analgesic ceiling behaves the same way", () => {
+    const med = { category: "nsaid", form: "tablet" };
+    const model = { ref_dose: 400, samples: 4 };
+    const ratio = personalizedProfile(med, model, 800).intensity_scale / personalizedProfile(med, model, 400).intensity_scale;
+    expect(ratio).toBeLessThan(1.3);
   });
 });
 
@@ -693,22 +758,60 @@ describe("tolerance wired into real sessions (localdb)", () => {
     expect(await db.getMedicationTolerance(med.id)).toBeNull();
   });
 
-  test("estimateDoseEffectiveness suggests lower for a heavily-used medication and higher for a bigger-than-usual dose", async () => {
+  test("estimateDoseEffectiveness reads relative to the user's own usual, so tolerance alone doesn't pin it low", async () => {
     const med = await db.createMedication({ name: "EffSuggestMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
     const fresh = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
     expect(fresh.suggested).toBe(7); // no history at all -> neutral default
 
-    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", timestamp: daysAgoIso(i) });
-    const afterFrequentUse = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
-    expect(afterFrequentUse.suggested).toBeLessThan(7);
-    expect(afterFrequentUse.tolerance.level).toBeGreaterThan(0);
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: daysAgoIso(i) });
+    const usualDose = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+    // Real tolerance has built -- and is still reported -- but taking the
+    // same amount they always take is, for them, a completely ordinary dose.
+    // Reporting that as "40% of typical" described an opioid-naive stranger,
+    // not this person, and left the number unable to respond to dose changes.
+    expect(usualDose.tolerance.level).toBeGreaterThan(0);
+    expect(usualDose.relativeToUsual).toBeCloseTo(1, 1);
+    expect(usualDose.suggested).toBe(7);
 
     // Establish a reference dose via a trained model, then ask about a much bigger dose.
     const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
     await db.addEffectEvent(s.id, { kind: "onset" });
     await db.addEffectEvent(s.id, { kind: "gone" });
     const biggerDose = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 40 });
-    expect(biggerDose.suggested).toBeGreaterThan(afterFrequentUse.suggested);
+    expect(biggerDose.suggested).toBeGreaterThan(usualDose.suggested);
+  });
+
+  test("doubling a dose visibly moves the preview, and quadrupling moves it further still", async () => {
+    // The reported bug: a daily kratom user doubled their dose and the
+    // preview stayed in the 30-60% band. Two causes -- the old linear scale
+    // clamped at 1.5x so 2x and 4x were indistinguishable, and the headline
+    // was an absolute number dominated by saturated tolerance.
+    const med = await db.createMedication({ name: "Kratom", strength: 1, unit: "g", category: "opioid", form: "other", times: [], is_prn: true });
+    for (let i = 30; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 2, timestamp: daysAgoIso(i) });
+
+    const usual = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 2 });
+    const doubled = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 4 });
+    const quadrupled = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 8 });
+
+    expect(usual.tolerance.level).toBeGreaterThan(0.5); // a month of daily use really is tolerant
+    expect(usual.relativeToUsual).toBeCloseTo(1, 1);
+    expect(doubled.relativeToUsual).toBeGreaterThan(1.3);
+    expect(quadrupled.relativeToUsual).toBeGreaterThan(doubled.relativeToUsual);
+    expect(doubled.suggested).toBeGreaterThan(usual.suggested);
+  });
+
+  test("a median reference dose is not dragged upward by the escalation being measured", async () => {
+    // Long history at 2, then a short recent run at 6. The mean would be
+    // pulled well above 2 by that tail, shrinking the very ratio the preview
+    // is meant to surface; the median stays at the established dose.
+    const med = await db.createMedication({ name: "EscalationMed", strength: 1, unit: "g", category: "opioid", form: "other", times: [], is_prn: true });
+    for (let i = 20; i >= 6; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 2, timestamp: daysAgoIso(i) });
+    for (let i = 5; i >= 1; i--) await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 6, timestamp: daysAgoIso(i) });
+
+    const atEstablished = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 2 });
+    const atEscalated = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 6 });
+    expect(atEstablished.relativeToUsual).toBeCloseTo(1, 1);
+    expect(atEscalated.relativeToUsual).toBeGreaterThan(1.4);
   });
 
   test("estimateDoseEffectiveness only trusts learned onset/peak/duration once modelConfidence reaches medium (>=3 sessions)", async () => {

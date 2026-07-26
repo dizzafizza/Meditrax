@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness, modelConfidence } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor } from "./effectsEngine";
 import { estimateTolerance } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -778,12 +778,53 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null } =
     const logs = await getArr(pkey("logs"));
     const amounts = logs
       .filter((l) => l.medication_id === medication_id && LOG_CONSUMING_STATUSES.includes(l.status) && isFinite(Number(l.dose_taken)) && Number(l.dose_taken) > 0)
-      .map((l) => Number(l.dose_taken));
-    if (amounts.length) refDose = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+      .map((l) => Number(l.dose_taken))
+      .sort((a, b) => a - b);
+    // Median, not mean: someone escalating their dose would otherwise drag
+    // their own baseline up along with them, so a genuinely doubled dose
+    // would read as only slightly above "typical" and the preview would
+    // barely move -- exactly the thing this number exists to show.
+    if (amounts.length) {
+      const mid = Math.floor(amounts.length / 2);
+      refDose = amounts.length % 2 ? amounts[mid] : (amounts[mid - 1] + amounts[mid]) / 2;
+    }
   }
   const refModel = timingModel || refDose ? { ...(timingModel || {}), ref_dose: refDose } : null;
   const profile = personalizedProfile(med, refModel, dose, tolerance);
-  return { suggested: modeledEffectiveness(profile.intensity_scale), intensityScale: profile.intensity_scale, tolerance: profile.tolerance || null, calibrated };
+
+  // The headline is expressed against *this person's own recent normal*,
+  // not against an opioid-naive baseline. For a daily user, saturated
+  // tolerance pins the absolute number near 40% no matter what they do,
+  // which tells them nothing about the choice actually in front of them --
+  // and makes doubling a dose look like it barely mattered. Dividing by the
+  // effect their usual dose has been having lately cancels the shared
+  // tolerance term, so 100% means "like your usual", above means stronger.
+  // Absolute tolerance is still reported separately by the meter below.
+  //
+  // Computed from the unrounded dose-response rather than from the profile's
+  // 1dp-rounded intensity_scale, which at these magnitudes would otherwise
+  // contribute several percent of error on its own.
+  const dv = Number(dose);
+  const doseRatio = refDose > 0 && isFinite(dv) && dv > 0 ? Math.min(10, Math.max(0.1, dv / refDose)) : 1;
+  // Tolerance normally cancels exactly: the comparison is against what this
+  // person's usual dose would do *right now*, so the only variable left is
+  // the dose itself. The one exception is a detected break -- there the
+  // baseline really is the tolerance they'd built before it faded, and the
+  // dose genuinely will land harder than they're used to.
+  const usualLevel = tolerance.applicable && tolerance.faded ? tolerance.recentPeakLevel : tolerance.level;
+  const curFactor = tolerance.applicable ? 1 - tolerance.level * tolerance.maxDampening : 1;
+  const usualFactor = tolerance.applicable ? 1 - usualLevel * tolerance.maxDampening : 1;
+  const relativeToUsual = usualFactor > 0
+    ? (doseResponse(doseRatio, doseResponseFor(med)) * curFactor) / usualFactor
+    : 1;
+
+  return {
+    suggested: modeledEffectiveness(relativeToUsual),
+    relativeToUsual: Math.round(relativeToUsual * 100) / 100,
+    intensityScale: profile.intensity_scale,
+    tolerance: profile.tolerance || null,
+    calibrated,
+  };
 }
 
 // Forget everything learned about a medication's timing and fall back to the
