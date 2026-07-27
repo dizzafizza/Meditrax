@@ -3,7 +3,28 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 2026-07-26 — Center the assistant's empty-chat intro instead of leaving it pinned at the top
+## 2026-07-27 — Stop sizing the assistant page with vh/dvh; pin it to the real viewport
+
+### Fixed
+- **The assistant page's header could scroll out of view on a real,
+  installed-to-home-screen iPhone even on a completely empty
+  conversation**, where nothing should be scrollable at all — confirmed
+  from device screenshots showing the header disappear off the top while
+  the fixed input bar and tab bar stayed put, which only happens if the
+  document itself is slightly taller than the true visible viewport. The
+  page's root was sized with a hardcoded `height: 100vh`; iOS has a
+  long-documented habit of getting `vh` units wrong relative to the actual
+  visible area, and this build was still hitting it even after the
+  previous two rounds of fixes to this page. Rather than swap to `dvh`
+  again — which was already tried once, reverted after looking like it
+  made scrolling worse, and can't be verified in this environment since
+  only Chromium is available here, not WebKit — the root now uses
+  `position: fixed; inset: 0` with `overflow: hidden`, the same technique
+  the input bar already used successfully in every prior screenshot from
+  this saga. This isn't a viewport-unit value at all, so there's no vh/dvh
+  computation left to get wrong; verified directly that the document
+  cannot scroll in any of the three states (no key, empty chat, populated
+  chat) even when a scroll gesture is deliberately forced.
 
 ### Fixed
 - **A large blank void could sit between the "How can I help?" intro and

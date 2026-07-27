@@ -166,8 +166,14 @@ export default function Assistant() {
   const personaName = config?.personality?.name || "Meditrax";
   const suggestions = chatSuggestions || FALLBACK_SUGGESTIONS;
 
+  // Pinned directly to the real viewport rather than sized with vh/dvh --
+  // iOS has repeatedly gotten the relationship between 100vh and the actual
+  // visible area wrong in ways that varied by report, so this avoids the
+  // unit entirely: fixed + inset-0 is exactly how the input bar below
+  // already anchors correctly, and overflow-hidden guarantees the document
+  // itself can never become spuriously scrollable.
   return (
-    <div className="flex flex-col" style={{ height: "100vh" }}>
+    <div className="fixed inset-0 flex flex-col overflow-hidden">
       <PageHeader
         title={personaName}
         subtitle={modelUsed ? `via ${modelUsed}` : "Your AI medication companion"}
