@@ -431,3 +431,21 @@ describe("getToday: prn_logs (as-needed dose history, for Calendar's day view)",
     expect(result.prn_logs.filter((l) => l.medication_id === med.id)).toEqual([]);
   });
 });
+
+describe("getAnalytics: prn_taken (as-needed-only days need a calendar signal too)", () => {
+  test("logging an as-needed dose increments that day's prn_taken, independent of the scheduled expected/taken counts", async () => {
+    const today = localDateStr(new Date());
+    const med = await addMed({ name: "OnlyPrnMed", is_prn: true, times: [], start_date: addDaysStr(today, -30) });
+
+    const before = await db.getAnalytics(3);
+    const beforeCount = before.trend.find((t) => t.date === today).prn_taken;
+
+    await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 5, timestamp: new Date().toISOString() });
+
+    const after = await db.getAnalytics(3);
+    const trendDay = after.trend.find((t) => t.date === today);
+    expect(trendDay.prn_taken).toBe(beforeCount + 1);
+    // As-needed doses never count toward scheduled adherence math.
+    expect(trendDay.expected).toBe(before.trend.find((t) => t.date === today).expected);
+  });
+});

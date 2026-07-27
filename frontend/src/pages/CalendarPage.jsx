@@ -16,16 +16,23 @@ export default function CalendarPage() {
   const dateStr = localDateStr(selected);
   const { data: day } = useQuery({ queryKey: ["today", dateStr], queryFn: () => getToday(dateStr) });
 
-  const { perfect, partial, missed } = useMemo(() => {
-    const p = [], pa = [], mi = [];
+  const { perfect, partial, missed, logged } = useMemo(() => {
+    const p = [], pa = [], mi = [], lg = [];
     (analytics?.trend || []).forEach((t) => {
-      if (t.expected === 0) return;
       const d = parseISO(t.date);
+      if (t.expected === 0) {
+        // No scheduled meds due this day, so "adherence" doesn't apply --
+        // but as-needed activity is still real activity, and a purely
+        // as-needed medication list would otherwise never show a single
+        // dot anywhere on the calendar, ever.
+        if (t.prn_taken > 0) lg.push(d);
+        return;
+      }
       if (t.adherence === 100) p.push(d);
       else if (t.taken > 0) pa.push(d);
       else mi.push(d);
     });
-    return { perfect: p, partial: pa, missed: mi };
+    return { perfect: p, partial: pa, missed: mi, logged: lg };
   }, [analytics]);
 
   return (
@@ -35,19 +42,21 @@ export default function CalendarPage() {
         <div className="card-soft p-2 flex justify-center" data-testid="adherence-calendar">
           <Calendar
             mode="single" selected={selected} onSelect={(d) => d && setSelected(d)}
-            modifiers={{ perfect, partial, missed }}
+            modifiers={{ perfect, partial, missed, logged }}
             modifiersClassNames={{
               perfect: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1.5 after:w-1.5 after:rounded-full after:bg-[hsl(var(--success))]",
               partial: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1.5 after:w-1.5 after:rounded-full after:bg-[hsl(var(--warning))]",
               missed: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1.5 after:w-1.5 after:rounded-full after:bg-destructive",
+              logged: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1.5 after:w-1.5 after:rounded-full after:bg-[hsl(var(--info))]",
             }}
           />
         </div>
 
-        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[hsl(var(--success))]" />Perfect</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[hsl(var(--warning))]" />Partial</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-destructive" />Missed</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[hsl(var(--info))]" />As needed</span>
         </div>
 
         <div>

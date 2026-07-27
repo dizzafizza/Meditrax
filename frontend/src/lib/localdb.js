@@ -1544,13 +1544,21 @@ export async function getAnalytics(days = 30) {
     if (k >= startStr && k <= endStr) { (logsByDate[k] = logsByDate[k] || []).push(l); logs.push(l); }
   });
 
+  // As-needed meds have no schedule to be "adherent" to, so they're excluded
+  // from expected/taken above by design -- but a day with only as-needed
+  // activity (no scheduled meds at all) would then never show anything on
+  // the Calendar's dot trend, even though real activity happened. Track it
+  // separately so callers with an all-PRN medication list still get a signal.
+  const prnMedIds = new Set(meds.filter((m) => m.is_prn).map((m) => m.id));
   const trend = []; let totalExpected = 0, totalTaken = 0; const perMed = {}; const streakDays = [];
   for (let i = 0; i < days; i++) {
     const dk = addDaysStr(startStr, i);
-    const { doses } = buildTodayDoses(meds, logsByDate[dk] || [], dk, tapers, cyclicPlans);
+    const dayLogs = logsByDate[dk] || [];
+    const { doses } = buildTodayDoses(meds, dayLogs, dk, tapers, cyclicPlans);
     const exp = doses.length; const tkn = doses.filter((x) => ["taken", "partial"].includes(x.status)).length;
+    const prnTaken = dayLogs.filter((l) => prnMedIds.has(l.medication_id) && ["taken", "partial"].includes(l.status || "taken")).length;
     totalExpected += exp; totalTaken += tkn;
-    trend.push({ date: dk, expected: exp, taken: tkn, adherence: exp ? Math.round((tkn / exp) * 100) : null });
+    trend.push({ date: dk, expected: exp, taken: tkn, adherence: exp ? Math.round((tkn / exp) * 100) : null, prn_taken: prnTaken });
     streakDays.push(exp ? tkn === exp : null);
     doses.forEach((dose) => { const s = perMed[dose.medication_id] || (perMed[dose.medication_id] = { medication_id: dose.medication_id, name: dose.name, color: dose.color, expected: 0, taken: 0 }); s.expected++; if (["taken", "partial"].includes(dose.status)) s.taken++; });
   }
