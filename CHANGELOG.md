@@ -3,6 +3,25 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-27 — Give the Calendar a dot for as-needed-only days
+
+### Fixed
+- **The colored adherence dots never showed for a day with only as-needed
+  activity and no scheduled medications** — a direct side effect of the
+  previous fix, which correctly surfaced as-needed dose history in the
+  day-detail list but didn't touch the dots above it. Those are still
+  computed purely from schedule adherence (`expected`/`taken`), which is
+  the right math for a scheduled medication but is always zero for a
+  purely as-needed one — so a user like the person who reported this, whose
+  only tracked substance is as-needed, saw a completely blank calendar
+  again: real logged doses in the list below, but never a single dot.
+  `getAnalytics()` now also reports `prn_taken` per day, and the Calendar
+  shows a 4th, distinct dot color ("As needed", blue) for a day with
+  as-needed activity but nothing scheduled — kept separate from
+  Perfect/Partial/Missed rather than folded into them, since "adherence"
+  isn't a meaningful concept for a dose that was never expected on a
+  schedule in the first place.
+
 ## 2026-07-27 — Fix the Calendar page: as-needed doses never showed up, and past days looked permanently "pending"
 
 ### Fixed
