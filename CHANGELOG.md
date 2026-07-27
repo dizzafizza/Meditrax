@@ -3,6 +3,33 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-27 — Fix the Calendar page: as-needed doses never showed up, and past days looked permanently "pending"
+
+### Fixed
+- **As-needed (PRN) doses never appeared in the Calendar's day view, on any
+  day, ever** — likely the main reason it felt non-functional, since a lot
+  of what this app tracks (kratom, alcohol, psilocybin, and similar) is
+  logged as-needed rather than on a fixed schedule. The day-detail list
+  only ever rendered `doses` (fixed-schedule entries) and gated its empty
+  state on `prn`, which is the *undated* "which as-needed meds exist"
+  list the Today page uses for its always-visible quick-log buttons — not
+  a history of what was actually taken. The net effect: tapping any day
+  showed a blank area with nothing in it, or a wrongly-suppressed "No
+  doses" empty state, regardless of how much was actually logged that day.
+  `getToday()` now also returns `prn_logs` — the real as-needed dose
+  history for that date — and the Calendar renders it alongside scheduled
+  doses; `Today.jsx`'s existing use of `prn` is untouched. Verified
+  end-to-end through the real UI: added an as-needed medication, logged a
+  dose from the Today page, and confirmed it now shows up under today's
+  date on the Calendar.
+- **A past day's never-logged scheduled dose read "pending" forever**,
+  even for a day long over, while the calendar's own colored dot for that
+  exact day correctly showed "missed" — a direct, confusing contradiction
+  between the dot and the list underneath it when you tapped in. Nothing
+  in the app ever automatically marked a lapsed dose as missed; only an
+  elapsed day now gets that treatment (today's still-open doses are
+  untouched, so they stay actionable exactly as before).
+
 ## 2026-07-27 — Make the assistant actually use interactive quick-reply buttons
 
 ### Fixed

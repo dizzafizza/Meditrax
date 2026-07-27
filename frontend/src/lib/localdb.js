@@ -1430,6 +1430,14 @@ export async function logDefaultsForMed(medId, dateStr) {
 
 function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []) {
   const wd = weekdayKeyLocal(forDate);
+  // An unlogged dose on a day that's already over wasn't "pending" -- it
+  // was missed. Only elapsed days get this treatment (never today), so the
+  // Today page's still-actionable doses are untouched; this only affects
+  // Calendar/history views of a past day, which otherwise showed "pending"
+  // forever for a dose that will never be logged, contradicting the
+  // calendar's own adherence dot (computed from the same taken/expected
+  // counts) for that same day.
+  const isElapsedDay = forDate < todayStr();
   const doses = []; const prn = [];
   const logIndex = {};
   logsToday.forEach((l) => { logIndex[`${l.medication_id}|${l.scheduled_time || ""}`] = l; });
@@ -1447,8 +1455,9 @@ function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []
     const times = (med.times && med.times.length) ? med.times : ["09:00"];
     times.forEach((t) => {
       const lg = logIndex[`${med.id}|${t}`];
+      const status = lg ? lg.status : (isElapsedDay ? "missed" : "pending");
       doses.push({
-        id: `${med.id}_${t}`, medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status: lg ? lg.status : "pending", instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: eff.quantity,
+        id: `${med.id}_${t}`, medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status, instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: eff.quantity,
         effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier,
         taper_dose: eff.taper_dose != null ? eff.taper_dose : undefined, taper_unit: eff.taper_dose != null ? (taper?.unit || med.unit) : undefined,
         taper_paused: eff.taper_dose != null && taper?.is_paused ? true : undefined,
@@ -1470,6 +1479,19 @@ export async function getToday(dateStr) {
   const total = doses.length;
   const taken = doses.filter((x) => ["taken", "partial"].includes(x.status)).length;
   const pending = doses.filter((x) => x.status === "pending").length;
+  // `prn` above is "which as-needed meds are available to log right now" (used
+  // by the Today page's always-visible quick-log buttons) -- it isn't
+  // date-scoped and says nothing about what actually happened on `theDate`.
+  // `prn_logs` is the real history: actual as-needed doses logged that day,
+  // for history views (Calendar) where "what was taken" is the point.
+  const prnMedIds = new Set(meds.filter((m) => m.is_prn).map((m) => m.id));
+  const prnLogs = logs
+    .filter((l) => prnMedIds.has(l.medication_id))
+    .map((l) => {
+      const med = meds.find((m) => m.id === l.medication_id);
+      return { id: l.id, medication_id: l.medication_id, name: med?.name, color: med?.color, unit: l.unit || med?.unit, strength: med?.strength, quantity: l.quantity, dose_taken: l.dose_taken, status: l.status || "taken", timestamp: l.timestamp };
+    })
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
   const settings = await getSettings();
   const alerts = [];
   meds.forEach((med) => {
@@ -1481,7 +1503,7 @@ export async function getToday(dateStr) {
     if (status === "out") alerts.push({ medication_id: med.id, name: med.name, type: "out", days_left: 0, run_out_date: todayStr() });
     else if (status === "low") alerts.push({ medication_id: med.id, name: med.name, type: "low", days_left: prediction.days_left, run_out_date: prediction.run_out_date, refill_by_date: prediction.refill_by_date });
   });
-  return { date: theDate, doses, prn, summary: { total, taken, pending, adherence: total ? Math.round((taken / total) * 100) : 100 }, refill_alerts: alerts };
+  return { date: theDate, doses, prn, prn_logs: prnLogs, summary: { total, taken, pending, adherence: total ? Math.round((taken / total) * 100) : 100 }, refill_alerts: alerts };
 }
 export async function getInventory() {
   await ensureInit();
