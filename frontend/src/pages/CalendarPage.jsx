@@ -8,7 +8,7 @@ import { getAnalytics, getToday } from "@/lib/api";
 import { fmtDate, fmtTime12, doseLabel } from "@/lib/format";
 import { localDateStr } from "@/lib/dates";
 import { CalendarDays, Check, X } from "lucide-react";
-import { parseISO } from "date-fns";
+import { parseISO, format } from "date-fns";
 
 export default function CalendarPage() {
   const [selected, setSelected] = useState(new Date());
@@ -52,8 +52,8 @@ export default function CalendarPage() {
 
         <div>
           <p className="px-1 font-display text-lg font-semibold mb-2">{fmtDate(selected, "EEEE, MMMM d")}</p>
-          {(day?.doses || []).length === 0 && (day?.prn || []).length === 0 ? (
-            <EmptyState icon={CalendarDays} title="No doses" description="Nothing was scheduled on this day." />
+          {(day?.doses || []).length === 0 && (day?.prn_logs || []).length === 0 ? (
+            <EmptyState icon={CalendarDays} title="No doses" description="Nothing was scheduled or logged on this day." />
           ) : (
             <div className="space-y-2.5">
               {(day?.doses || []).map((d) => (
@@ -62,6 +62,21 @@ export default function CalendarPage() {
                   <div className="flex-1 min-w-0"><p className="font-semibold truncate">{d.name}</p><p className="text-xs text-muted-foreground">{fmtTime12(d.time)} · {doseLabel(d.strength, d.unit)}</p></div>
                   {(d.status === "taken" || d.status === "partial") ? <span className="text-[hsl(var(--success))]"><Check className="h-5 w-5" /></span>
                     : d.status === "pending" ? <span className="text-xs text-muted-foreground">pending</span>
+                    : <span className="text-destructive"><X className="h-5 w-5" /></span>}
+                </div>
+              ))}
+              {/* As-needed doses aren't on a fixed schedule, so they never show up in
+                  `doses` above -- this is the actual history of what was logged that
+                  day, not just which PRN meds exist (that's a separate, undated list
+                  used by the Today page's quick-log buttons). */}
+              {(day?.prn_logs || []).map((l) => (
+                <div key={l.id} className="card-soft p-3 flex items-center gap-3">
+                  <MedColorDot color={l.color} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{l.name}</p>
+                    <p className="text-xs text-muted-foreground">{format(parseISO(l.timestamp), "h:mm a")} · {doseLabel(l.dose_taken ?? l.strength, l.unit)} · as needed</p>
+                  </div>
+                  {(l.status === "taken" || l.status === "partial") ? <span className="text-[hsl(var(--success))]"><Check className="h-5 w-5" /></span>
                     : <span className="text-destructive"><X className="h-5 w-5" /></span>}
                 </div>
               ))}

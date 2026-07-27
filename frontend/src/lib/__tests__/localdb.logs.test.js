@@ -14,6 +14,7 @@ jest.mock("localforage", () => {
 });
 
 import * as db from "../localdb";
+import { localDateStr, addDaysStr } from "../dates";
 
 async function addMed(overrides = {}) {
   return db.createMedication({
@@ -366,5 +367,67 @@ describe("adjustInventory", () => {
     await db.adjustInventory(med.id, { units_per_dose: 3 });
     const meds = await db.getMedications();
     expect(meds.find((m) => m.id === med.id).dose_quantity).toBe(3);
+  });
+});
+
+describe("getToday: unlogged dose status on elapsed vs current days", () => {
+  test("a past day's never-logged dose reads 'missed', matching the calendar's own adherence dot for that day", async () => {
+    const today = localDateStr(new Date());
+    const threeDaysAgo = addDaysStr(today, -3);
+    const med = await addMed({ name: "ElapsedDayMed", start_date: addDaysStr(today, -30), times: ["09:00"] });
+
+    const past = await db.getToday(threeDaysAgo);
+    const dose = past.doses.find((d) => d.medication_id === med.id);
+    expect(dose.status).toBe("missed");
+
+    const analytics = await db.getAnalytics(7);
+    const trendDay = analytics.trend.find((t) => t.date === threeDaysAgo);
+    // Calendar page buckets a day as "missed" (not "perfect"/"partial") exactly
+    // when taken === 0 — the per-dose status above must agree with that, or
+    // the calendar's dot and its own day-detail list contradict each other.
+    expect(trendDay.taken).toBe(0);
+  });
+
+  test("today's never-logged dose stays 'pending' -- it's still actionable, unlike a day that's already over", async () => {
+    const med = await addMed({ name: "TodayMed", times: ["09:00"] });
+    const today = await db.getToday();
+    const dose = today.doses.find((d) => d.medication_id === med.id);
+    expect(dose.status).toBe("pending");
+  });
+
+  test("a logged dose on a past day keeps its real status, not 'missed'", async () => {
+    const today = localDateStr(new Date());
+    const twoDaysAgo = addDaysStr(today, -2);
+    const med = await addMed({ name: "LoggedPastMed", start_date: addDaysStr(today, -30), times: ["09:00"] });
+    const ts = new Date(); ts.setDate(ts.getDate() - 2); ts.setHours(9, 0, 0, 0);
+    await db.createLog({ medication_id: med.id, status: "taken", scheduled_time: "09:00", timestamp: ts.toISOString() });
+
+    const past = await db.getToday(twoDaysAgo);
+    const dose = past.doses.find((d) => d.medication_id === med.id);
+    expect(dose.status).toBe("taken");
+  });
+});
+
+describe("getToday: prn_logs (as-needed dose history, for Calendar's day view)", () => {
+  test("an as-needed dose logged on a given day shows up in prn_logs, not just the undated 'available to log' prn list", async () => {
+    const med = await addMed({ name: "PrnMed", is_prn: true, times: [] });
+    const today = localDateStr(new Date());
+    await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 5, timestamp: new Date().toISOString() });
+
+    const result = await db.getToday(today);
+    // `prn` lists every active as-needed med regardless of whether it was
+    // logged today -- it isn't history, so it must never gate "no doses".
+    expect(result.prn.some((m) => m.medication_id === med.id)).toBe(true);
+    const log = result.prn_logs.find((l) => l.medication_id === med.id);
+    expect(log).toMatchObject({ name: "PrnMed", status: "taken", dose_taken: 5 });
+  });
+
+  test("a day with no as-needed activity has an empty prn_logs even though prn (available meds) is non-empty", async () => {
+    const today = localDateStr(new Date());
+    const yesterday = addDaysStr(today, -1);
+    const med = await addMed({ name: "UnusedPrnMed", is_prn: true, times: [], start_date: addDaysStr(today, -30) });
+    const result = await db.getToday(yesterday);
+    expect(result.prn.some((m) => m.medication_id === med.id)).toBe(true);
+    expect(result.prn_logs.filter((l) => l.medication_id === med.id)).toEqual([]);
   });
 });
