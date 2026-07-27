@@ -3,6 +3,24 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-27 — Make the assistant actually use interactive quick-reply buttons
+
+### Fixed
+- **The assistant would end a reply with a plain-text question instead of
+  tappable buttons**, even for a clear yes/no offer like "Want me to set
+  up a taper plan?" — the `ask_user` tool and its UI wiring were both
+  working correctly (confirmed: the return value already flows into the
+  quick-reply buttons, and other tools were firing fine in the same
+  turn), the model was simply choosing to type the question as its last
+  sentence instead of calling the tool. The system prompt's guidance
+  covered explicit multiple-choice prompts but didn't call out this
+  specific pattern — an offer to take further action tacked onto the end
+  of a longer explanation — clearly enough. Rewrote the instruction to
+  name that exact pattern, state plainly that it applies after a long
+  answer just as much as a short one, and clarify that the explanation
+  and the tool call can (and should) coexist in the same turn rather than
+  restating the question in text after calling the tool.
+
 ## 2026-07-27 — Stop sizing the assistant page with vh/dvh; pin it to the real viewport
 
 ### Fixed
