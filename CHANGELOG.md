@@ -3,6 +3,74 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-07-29 — Pharmacology audit: interaction gaps, false alarms, and a wrong nicotine curve
+
+Audited the pharmacology layer end to end — the PK/PD curve engine, the
+tolerance model, the interaction rules, the taper math, and all 58 knowledge-base
+entries — by cross-checking each engine against the catalog rather than reading
+them in isolation. Half-lives, maximum daily doses and the hyperbolic taper
+(which correctly linearises receptor occupancy) all checked out. The problems
+were concentrated in the interaction rules, where a drug's *category* is
+sometimes simply the wrong description of it.
+
+### Fixed
+- **Tramadol combined with an SSRI or SNRI produced no warning at all** — the
+  single most serious gap found. Tramadol is filed as an opioid, so it flagged
+  correctly against sedatives, but it is also a serotonin-norepinephrine
+  reuptake inhibitor, and the antidepressants sat in a different cluster that
+  never met it. Its own knowledge-base entry warns about exactly this pairing.
+  Both the serotonin syndrome risk and the compounding effect on tramadol's
+  lowered seizure threshold are now flagged as high-risk.
+- **Lithium alongside an NSAID, ACE inhibitor, ARB or thiazide was silent.**
+  All of these reduce lithium's renal clearance, and lithium has a narrow
+  therapeutic range, so a previously stable dose can drift into toxicity.
+  Lithium *augmentation of an antidepressant* is deliberately still not
+  flagged — that combination is standard psychiatric practice, and warning
+  about it would be a false alarm.
+- **MDMA was treated as purely serotonergic**, so combining it with a
+  stimulant raised nothing despite being a substituted amphetamine itself. It
+  now also counts as a stimulant, which additionally covers MDMA with alcohol.
+  Where both apply — MDMA with an antidepressant — the serotonin syndrome
+  warning still takes precedence.
+- **A classic psychedelic taken with a stimulant** now flags the added
+  cardiovascular and temperature load, as LSD's own entry describes.
+- **SSRI/SNRI plus an NSAID** now flags GI bleeding risk (serotonin depletion
+  in platelets plus direct COX inhibition). Easy to hit by accident given the
+  NSAID half is sold over the counter. Bupropion, an NDRI, correctly does not
+  trigger it.
+- **Acetaminophen with alcohol** now flags liver risk.
+- **Nicotine is now recognised as a stimulant** for interaction purposes
+  despite sitting in the "other" category, which otherwise holds
+  chronic-condition medications.
+
+### Fixed — false alarms
+- **Lamotrigine plus an opioid was reported as a leading cause of overdose
+  death.** That is true of gabapentinoids, which share the "anticonvulsant"
+  bucket, but false of lamotrigine — a sodium-channel agent that is neither
+  sedating nor respiratory-depressant. The same over-statement applied to
+  second-generation antihistamines like cetirizine, chosen specifically for
+  minimal CNS penetration. Both now get an accurate note about additive
+  drowsiness instead. The genuinely dangerous members of those categories —
+  gabapentin, pregabalin, diphenhydramine — keep the severe warning, which is
+  the point: a warning that fires on everything gets ignored on the one that
+  matters.
+
+### Fixed — plumbing
+- **The nicotine effects curve was modelling the wrong product.** Its timings
+  are referenced to inhaled nicotine (effects over within the hour), but the
+  catalog defaulted the entry to a patch. Since form adjusts absorption *rate*,
+  that combination produced a ~3 h curve for a product designed to hold a
+  steady level for 16-24 h. Nicotine now defaults to smoked/vaporized, matching
+  both its reference data and how it is usually tracked here, and the entry
+  describes patch and gum dosing separately. A regression test now rejects any
+  substance defaulting to a depot form, and the limitation is documented where
+  the form multipliers are defined.
+- **Medications saved under a brand name skipped every substance-level
+  interaction rule** on the home screen, because the generic name was never
+  passed along with the dose — so "Ultram" would not have matched the new
+  tramadol rule, nor "Xanax" the existing ones. The generic name now travels
+  with each dose.
+
 ## 2026-07-27 — Give the Calendar a dot for as-needed-only days
 
 ### Fixed

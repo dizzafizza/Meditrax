@@ -5,8 +5,12 @@
 //
 // Two real, distinct pharmacological effects are modeled here, and it matters
 // that they're kept separate from each other and from `dependency_risk_category`
-// (a static, hand-curated *addiction-potential* rating used elsewhere in the
-// app for taper/behavior-risk purposes):
+// (a static, hand-curated rating of how hard a drug is to *stop* — physical
+// dependence and withdrawal/discontinuation severity — used elsewhere in the
+// app for taper and behavior-risk purposes. Note that is not the same axis as
+// abuse or addiction potential: the SSRIs and SNRIs carry a middling-to-high
+// dependency rating there on the strength of their discontinuation syndrome
+// alone, while having essentially no abuse liability):
 //
 //   1. Tolerance FORMS with frequent/recent use, blunting the subjective
 //      effect of the same dose (receptor downregulation / desensitization —

@@ -183,7 +183,7 @@ export default function Today() {
           <div key={g}>
             <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{g}</p>
             <div className="space-y-2.5">
-              {grouped[g].map((d) => <DoseCard key={d.id} dose={d} interactions={interactionsFor(d.medication_id, d.name, d.category)} onTake={() => quickLog(d, "taken")} onSkip={() => quickLog(d, "skipped")} onTap={() => openDose(d)} />)}
+              {grouped[g].map((d) => <DoseCard key={d.id} dose={d} interactions={interactionsFor(d.medication_id, d.name, d.category, d.generic_name)} onTake={() => quickLog(d, "taken")} onSkip={() => quickLog(d, "skipped")} onTap={() => openDose(d)} />)}
             </div>
           </div>
         ))}
@@ -194,7 +194,7 @@ export default function Today() {
             <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">As needed</p>
             <div className="space-y-2.5">
               {data.prn.map((m) => {
-                const findings = interactionsFor(m.medication_id, m.name, m.category);
+                const findings = interactionsFor(m.medication_id, m.name, m.category, m.generic_name);
                 return (
                   <div key={m.medication_id} className="card-soft p-3" data-testid="prn-card">
                     <div className="flex items-center gap-3">
