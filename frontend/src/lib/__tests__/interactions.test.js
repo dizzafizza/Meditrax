@@ -112,3 +112,71 @@ describe("severityMeta", () => {
     expect(severityMeta(CAUTION)).toEqual({ label: "Use caution", tone: "medium" });
   });
 });
+
+// Cases where the drug's *category* alone gives the wrong answer, so the rules
+// have to look at the substance itself.
+describe("substance-level pharmacology the category bucket doesn't capture", () => {
+  const first = (a, b) => checkInteractions([{ ...a, id: "1" }, { ...b, id: "2" }])[0] || null;
+
+  test("tramadol + an SSRI/SNRI is severe — it's an opioid by category but also a serotonin reuptake inhibitor", () => {
+    const hit = first(med("1", "Tramadol", "opioid", "tramadol"), med("2", "Sertraline", "antidepressant", "sertraline"));
+    expect(hit.severity).toBe(SEVERE);
+    expect(hit.reason).toMatch(/seizure threshold/i);
+    // and the plain depressant rule still applies to tramadol + a sedative
+    expect(first(med("1", "Tramadol", "opioid", "tramadol"), med("2", "Alcohol", "depressant", "ethanol")).severity).toBe(SEVERE);
+  });
+
+  test("a non-sedating anticonvulsant/antihistamine is not called a respiratory depressant", () => {
+    const lamo = first(med("1", "Lamotrigine", "anticonvulsant", "lamotrigine"), med("2", "Oxycodone", "opioid", "oxycodone"));
+    expect(lamo.severity).toBe(CAUTION);
+    expect(lamo.reason).not.toMatch(/respiratory|overdose death/i);
+
+    const cet = first(med("1", "Cetirizine", "antihistamine", "cetirizine"), med("2", "Oxycodone", "opioid", "oxycodone"));
+    expect(cet.severity).toBe(CAUTION);
+
+    // ...but the members that genuinely are depressants keep the severe warning
+    expect(first(med("1", "Gabapentin", "anticonvulsant", "gabapentin"), med("2", "Oxycodone", "opioid", "oxycodone")).severity).toBe(SEVERE);
+    expect(first(med("1", "Pregabalin", "anticonvulsant", "pregabalin"), med("2", "Alcohol", "depressant", "ethanol")).severity).toBe(SEVERE);
+    expect(first(med("1", "Diphenhydramine", "antihistamine", "diphenhydramine"), med("2", "Oxycodone", "opioid", "oxycodone")).severity).toBe(SEVERE);
+  });
+
+  test("MDMA counts as a stimulant as well as a serotonergic — but serotonin syndrome still wins where both apply", () => {
+    expect(first(med("1", "MDMA", "empathogen"), med("2", "Cocaine", "stimulant-fast")).severity).toBe(CAUTION);
+    expect(first(med("1", "MDMA", "empathogen"), med("2", "Methamphetamine", "stimulant")).severity).toBe(CAUTION);
+    expect(first(med("1", "MDMA", "empathogen"), med("2", "Sertraline", "antidepressant")).reason).toMatch(/serotonin/i);
+  });
+
+  test("a classic psychedelic plus a stimulant is flagged", () => {
+    const hit = first(med("1", "LSD", "psychedelic"), med("2", "Caffeine", "stimulant"));
+    expect(hit.severity).toBe(CAUTION);
+    expect(hit.reason).toMatch(/cardiovascular|anxiety/i);
+  });
+
+  test("nicotine is treated as a stimulant despite sitting in the 'other' category", () => {
+    expect(first(med("1", "Nicotine", "other", "nicotine"), med("2", "Cocaine", "stimulant-fast")).severity).toBe(CAUTION);
+  });
+
+  test("lithium: renal-clearance interactions flagged, psychedelics flagged, SSRI augmentation not", () => {
+    expect(first(med("1", "Lithium", "other", "lithium carbonate"), med("2", "Ibuprofen", "nsaid", "ibuprofen")).severity).toBe(SEVERE);
+    expect(first(med("1", "Lithium", "other", "lithium carbonate"), med("2", "Lisinopril", "antihypertensive", "lisinopril")).severity).toBe(SEVERE);
+    expect(first(med("1", "Lithium", "other", "lithium carbonate"), med("2", "LSD", "psychedelic")).reason).toMatch(/seizure/i);
+    // lithium augmentation of an antidepressant is standard practice, not a warning
+    expect(first(med("1", "Lithium", "other", "lithium carbonate"), med("2", "Sertraline", "antidepressant", "sertraline"))).toBeNull();
+  });
+
+  test("SSRI/SNRI + NSAID raises bleeding risk; an NDRI antidepressant does not", () => {
+    expect(first(med("1", "Sertraline", "antidepressant", "sertraline"), med("2", "Ibuprofen", "nsaid", "ibuprofen")).reason).toMatch(/bleed/i);
+    expect(first(med("1", "Bupropion", "antidepressant", "bupropion"), med("2", "Ibuprofen", "nsaid", "ibuprofen"))).toBeNull();
+  });
+
+  test("acetaminophen + alcohol is flagged for liver risk", () => {
+    const hit = first(med("1", "Acetaminophen", "other", "acetaminophen (paracetamol)"), med("2", "Alcohol", "depressant", "ethanol"));
+    expect(hit.severity).toBe(CAUTION);
+    expect(hit.reason).toMatch(/liver/i);
+  });
+
+  test("unrelated medications still produce nothing", () => {
+    expect(first(med("1", "Levothyroxine", "thyroid"), med("2", "Metformin", "diabetes"))).toBeNull();
+    expect(first(med("1", "Atorvastatin", "statin"), med("2", "Lisinopril", "antihypertensive"))).toBeNull();
+  });
+});

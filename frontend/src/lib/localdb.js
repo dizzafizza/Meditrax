@@ -1449,7 +1449,10 @@ function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []
     const eff = effectiveDoseInfo(med, { taper, cyclic }, forDate);
     // Cyclic "off" day: no dose is due — exclude from schedule and adherence.
     if (eff.multiplier === 0) return;
-    if (med.is_prn) { prn.push({ medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, dose_quantity: doseQuantity(med), effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier }); return; }
+    // generic_name travels with the dose because the interaction rules match
+    // substances by name: someone who added "Ultram" or "Xanax" rather than
+    // the generic would otherwise skip every name-level rule.
+    if (med.is_prn) { prn.push({ medication_id: med.id, name: med.name, generic_name: med.generic_name, color: med.color, strength: med.strength, unit: med.unit, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, dose_quantity: doseQuantity(med), effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier }); return; }
     const days = med.days_of_week || WEEKDAYS;
     if (!days.includes(wd)) return;
     const times = (med.times && med.times.length) ? med.times : ["09:00"];
@@ -1457,7 +1460,7 @@ function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []
       const lg = logIndex[`${med.id}|${t}`];
       const status = lg ? lg.status : (isElapsedDay ? "missed" : "pending");
       doses.push({
-        id: `${med.id}_${t}`, medication_id: med.id, name: med.name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status, instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: eff.quantity,
+        id: `${med.id}_${t}`, medication_id: med.id, name: med.name, generic_name: med.generic_name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, time: t, scheduled_time: t, status, instructions: med.instructions, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, log_id: lg ? lg.id : null, is_tapering: !!med.is_tapering, dose_quantity: eff.quantity,
         effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier,
         taper_dose: eff.taper_dose != null ? eff.taper_dose : undefined, taper_unit: eff.taper_dose != null ? (taper?.unit || med.unit) : undefined,
         taper_paused: eff.taper_dose != null && taper?.is_paused ? true : undefined,

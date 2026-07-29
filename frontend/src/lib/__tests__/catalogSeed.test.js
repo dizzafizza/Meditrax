@@ -4,7 +4,7 @@
 // level rendering oddly in the UI) rather than failing loudly.
 
 import { CATALOG_SEED } from "../catalogSeed";
-import { CATEGORY_PK, SUBSTANCE_PK, substancePkFor } from "../effectsEngine";
+import { CATEGORY_PK, SUBSTANCE_PK, substancePkFor, defaultPkProfile } from "../effectsEngine";
 import { SUBSTANCE_TOLERANCE } from "../toleranceEngine";
 import { CATEGORY_LABELS } from "../format";
 
@@ -120,5 +120,35 @@ describe("per-substance pharmacology tables line up with the catalog", () => {
       const entry = byName.get(key);
       expect(substancePkFor({ name: entry.name, generic_name: entry.generic_name })).toBe(SUBSTANCE_PK[key]);
     }
+  });
+
+  test("no substance defaults to a depot form, which the speed model can't represent", () => {
+    // FORM_SPEED scales absorption *rate*, which is the right model for
+    // swallowed/smoked/insufflated/injected routes. It cannot represent a
+    // controlled-release depot: a patch holds a deliberately flat level for
+    // 16-24 h no matter how short-acting the drug itself is. Nicotine was the
+    // live example — numbers referenced to smoking, defaulted to a patch,
+    // yielding a ~3 h duration for a 24 h product.
+    const DEPOT_FORMS = ["patch"];
+    for (const key of Object.keys(SUBSTANCE_PK)) {
+      const entry = byName.get(key);
+      expect({ name: entry.name, depot: DEPOT_FORMS.includes(entry.default_form) }).toEqual({ name: entry.name, depot: false });
+    }
+  });
+
+  test("substances whose default route differs from their reference route still model that route sanely", () => {
+    // The reference-form mechanism exists precisely so a profile measured for
+    // one route can be re-expressed for another; these lock in that the
+    // arithmetic lands somewhere pharmacologically defensible.
+    const profileFor = (name) => {
+      const e = byName.get(name);
+      return defaultPkProfile({ ...e, form: e.default_form });
+    };
+    // Oral-referenced, smoked by default: near-immediate onset, still long.
+    const meth = profileFor("methamphetamine");
+    expect(meth.onset_min).toBeLessThanOrEqual(5);
+    expect(meth.duration_min).toBeGreaterThanOrEqual(480); // 8 h+
+    // Smoked-referenced and smoked by default: researched numbers pass through.
+    expect(profileFor("nicotine")).toEqual({ onset_min: 2, peak_min: 8, duration_min: 45 });
   });
 });

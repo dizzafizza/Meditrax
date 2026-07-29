@@ -36,6 +36,18 @@ export const CATEGORY_PK = {
 };
 
 // Form modifies absorption speed relative to the category baseline.
+//
+// Caveat worth knowing before adding a `default_form` to a catalog entry:
+// this is a model of absorption *rate*, which is the right description for
+// swallowed / smoked / insufflated / injected routes — the drug still rises
+// and falls, just faster or slower. It is NOT a good description of a
+// controlled-release depot. A transdermal patch holds a deliberately flat
+// level for 16-24 h regardless of how short-acting the drug itself is, and no
+// single speed multiplier applied to a short-acting profile reproduces that.
+// `patch` (and `cream`, to a lesser extent) is therefore a rough stand-in
+// rather than a real model, and a substance whose researched profile is
+// short-acting should not *default* to one — see the depot-form check in
+// catalogSeed.test.js.
 export const FORM_SPEED = {
   liquid: 0.7, drops: 0.7, spray: 0.5, inhaler: 0.25, injection: 0.15,
   tablet: 1, capsule: 1.1, patch: 3, cream: 2, other: 1,

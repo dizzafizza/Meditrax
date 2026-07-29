@@ -2020,7 +2020,7 @@ export const CATALOG_SEED = [
 "drug_class": "Cholinergic stimulant",
 "category": "other",
 "default_unit": "mg",
-"default_form": "patch",
+"default_form": "smoked/vaporized",
 "common_dosages": [
 2,
 4,
@@ -2028,7 +2028,7 @@ export const CATALOG_SEED = [
 14,
 21
 ],
-"typical_dosing": "patch/gum per cessation protocol",
+"typical_dosing": "Inhaled (smoked/vaporized): nicotine reaches the brain within seconds and the felt effect is over within roughly an hour, which is what drives frequent redosing. Replacement therapy is dosed differently on purpose: patches deliver a steady level over 16-24 hours (stepped down, e.g. 21 -> 14 -> 7 mg), and gum/lozenges are used at 2-4 mg as needed.",
 "max_daily_dose": null,
 "common_side_effects": [
 "nausea",
@@ -2045,7 +2045,8 @@ export const CATALOG_SEED = [
 ],
 "warnings": [
 "Highly addictive.",
-"Replacement therapy is tapered down stepwise."
+"Replacement therapy is tapered down stepwise.",
+"Set the medication's Form to match how you actually take it — inhaled nicotine peaks within minutes and fades within the hour, while a patch is designed to hold a steady level all day, and the effects-tracker curve differs enormously between the two."
 ],
 "risk_level": "moderate",
 "dependency_risk_category": "extreme",
