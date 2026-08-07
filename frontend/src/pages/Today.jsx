@@ -70,7 +70,7 @@ export default function Today() {
   // (previously this opened a blank sheet whose save dedup-overwrote the log,
   // resetting its time to now and wiping notes/mood).
   const openDose = async (d) => {
-    const medLike = { id: d.medication_id, name: d.name, color: d.color, strength: d.strength, unit: d.unit, is_prn: false, dose_quantity: d.dose_quantity || 1 };
+    const medLike = { id: d.medication_id, name: d.name, color: d.color, strength: d.strength, unit: d.unit, form: d.form, is_prn: false, dose_quantity: d.dose_quantity || 1 };
     if (d.log_id) {
       try {
         const log = await getLog(d.log_id);
@@ -203,7 +203,7 @@ export default function Today() {
                         <p className="font-semibold truncate">{m.name}</p>
                         <p className="text-xs text-muted-foreground">{doseLabel(m.strength, m.unit)} · as needed</p>
                       </div>
-                      <Button size="sm" variant="secondary" className="rounded-xl" onClick={() => ui.openQuickLog({ id: m.medication_id, name: m.name, color: m.color, strength: m.strength, unit: m.unit, category: m.category, is_prn: true, dose_quantity: m.dose_quantity || 1 })} data-testid="prn-log-button">Log</Button>
+                      <Button size="sm" variant="secondary" className="rounded-xl" onClick={() => ui.openQuickLog({ id: m.medication_id, name: m.name, color: m.color, strength: m.strength, unit: m.unit, form: m.form, category: m.category, is_prn: true, dose_quantity: m.dose_quantity || 1 })} data-testid="prn-log-button">Log</Button>
                     </div>
                     <InteractionAlert findings={findings} className="mt-2.5" />
                   </div>

@@ -16,6 +16,7 @@ import {
   observationsFromSession, updateModel, modelConfidence, fmtMins, modeledEffectiveness,
   CATEGORY_PK, FORM_SPEED, SUBSTANCE_PK, substancePkFor, DOSE_RESPONSE, doseResponse,
   sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
+  mealFactorsFor, isOralForm, MEAL_STATES,
 } from "../effectsEngine";
 import * as db from "../localdb";
 
@@ -164,37 +165,29 @@ describe("intensity curve & phases", () => {
     expect(intensityAt(p.peak_min, p)).toBe(100); // peak lands exactly where learned
     expect(intensityAt(p.onset_min, p)).toBeGreaterThan(4); // perceptible at onset
     expect(intensityAt(p.onset_min, p)).toBeLessThan(20); // but only just
-    // Largely worn off by duration_min, with the after-effects window easing
-    // out what's left. Not near-zero: a one-compartment curve that peaks this
-    // early cannot decline faster than this by then, so the fit takes the
-    // fastest decay available rather than pretending to an exact target.
-    expect(intensityAt(p.duration_min, p)).toBeLessThan(25);
+    expect(intensityAt(p.duration_min, p)).toBeLessThan(25); // largely worn off by duration_min
     expect(intensityAt(p.duration_min, p)).toBeLessThan(intensityAt(p.peak_min, p) / 3);
     expect(intensityAt(p.duration_min * 1.25, p)).toBe(0); // and fully out by the tail's end
   });
 
-  test("has a single rounded peak, not a flat plateau", () => {
-    // The old spline held exactly 100 for a third of the post-peak span,
-    // which no real concentration-effect curve does. A one-compartment curve
-    // touches its maximum once and immediately begins declining.
-    const atPeak = intensityAt(p.peak_min, p);
-    expect(intensityAt(p.peak_min + 40, p)).toBeLessThan(atPeak);
-    expect(intensityAt(p.peak_min - 20, p)).toBeLessThan(atPeak);
+  test("holds a 100% plateau for the first stretch after the peak", () => {
+    // The restored spline deliberately holds full intensity across the first
+    // ~third of the post-peak span (plateauEnd = pk + (dur - pk) * 0.35 =
+    // 163.5 here) before easing down -- the shape the user reported matching
+    // their actual experience.
+    expect(intensityAt(p.peak_min, p)).toBe(100);
+    expect(intensityAt(120, p)).toBe(100);
+    expect(intensityAt(160, p)).toBe(100);
+    expect(intensityAt(170, p)).toBeLessThan(100);
   });
 
-  test("declines continuously, with no step into the after-effects tail", () => {
-    // Regression: the tail used to be a separate 8%-of-peak block, so the
-    // curve jumped discontinuously at duration_min -- a visible notch on
-    // every chart. Sampling across that boundary should now be smooth.
-    let prev = intensityAt(p.peak_min, p);
-    let biggestDrop = 0;
-    for (let t = p.peak_min + 1; t <= p.duration_min * 1.25; t++) {
-      const v = intensityAt(t, p);
-      biggestDrop = Math.max(biggestDrop, prev - v);
-      expect(v).toBeLessThanOrEqual(prev + 0.15); // monotone down throughout
-      prev = v;
-    }
-    expect(biggestDrop).toBeLessThan(3); // no cliff anywhere, including at duration_min
+  test("fades out by duration_min, then shows the fixed after-effects tail", () => {
+    // The spline's decline reaches ~0 at the reported "gone" moment, and the
+    // after-effects window is a separate small (8%) block that fades over the
+    // next 25% of the duration -- the step at duration_min is by design.
+    expect(intensityAt(p.duration_min - 1, p)).toBeLessThan(1);
+    expect(intensityAt(p.duration_min, p)).toBe(8);
+    expect(intensityAt(p.duration_min * 1.25, p)).toBe(0);
   });
 
   test("rises monotonically from zero to the peak", () => {
@@ -1191,15 +1184,13 @@ describe("deleteMedication cleans up effect-tracker data (no orphaned models/ses
   });
 });
 
-// The curve's internals were rewritten from a hand-built spline to a fitted
-// PK/PD model. Users had already taught their models onset/peak/duration
-// through feedback, so the rewrite must not quietly reinterpret what those
-// reports meant -- a curve that peaks somewhere other than where someone
-// tapped "Peaking" would make their own history look wrong to them. These
-// bounds pin the agreement so it can't drift again unnoticed.
-describe("continuity with feedback collected before the PK/PD rewrite", () => {
+// The curve was reverted to the pre-PK/PD spline on user feedback. This block
+// pins the restored shape to an independent verbatim copy of that spline, so
+// any future "improvement" that quietly changes what a user's own feedback
+// plots back as will fail here instead of drifting unnoticed.
+describe("the reverted curve matches the pre-PK/PD spline exactly", () => {
   const smooth = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
-  // The pre-rewrite spline, reproduced verbatim as the reference.
+  // The spline, reproduced verbatim (unrounded) as the reference.
   function previousCurve(tMin, { onset_min: on, peak_min: pk, duration_min: dur }) {
     const plateauEnd = pk + (dur - pk) * 0.35;
     if (tMin <= 0) return 0;
@@ -1214,36 +1205,11 @@ describe("continuity with feedback collected before the PK/PD rewrite", () => {
 
   const profiles = Object.keys(CATEGORY_PK).map((category) => defaultPkProfile({ category, form: "tablet" }));
 
-  test("peak still lands exactly where the user reported peaking", () => {
+  test("pointwise identical (to display rounding) across every category profile", () => {
     for (const p of profiles) {
-      expect(intensityAt(p.peak_min, p)).toBe(100);
-      expect(previousCurve(p.peak_min, p)).toBe(100);
-    }
-  });
-
-  test("onset still reads as barely-perceptible, within a couple of points of before", () => {
-    for (const p of profiles) {
-      expect(Math.abs(intensityAt(p.onset_min, p) - previousCurve(p.onset_min, p))).toBeLessThanOrEqual(4);
-    }
-  });
-
-  test("a dose reported gone reads as gone, not still substantially active", () => {
-    for (const p of profiles) {
-      expect(intensityAt(p.duration_min, p)).toBeLessThan(25);
-      expect(intensityAt(p.duration_min * 1.25, p)).toBe(0);
-    }
-  });
-
-  test("overall exposure is comparable — the same dose, not a different drug", () => {
-    for (const p of profiles) {
-      let before = 0, after = 0;
-      for (let t = 0; t <= p.duration_min * 1.25; t += 2) {
-        before += previousCurve(t, p) * 2;
-        after += intensityAt(t, p) * 2;
+      for (let t = 0; t <= p.duration_min * 1.25 + 10; t++) {
+        expect(intensityAt(t, p)).toBe(Math.round(previousCurve(t, p) * 10) / 10);
       }
-      const ratio = after / before;
-      expect(ratio).toBeGreaterThan(0.7);
-      expect(ratio).toBeLessThan(1.3);
     }
   });
 
@@ -1304,5 +1270,124 @@ describe("a session already in flight is not left on a stale intensity scale", (
     // And a usual dose still reads as a usual dose, not scaled down by
     // tolerance measured against a drug-naive baseline.
     expect(live.profile.intensity_scale).toBeCloseTo(1, 1);
+  });
+});
+
+// "How long ago did you eat" -- stomach fullness shifts an oral dose's
+// predicted timing and peak; every other route, and an unanswered picker,
+// changes nothing at all.
+describe("meal-state adjustment (stomach fullness, oral routes only)", () => {
+  const oralMed = { category: "opioid", form: "tablet" };
+  const base = personalizedProfile(oralMed);
+
+  test("null and 'light' are both exactly the unadjusted profile", () => {
+    expect(personalizedProfile(oralMed, null, null, null, { lastMeal: null })).toEqual(base);
+    expect(personalizedProfile(oralMed, null, null, null, { lastMeal: "light" })).toEqual(base);
+    expect(personalizedProfile(oralMed)).toEqual(base); // no options arg at all
+  });
+
+  test("empty stomach: faster onset and peak, slightly stronger", () => {
+    const p = personalizedProfile(oralMed, null, null, null, { lastMeal: "empty" });
+    expect(p.onset_min).toBeLessThan(base.onset_min);
+    expect(p.peak_min).toBeLessThan(base.peak_min);
+    // intensity_scale carries the profile's 1-decimal display rounding, so
+    // x1.05 on a baseline of 1 surfaces as 1.1 (the unrounded value drives
+    // estimateDoseEffectiveness, tested below).
+    expect(p.intensity_scale).toBe(Math.round(base.intensity_scale * 1.05 * 10) / 10);
+  });
+
+  test("full meal: slower onset and peak, blunted intensity, slightly longer", () => {
+    const p = personalizedProfile(oralMed, null, null, null, { lastMeal: "full" });
+    expect(p.onset_min).toBeGreaterThan(base.onset_min);
+    expect(p.peak_min).toBeGreaterThan(base.peak_min);
+    expect(p.duration_min).toBeGreaterThan(base.duration_min);
+    expect(p.intensity_scale).toBe(Math.round(base.intensity_scale * 0.85 * 10) / 10);
+  });
+
+  test("non-oral routes are never adjusted, whatever the answer", () => {
+    for (const form of ["smoked/vaporized", "insufflated", "injection", "patch"]) {
+      const med = { category: "opioid", form };
+      const unadjusted = personalizedProfile(med);
+      expect(personalizedProfile(med, null, null, null, { lastMeal: "full" })).toEqual(unadjusted);
+      expect(personalizedProfile(med, null, null, null, { lastMeal: "empty" })).toEqual(unadjusted);
+    }
+  });
+
+  test("unknown form counts as oral (category baselines are oral values); junk meal values are identity", () => {
+    expect(isOralForm(undefined)).toBe(true);
+    expect(isOralForm("tablet")).toBe(true);
+    expect(isOralForm("smoked/vaporized")).toBe(false);
+    expect(mealFactorsFor("banana", "tablet")).toEqual({ onset: 1, comeUp: 1, intensity: 1, duration: 1 });
+    expect(MEAL_STATES).toEqual(["empty", "light", "full"]);
+  });
+
+  test("ordering survives a full-meal shift even for a learned profile with onset right under its peak", () => {
+    const model = { onset_min: 100, peak_min: 110, duration_min: 200, samples: 4 };
+    const p = personalizedProfile(oralMed, model, null, null, { lastMeal: "full" });
+    expect(p.onset_min).toBeLessThan(p.peak_min);
+    expect(p.peak_min).toBeLessThan(p.duration_min);
+  });
+
+  describe("threaded through the data layer", () => {
+    test("startEffectSession persists last_meal and the shifted profile; junk normalizes to null", async () => {
+      const med = await db.createMedication({ name: "MealOralMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      const sFull = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+      expect(sFull.last_meal).toBe("full");
+      const sNone = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+      expect(sNone.last_meal).toBe(null);
+      expect(sFull.profile.onset_min).toBeGreaterThan(sNone.profile.onset_min);
+      expect(sFull.profile.intensity_scale).toBeLessThan(sNone.profile.intensity_scale);
+      const sJunk = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "brunch" });
+      expect(sJunk.last_meal).toBe(null);
+    });
+
+    test("a smoked med stores the answer but its profile is untouched by it", async () => {
+      const med = await db.createMedication({ name: "MealSmokedMed", strength: 10, unit: "mg", category: "cannabis", form: "smoked/vaporized", times: [], is_prn: true });
+      const sFull = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+      const sNone = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+      expect(sFull.profile.onset_min).toBe(sNone.profile.onset_min);
+      expect(sFull.profile.intensity_scale).toBe(sNone.profile.intensity_scale);
+    });
+
+    test("updateEffectSession({ last_meal }) recomputes the snapshot in place", async () => {
+      const med = await db.createMedication({ name: "MealEditMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+      const before = s.profile.onset_min;
+      const updated = await db.updateEffectSession(s.id, { last_meal: "full" });
+      expect(updated.last_meal).toBe("full");
+      expect(updated.profile.onset_min).toBeGreaterThan(before);
+      const cleared = await db.updateEffectSession(s.id, { last_meal: "not-a-state" });
+      expect(cleared.last_meal).toBe(null);
+      expect(cleared.profile.onset_min).toBe(before);
+    });
+
+    test("the live intensity recompute keeps the meal factor instead of clobbering it", async () => {
+      const med = await db.createMedication({ name: "MealClobberMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+      const live = (await db.getActiveEffectSessions()).find((x) => x.medication_id === med.id);
+      // Read path recomputes intensity_scale fresh -- it must still carry the
+      // x0.85 full-stomach factor (as 1-dp-rounded by the profile), and
+      // surface the med's form for UI gating.
+      const expected = Math.round(0.85 * personalizedProfile({ category: "opioid", form: "tablet" }).intensity_scale * 10) / 10;
+      expect(live.profile.intensity_scale).toBe(expected);
+      expect(live.medication_form).toBe("tablet");
+    });
+
+    test("resetEffectModel re-applies the session's stored meal state", async () => {
+      const med = await db.createMedication({ name: "MealResetMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      const s = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+      const shiftedOnset = s.profile.onset_min;
+      await db.resetEffectModel(med.id);
+      const after = (await db.getEffectSessions({ medication_id: med.id })).find((x) => x.id === s.id);
+      expect(after.profile.onset_min).toBe(shiftedOnset);
+    });
+
+    test("the dose-effect preview reads lower on a full stomach, against an unchanged usual", async () => {
+      const med = await db.createMedication({ name: "MealPreviewMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      await db.createLog({ medication_id: med.id, status: "taken", dose_taken: 10, timestamp: new Date(Date.now() - 5 * 86400000).toISOString() });
+      const plain = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
+      const fed = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10, last_meal: "full" });
+      expect(fed.relativeToUsual).toBeCloseTo(plain.relativeToUsual * 0.85, 1);
+    });
   });
 });

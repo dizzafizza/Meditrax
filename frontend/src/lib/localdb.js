@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt, mealFactorsFor, MEAL_STATES } from "./effectsEngine";
 import { estimateTolerance, toleranceBand } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -802,7 +802,7 @@ export async function getMedicationTolerance(medication_id) {
 // The user's own rating, once they touch the slider, is what actually gets
 // stored; this only pre-fills a smarter default than the fixed "7" so the
 // tool reflects what it already knows before asking the person to guess.
-export async function estimateDoseEffectiveness({ medication_id, dose = null, now = Date.now() } = {}) {
+export async function estimateDoseEffectiveness({ medication_id, dose = null, now = Date.now(), last_meal = null } = {}) {
   await ensureInit();
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
   if (!med) return null;
@@ -843,8 +843,9 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null, no
       refDose = amounts.length % 2 ? amounts[mid] : (amounts[mid - 1] + amounts[mid]) / 2;
     }
   }
+  const lastMeal = MEAL_STATES.includes(last_meal) ? last_meal : null;
   const refModel = timingModel || refDose ? { ...(timingModel || {}), ref_dose: refDose } : null;
-  const profile = personalizedProfile(med, refModel, dose, tolerance);
+  const profile = personalizedProfile(med, refModel, dose, tolerance, { lastMeal });
 
   // The headline is expressed against *this person's own recent normal*,
   // not against an opioid-naive baseline. For a daily user, saturated
@@ -868,7 +869,12 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null, no
   const usualLevel = tolerance.applicable && tolerance.faded ? tolerance.recentPeakLevel : tolerance.level;
   const curFactor = tolerance.applicable ? 1 - tolerance.level * tolerance.maxDampening : 1;
   const usualFactor = tolerance.applicable ? 1 - usualLevel * tolerance.maxDampening : 1;
-  const doseEffect = doseResponse(doseRatio, doseResponseFor(med)) * curFactor;
+  // The meal factor multiplies only the numerator: "your usual" is
+  // meal-agnostic, so unlike tolerance it must survive the ratio rather
+  // than cancel out of it. Residual is left unadjusted too -- the meal
+  // states of earlier doses aren't known.
+  const mealIntensity = mealFactorsFor(lastMeal, med.form).intensity;
+  const doseEffect = doseResponse(doseRatio, doseResponseFor(med)) * curFactor * mealIntensity;
 
   // Drug still on board from earlier doses. A dose taken while the last one
   // is still working lands on top of it -- the single biggest short-term
@@ -924,7 +930,7 @@ export async function resetEffectModel(medication_id) {
   for (const s of sessions) {
     if (s.medication_id === medication_id && s.status === "active") {
       const tolerance = await toleranceForMedication(med, { excludeLogId: s.log_id });
-      s.profile = personalizedProfile(med, null, s.dose, tolerance);
+      s.profile = personalizedProfile(med, null, s.dose, tolerance, { lastMeal: s.last_meal || null });
       s.updated_at = nowIso();
       changed = true;
     }
@@ -933,7 +939,7 @@ export async function resetEffectModel(medication_id) {
   return { reset: true };
 }
 
-export async function startEffectSession({ medication_id, dose = null, unit = null, log_id = null, started_at = null }) {
+export async function startEffectSession({ medication_id, dose = null, unit = null, log_id = null, started_at = null, last_meal = null }) {
   await ensureInit();
   const med = (await getArr(pkey("medications"))).find((m) => m.id === medication_id);
   if (!med) throw new Error("Medication not found");
@@ -943,13 +949,19 @@ export async function startEffectSession({ medication_id, dose = null, unit = nu
   sessions.forEach((s) => { if (s.medication_id === medication_id && s.status === "active") { s.status = "discarded"; s.ended_at = nowIso(); } });
   const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === medication_id) || null;
   const tolerance = await toleranceForMedication(med, { excludeLogId: log_id });
+  // "How long since you last ate" -- anything unrecognized (including an
+  // unanswered picker) stores as null, which the engine treats as no
+  // adjustment. Kept on the session so every later profile recompute
+  // (edit, model reset, the live intensity refresh) re-applies it.
+  const lastMeal = MEAL_STATES.includes(last_meal) ? last_meal : null;
   const doc = {
     id: uid(), medication_id, log_id,
     dose: dose != null && isFinite(Number(dose)) ? Number(dose) : null,
     unit: unit || med.unit || null,
     started_at: started_at && !isNaN(new Date(started_at).getTime()) ? new Date(started_at).toISOString() : nowIso(),
     ended_at: null, status: "active", events: [],
-    profile: personalizedProfile(med, model, dose, tolerance), // snapshot used for this session
+    last_meal: lastMeal,
+    profile: personalizedProfile(med, model, dose, tolerance, { lastMeal }), // snapshot used for this session
     created_at: nowIso(),
   };
   sessions.push(doc);
@@ -976,10 +988,17 @@ export async function updateEffectSession(sessionId, patch = {}) {
     const v = Number(patch.dose);
     if (!isFinite(v) || v < 0) throw new Error("Invalid dose");
     s.dose = v;
+  }
+  if ("last_meal" in patch) {
+    s.last_meal = MEAL_STATES.includes(patch.last_meal) ? patch.last_meal : null;
+  }
+  // Either a dose change (dose scaling) or a meal correction (timing + peak
+  // shift) invalidates the snapshot, so re-derive it once for both.
+  if ("dose" in patch || "last_meal" in patch) {
     const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
     const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === s.medication_id) || null;
     const tolerance = await toleranceForMedication(med, { excludeLogId: s.log_id });
-    s.profile = personalizedProfile(med, model, v, tolerance);
+    s.profile = personalizedProfile(med, model, s.dose, tolerance, { lastMeal: s.last_meal || null });
   }
   s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
@@ -1213,7 +1232,10 @@ export async function getActiveEffectSessions() {
     if (m && profile) {
       const model = models.find((x) => x.medication_id === s.medication_id) || null;
       const tolerance = await toleranceForMedication(m, { now, excludeLogId: s.log_id });
-      const fresh = personalizedProfile(m, model, s.dose, tolerance);
+      // last_meal must ride along here: this recompute runs on every read,
+      // and without it the meal's intensity factor from the session snapshot
+      // would be silently clobbered the moment the page re-rendered.
+      const fresh = personalizedProfile(m, model, s.dose, tolerance, { lastMeal: s.last_meal || null });
       profile = {
         ...profile,
         intensity_scale: fresh.intensity_scale,
@@ -1222,7 +1244,7 @@ export async function getActiveEffectSessions() {
         typicalFraction: fresh.typicalFraction,
       };
     }
-    out.push({ ...s, profile, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit });
+    out.push({ ...s, profile, medication_name: m?.name || "Medication", medication_color: m?.color || "#2A767B", medication_unit: m?.unit || s.unit, medication_form: m?.form });
   }
   return out;
 }
@@ -1452,7 +1474,7 @@ function buildTodayDoses(meds, logsToday, forDate, tapers = [], cyclicPlans = []
     // generic_name travels with the dose because the interaction rules match
     // substances by name: someone who added "Ultram" or "Xanax" rather than
     // the generic would otherwise skip every name-level rule.
-    if (med.is_prn) { prn.push({ medication_id: med.id, name: med.name, generic_name: med.generic_name, color: med.color, strength: med.strength, unit: med.unit, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, dose_quantity: doseQuantity(med), effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier }); return; }
+    if (med.is_prn) { prn.push({ medication_id: med.id, name: med.name, generic_name: med.generic_name, color: med.color, strength: med.strength, unit: med.unit, form: med.form, category: med.category, risk_level: med.risk_level, dependency_risk_category: med.dependency_risk_category, dose_quantity: doseQuantity(med), effective_dose: eff.dose, cyclic_phase: eff.phase, cyclic_multiplier: eff.multiplier }); return; }
     const days = med.days_of_week || WEEKDAYS;
     if (!days.includes(wd)) return;
     const times = (med.times && med.times.length) ? med.times : ["09:00"];
