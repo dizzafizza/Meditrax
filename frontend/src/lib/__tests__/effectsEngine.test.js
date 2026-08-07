@@ -17,6 +17,7 @@ import {
   CATEGORY_PK, FORM_SPEED, SUBSTANCE_PK, substancePkFor, DOSE_RESPONSE, doseResponse,
   sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
   mealFactorsFor, isOralForm, MEAL_STATES,
+  observedMealFactors, updateMealModel, baselineObservations, MEAL_FACTOR_BOUNDS,
 } from "../effectsEngine";
 import * as db from "../localdb";
 
@@ -1388,6 +1389,202 @@ describe("meal-state adjustment (stomach fullness, oral routes only)", () => {
       const plain = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10 });
       const fed = await db.estimateDoseEffectiveness({ medication_id: med.id, dose: 10, last_meal: "full" });
       expect(fed.relativeToUsual).toBeCloseTo(plain.relativeToUsual * 0.85, 1);
+    });
+  });
+});
+
+// The meal factors calibrate to the person, the same way the timing model
+// does: each completed session with a meal answer yields an observed
+// factor sample, EWMA'd from the population prior toward this person's own
+// gastric response.
+describe("meal-factor calibration (learned per-person model)", () => {
+  const prior = mealFactorsFor("full", "tablet"); // population prior
+
+  test("a learned model with samples overrides the prior's timing factors; intensity is never learned", () => {
+    const model = { full: { onset: 2.2, comeUp: 1.5, duration: 1.3, samples: 4 } };
+    const f = mealFactorsFor("full", "tablet", model);
+    expect(f.onset).toBe(2.2);
+    expect(f.comeUp).toBe(1.5);
+    expect(f.duration).toBe(1.3);
+    expect(f.intensity).toBe(prior.intensity); // stays the prior
+    // zero-sample or absent entries fall back to the prior wholesale
+    expect(mealFactorsFor("full", "tablet", { full: { onset: 3, samples: 0 } })).toEqual(prior);
+    expect(mealFactorsFor("empty", "tablet", model)).toEqual(mealFactorsFor("empty", "tablet"));
+    // learned values are clamped into sane bounds
+    const wild = { full: { onset: 99, comeUp: 0.01, duration: 99, samples: 2 } };
+    const g = mealFactorsFor("full", "tablet", wild);
+    expect(g.onset).toBe(MEAL_FACTOR_BOUNDS.onset[1]);
+    expect(g.comeUp).toBe(MEAL_FACTOR_BOUNDS.comeUp[0]);
+    expect(g.duration).toBe(MEAL_FACTOR_BOUNDS.duration[1]);
+  });
+
+  test("updateMealModel walks from the prior toward observations, halving first", () => {
+    // First sample: alpha = 1/2, so the value lands midway between prior and sample.
+    const m1 = updateMealModel(null, "full", { onset: 2.4 });
+    expect(m1.full.samples).toBe(1);
+    expect(m1.full.onset).toBeCloseTo((prior.onset + 2.4) / 2, 3);
+    // Second sample: alpha = 1/3.
+    const m2 = updateMealModel(m1, "full", { onset: 2.4 });
+    expect(m2.full.samples).toBe(2);
+    expect(m2.full.onset).toBeCloseTo(m1.full.onset + (2.4 - m1.full.onset) / 3, 3);
+    // Repeated agreement converges on the person's real factor.
+    let m = null;
+    for (let i = 0; i < 12; i++) m = updateMealModel(m, "full", { onset: 2.4, comeUp: 1.6, duration: 1.4 });
+    expect(m.full.onset).toBeCloseTo(2.4, 1);
+    expect(m.full.comeUp).toBeCloseTo(1.6, 1);
+    expect(m.full.duration).toBeCloseTo(1.4, 1);
+  });
+
+  test("updateMealModel ignores the baseline state, junk states, and empty observations", () => {
+    expect(updateMealModel({ a: 1 }, "light", { onset: 2 })).toEqual({ a: 1 });
+    expect(updateMealModel({ a: 1 }, "brunch", { onset: 2 })).toEqual({ a: 1 });
+    expect(updateMealModel({ a: 1 }, "full", {})).toEqual({ a: 1 });
+    expect(updateMealModel({ a: 1 }, "full", { onset: NaN })).toEqual({ a: 1 });
+  });
+
+  test("observedMealFactors recovers the person's real factor from a session's timings", () => {
+    // Baseline onset 20, snapshot applied fOnset 1.6 -> predicted onset 32.
+    // The person actually felt it at 44 -> their real factor is 44/20 = 2.2.
+    const profile = { onset_min: 32, peak_min: 94, duration_min: 297 }; // base 20/70/270 shifted by full-meal priors
+    const applied = { onset: 1.6, comeUp: 1.25, intensity: 0.85, duration: 1.1 };
+    const obs = { onset_min: 44, peak_min: 104, end_min: 324 };
+    const f = observedMealFactors(obs, profile, applied);
+    expect(f.onset).toBeCloseTo(44 / 20, 2);
+    // come-up: observed span 104-44 = 60 vs baseline span (94-32)/1.25 = 49.6
+    expect(f.comeUp).toBeCloseTo(60 / 49.6, 2);
+    expect(f.duration).toBeCloseTo(324 / 270, 2);
+    // samples clamp instead of running wild
+    const crazy = observedMealFactors({ onset_min: 900 }, profile, applied);
+    expect(crazy.onset).toBe(MEAL_FACTOR_BOUNDS.onset[1]);
+  });
+
+  test("baselineObservations divides the meal shift back out before the base model trains", () => {
+    const profile = { onset_min: 32, peak_min: 94, duration_min: 297 };
+    const applied = { onset: 1.6, comeUp: 1.25, intensity: 0.85, duration: 1.1 };
+    const obs = { onset_min: 48, peak_min: 110, end_min: 330 };
+    const base = baselineObservations(obs, profile, applied);
+    expect(base.onset_min).toBeCloseTo(30, 5); // 48/1.6
+    expect(base.peak_min).toBeCloseTo(30 + (110 - 48) / 1.25, 5);
+    expect(base.end_min).toBeCloseTo(300, 5); // 330/1.1
+    // identity factors pass observations through untouched
+    expect(baselineObservations(obs, profile, { onset: 1, comeUp: 1, intensity: 1, duration: 1 })).toEqual(obs);
+  });
+
+  test("personalizedProfile uses the learned factors once they have samples", () => {
+    const med = { category: "opioid", form: "tablet" };
+    const withPrior = personalizedProfile(med, null, null, null, { lastMeal: "full" });
+    const learned = { full: { onset: 2.6, comeUp: 1.8, duration: 1.5, samples: 5 } };
+    const withLearned = personalizedProfile(med, null, null, null, { lastMeal: "full", mealModel: learned });
+    expect(withLearned.onset_min).toBeGreaterThan(withPrior.onset_min);
+    expect(withLearned.peak_min).toBeGreaterThan(withPrior.peak_min);
+    expect(withLearned.duration_min).toBeGreaterThan(withPrior.duration_min);
+  });
+
+  describe("the full loop through the data layer", () => {
+    // Build a medication whose base model is already trustworthy (3 trained
+    // no-meal sessions -> medium confidence), which is the gate for meal
+    // learning: until the person's own baseline is known, a slow session
+    // can't be attributed to the meal rather than to a wrong baseline.
+    async function calibratedMed(name) {
+      const med = await db.createMedication({ name, strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      jest.useFakeTimers();
+      try {
+        for (let i = 0; i < 3; i++) {
+          jest.setSystemTime(new Date(Date.UTC(2026, 6, 1 + i, 8, 0, 0)));
+          const s = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+          jest.setSystemTime(new Date(Date.UTC(2026, 6, 1 + i, 8, 30, 0)));
+          await db.addEffectEvent(s.id, { kind: "onset" });
+          jest.setSystemTime(new Date(Date.UTC(2026, 6, 1 + i, 13, 0, 0)));
+          await db.addEffectEvent(s.id, { kind: "gone" });
+        }
+      } finally { jest.useRealTimers(); }
+      return med;
+    }
+
+    test("a full-stomach session teaches the meal model, and the base model stays clean", async () => {
+      const med = await calibratedMed("MealLearnMed");
+      const baseBefore = await db.getEffectModel(med.id);
+      expect(modelConfidence(baseBefore)).toBe("medium");
+
+      jest.useFakeTimers();
+      try {
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 10, 8, 0, 0)));
+        const s = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+        // The person feels onset exactly when their *baseline* model says
+        // (30 min) times a personal full-stomach factor of 2 -> 60 min.
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 10, 9, 0, 0)));
+        await db.addEffectEvent(s.id, { kind: "onset" });
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 10, 14, 0, 0)));
+        await db.addEffectEvent(s.id, { kind: "gone" });
+      } finally { jest.useRealTimers(); }
+
+      // Meal model learned: first sample moves halfway from the prior (1.6)
+      // toward the observed personal factor (60/30 = 2).
+      const mealModel = await db.getMealModel();
+      expect(mealModel.full.samples).toBe(1);
+      expect(mealModel.full.onset).toBeCloseTo((1.6 + 2) / 2, 2);
+
+      // Base model de-confounded: the 60-min onset was divided back by the
+      // applied 1.6 factor (-> 37.5) before training, so the baseline moved
+      // only mildly -- not dragged toward the fed-state 60.
+      const baseAfter = await db.getEffectModel(med.id);
+      expect(baseAfter.onset_min).toBeLessThan(40);
+    });
+
+    test("without a trustworthy baseline the meal model refuses to learn", async () => {
+      const med = await db.createMedication({ name: "MealGateMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+      const before = JSON.stringify(await db.getMealModel());
+      jest.useFakeTimers();
+      try {
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 20, 8, 0, 0)));
+        const s = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 20, 9, 0, 0)));
+        await db.addEffectEvent(s.id, { kind: "onset" });
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 20, 14, 0, 0)));
+        await db.addEffectEvent(s.id, { kind: "gone" });
+      } finally { jest.useRealTimers(); }
+      expect(JSON.stringify(await db.getMealModel())).toBe(before);
+    });
+
+    test("undoing the session's completion rolls the meal model back too", async () => {
+      const med = await calibratedMed("MealUndoMed");
+      const before = JSON.stringify(await db.getMealModel());
+      let sessionId;
+      jest.useFakeTimers();
+      try {
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 12, 8, 0, 0)));
+        const s = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+        sessionId = s.id;
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 12, 9, 0, 0)));
+        await db.addEffectEvent(s.id, { kind: "onset" });
+        jest.setSystemTime(new Date(Date.UTC(2026, 6, 12, 14, 0, 0)));
+        await db.addEffectEvent(s.id, { kind: "gone" });
+      } finally { jest.useRealTimers(); }
+      expect(JSON.stringify(await db.getMealModel())).not.toBe(before);
+      await db.reopenEffectSession(sessionId);
+      expect(JSON.stringify(await db.getMealModel())).toBe(before);
+    });
+
+    test("the next fed session predicts with the learned factor, not the prior", async () => {
+      const med = await calibratedMed("MealNextMed");
+      // Teach a strong personal factor with several consistent fed sessions.
+      jest.useFakeTimers();
+      try {
+        for (let i = 0; i < 4; i++) {
+          jest.setSystemTime(new Date(Date.UTC(2026, 6, 14 + i, 8, 0, 0)));
+          const s = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+          jest.setSystemTime(new Date(Date.UTC(2026, 6, 14 + i, 9, 30, 0))); // 90 min onset every time
+          await db.addEffectEvent(s.id, { kind: "onset" });
+          jest.setSystemTime(new Date(Date.UTC(2026, 6, 14 + i, 15, 0, 0)));
+          await db.addEffectEvent(s.id, { kind: "gone" });
+        }
+      } finally { jest.useRealTimers(); }
+      const mealModel = await db.getMealModel();
+      expect(mealModel.full.samples).toBeGreaterThanOrEqual(4);
+      expect(mealModel.full.onset).toBeGreaterThan(1.6); // moved beyond the prior
+      const fed = await db.startEffectSession({ medication_id: med.id, dose: 10, last_meal: "full" });
+      const fasted = await db.startEffectSession({ medication_id: med.id, dose: 10 });
+      expect(fed.profile.onset_min / fasted.profile.onset_min).toBeGreaterThan(1.6);
     });
   });
 });

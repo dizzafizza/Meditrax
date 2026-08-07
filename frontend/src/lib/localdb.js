@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt, mealFactorsFor, MEAL_STATES } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt, mealFactorsFor, MEAL_STATES, observedMealFactors, updateMealModel, baselineObservations, isOralForm } from "./effectsEngine";
 import { estimateTolerance, toleranceBand } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -20,7 +20,7 @@ export const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const PROFILE_COLORS = ["#2A767B", "#E08A3C", "#7A6FB0", "#3E7CB1", "#B0436F", "#5B8C5A"];
 // Every profile-scoped collection. Referenced by deleteProfile / export / import
 // so new collections can't be forgotten in one of the three places.
-export const PROFILE_COLLECTIONS = ["medications", "logs", "reminders", "tapers", "cyclic", "chat", "checkins", "insights", "effectSessions", "effectModels", "effectVersions"];
+export const PROFILE_COLLECTIONS = ["medications", "logs", "reminders", "tapers", "cyclic", "chat", "checkins", "insights", "effectSessions", "effectModels", "effectVersions", "mealModels"];
 
 export function uid() {
   return (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
@@ -737,6 +737,22 @@ async function saveEffectModel(model) {
   return model;
 }
 
+// The per-person learned meal-factor model (see effectsEngine's
+// updateMealModel). One per profile rather than per medication: stomach
+// fullness acts on gastric emptying -- the person's physiology -- so every
+// oral medication's sessions pool into the same signal instead of each
+// fragmenting it. Stored as a single-element array so the plain
+// PROFILE_COLLECTIONS export/import path carries it untouched.
+export async function getMealModel() {
+  await ensureInit();
+  return (await getArr(pkey("mealModels")))[0] || {};
+}
+
+async function saveMealModel(model) {
+  await setArr(pkey("mealModels"), [model || {}]);
+  return model;
+}
+
 // A monotonic per-medication counter, independent of whether a model
 // currently exists. Sessions record the version they produced when they
 // trained the model (model_after_version); undoing a session checks the
@@ -844,8 +860,9 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null, no
     }
   }
   const lastMeal = MEAL_STATES.includes(last_meal) ? last_meal : null;
+  const mealModel = await getMealModel();
   const refModel = timingModel || refDose ? { ...(timingModel || {}), ref_dose: refDose } : null;
-  const profile = personalizedProfile(med, refModel, dose, tolerance, { lastMeal });
+  const profile = personalizedProfile(med, refModel, dose, tolerance, { lastMeal, mealModel });
 
   // The headline is expressed against *this person's own recent normal*,
   // not against an opioid-naive baseline. For a daily user, saturated
@@ -873,7 +890,7 @@ export async function estimateDoseEffectiveness({ medication_id, dose = null, no
   // meal-agnostic, so unlike tolerance it must survive the ratio rather
   // than cancel out of it. Residual is left unadjusted too -- the meal
   // states of earlier doses aren't known.
-  const mealIntensity = mealFactorsFor(lastMeal, med.form).intensity;
+  const mealIntensity = mealFactorsFor(lastMeal, med.form, mealModel).intensity;
   const doseEffect = doseResponse(doseRatio, doseResponseFor(med)) * curFactor * mealIntensity;
 
   // Drug still on board from earlier doses. A dose taken while the last one
@@ -930,7 +947,7 @@ export async function resetEffectModel(medication_id) {
   for (const s of sessions) {
     if (s.medication_id === medication_id && s.status === "active") {
       const tolerance = await toleranceForMedication(med, { excludeLogId: s.log_id });
-      s.profile = personalizedProfile(med, null, s.dose, tolerance, { lastMeal: s.last_meal || null });
+      s.profile = personalizedProfile(med, null, s.dose, tolerance, { lastMeal: s.last_meal || null, mealModel: await getMealModel() });
       s.updated_at = nowIso();
       changed = true;
     }
@@ -952,8 +969,12 @@ export async function startEffectSession({ medication_id, dose = null, unit = nu
   // "How long since you last ate" -- anything unrecognized (including an
   // unanswered picker) stores as null, which the engine treats as no
   // adjustment. Kept on the session so every later profile recompute
-  // (edit, model reset, the live intensity refresh) re-applies it.
+  // (edit, model reset, the live intensity refresh) re-applies it. The
+  // exact factors baked into this snapshot are stored alongside, because
+  // session-end learning must undo precisely what was applied at start --
+  // not whatever the (by then further-trained) meal model would apply.
   const lastMeal = MEAL_STATES.includes(last_meal) ? last_meal : null;
+  const mealModel = await getMealModel();
   const doc = {
     id: uid(), medication_id, log_id,
     dose: dose != null && isFinite(Number(dose)) ? Number(dose) : null,
@@ -961,7 +982,8 @@ export async function startEffectSession({ medication_id, dose = null, unit = nu
     started_at: started_at && !isNaN(new Date(started_at).getTime()) ? new Date(started_at).toISOString() : nowIso(),
     ended_at: null, status: "active", events: [],
     last_meal: lastMeal,
-    profile: personalizedProfile(med, model, dose, tolerance, { lastMeal }), // snapshot used for this session
+    meal_factors: mealFactorsFor(lastMeal, med.form, mealModel),
+    profile: personalizedProfile(med, model, dose, tolerance, { lastMeal, mealModel }), // snapshot used for this session
     created_at: nowIso(),
   };
   sessions.push(doc);
@@ -998,7 +1020,9 @@ export async function updateEffectSession(sessionId, patch = {}) {
     const med = (await getArr(pkey("medications"))).find((m) => m.id === s.medication_id) || {};
     const model = (await getArr(pkey("effectModels"))).find((m) => m.medication_id === s.medication_id) || null;
     const tolerance = await toleranceForMedication(med, { excludeLogId: s.log_id });
-    s.profile = personalizedProfile(med, model, s.dose, tolerance, { lastMeal: s.last_meal || null });
+    const mealModel = await getMealModel();
+    s.meal_factors = mealFactorsFor(s.last_meal || null, med.form, mealModel);
+    s.profile = personalizedProfile(med, model, s.dose, tolerance, { lastMeal: s.last_meal || null, mealModel });
   }
   s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
@@ -1120,10 +1144,34 @@ async function endEffectSessionInternal(sessions, s, { learn }) {
       // Snapshot the exact prior model so this training step can be undone.
       const prev = await getEffectModel(s.medication_id);
       s.model_before = prev || null;
-      const next = updateModel(prev, obs, s.dose, med);
+      // The base timing model trains on baseline-equivalent observations:
+      // a full-stomach session's late onset is the meal's doing, not the
+      // drug's, so the meal shift applied at start is divided back out
+      // first. Old sessions without meal_factors pass through unchanged.
+      const applied = s.meal_factors || { onset: 1, comeUp: 1, intensity: 1, duration: 1 };
+      const next = updateModel(prev, baselineObservations(obs, s.profile, applied), s.dose, med);
       next.medication_id = s.medication_id;
       await saveEffectModel(next);
       s.model_after_version = await bumpEffectModelVersion(s.medication_id);
+
+      // Meal-factor calibration -- the person's own gastric response,
+      // learned from how far this session's real timings deviated from its
+      // no-meal baseline. Gated on the *base* model already being reliable
+      // (medium+ confidence, i.e. 3+ trained sessions): while the baseline
+      // itself is still uncertain, a deviation can't be attributed to the
+      // meal rather than to a baseline that's simply wrong for this person
+      // -- the classic identifiability trap. "light" is the baseline state,
+      // so there's nothing to learn from it; non-oral sessions never carry
+      // a meal answer in the first place.
+      if ((s.last_meal === "empty" || s.last_meal === "full") && isOralForm(med.form)
+          && ["medium", "high"].includes(modelConfidence(prev))) {
+        const observed = observedMealFactors(obs, s.profile, applied);
+        if (Object.keys(observed).length) {
+          const mealModel = await getMealModel();
+          s.meal_model_before = mealModel; // undone alongside model_before on reopen
+          await saveMealModel(updateMealModel(mealModel, s.last_meal, observed));
+        }
+      }
     }
   }
   await setArr(pkey("effectSessions"), sessions);
@@ -1168,6 +1216,9 @@ export async function reopenEffectSession(sessionId) {
     if (s.model_before) { if (idx >= 0) models[idx] = s.model_before; else models.push(s.model_before); }
     else if (idx >= 0) models.splice(idx, 1);
     await setArr(pkey("effectModels"), models);
+    // The meal model trained from the same feedback taps, so it rolls back
+    // under the same not-touched-since guard the timing model just passed.
+    if (s.meal_model_before !== undefined) await saveMealModel(s.meal_model_before);
   }
   // Reactivating must preserve the one-active-session-per-medication rule.
   sessions.forEach((other) => {
@@ -1181,6 +1232,7 @@ export async function reopenEffectSession(sessionId) {
   s.ended_at = null;
   delete s.model_before;
   delete s.model_after_version;
+  delete s.meal_model_before;
   s.updated_at = nowIso();
   await setArr(pkey("effectSessions"), sessions);
   return s;
@@ -1235,7 +1287,7 @@ export async function getActiveEffectSessions() {
       // last_meal must ride along here: this recompute runs on every read,
       // and without it the meal's intensity factor from the session snapshot
       // would be silently clobbered the moment the page re-rendered.
-      const fresh = personalizedProfile(m, model, s.dose, tolerance, { lastMeal: s.last_meal || null });
+      const fresh = personalizedProfile(m, model, s.dose, tolerance, { lastMeal: s.last_meal || null, mealModel: await getMealModel() });
       profile = {
         ...profile,
         intensity_scale: fresh.intensity_scale,

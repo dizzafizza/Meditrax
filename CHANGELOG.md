@@ -3,6 +3,38 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-07 — The meal factors now calibrate to your own metabolism
+
+### Added
+- **The stomach-fullness adjustment learns your personal response**, the same
+  way the timing model already learns your onset/peak/duration. The
+  population factors (a full meal ≈ ×1.6 slower onset, and so on) are now
+  only the starting point: every tracked session that carried a meal answer
+  compares your actual reported timings against your own no-meal baseline,
+  and an averaging model (seeded at the population prior, first sample moves
+  it halfway, bounded so one wild tap can't write something absurd) walks
+  the factors toward *your* gastric response. Learned per profile rather
+  than per medication — stomach emptying is your physiology, so every oral
+  medication's sessions pool into the same signal instead of fragmenting it.
+  The picker's caption shows where calibration stands ("Calibrated to you
+  from N of your own sessions").
+- **The baseline timing model is now protected from meal contamination.** A
+  session answered "full meal" used to feed its (meal-delayed) timings
+  straight into the baseline model, teaching it the drug itself was slow —
+  and the meal delay would then be applied *again* on top next time. The
+  meal shift applied at session start is now divided back out before the
+  baseline trains, so fed and fasted sessions both sharpen the same clean
+  baseline.
+- Guardrails that keep the calibration honest: meal learning only engages
+  once the medication's own baseline model is trustworthy (3+ trained
+  sessions — before that, a slow session can't be attributed to the meal
+  rather than to a baseline that's simply wrong for you); the "light meal"
+  baseline state and non-oral routes never train it; undoing a session's
+  completion rolls the meal model back under the same not-touched-since
+  guard as the timing model; and peak *intensity* deliberately stays a
+  population prior, because timing has a real observation channel (your
+  feedback taps) and intensity does not.
+
 ## 2026-08-07 — Bring back the original effects curve; ask how long ago you ate
 
 ### Reverted
