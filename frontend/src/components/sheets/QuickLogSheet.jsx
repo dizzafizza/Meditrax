@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
-import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness, getSettings, updateSettings } from "@/lib/api";
+import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness, getSettings, updateSettings, getMealModel } from "@/lib/api";
 import { ToleranceNote, MEAL_OPTIONS } from "@/components/ActiveEffects";
 import { isOralForm } from "@/lib/effectsEngine";
 import { scheduleAllReminders } from "@/lib/push";
@@ -187,6 +187,14 @@ export default function QuickLogSheet() {
     queryKey: ["interactions", med?.id],
     queryFn: () => getInteractionsForMedication(med.id),
     enabled: !!(ui.logSheet.open && med?.id),
+  });
+  // Learned per-person meal factors — read here only for the calibration
+  // status line under the picker; the engine reads its own copy when the
+  // session actually starts.
+  const { data: mealModel } = useQuery({
+    queryKey: ["mealModel"],
+    queryFn: getMealModel,
+    enabled: !!(ui.logSheet.open && !editLog),
   });
   const consumingStatus = status === "taken" || status === "partial";
   const showInteraction = !editLog && consumingStatus && interactions.length > 0;
@@ -445,7 +453,18 @@ export default function QuickLogSheet() {
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5">Adjusts predicted onset and strength for swallowed doses — skip if unsure.</p>
+              <p className="text-[10px] text-muted-foreground mt-1.5" data-testid="quick-log-meal-caption">
+                {(() => {
+                  // Mirrors the timing model's own phrasing: typical values
+                  // until this state has real calibration samples behind it.
+                  const n = lastMeal && mealModel?.[lastMeal]?.samples;
+                  return n >= 3
+                    ? `Calibrated to you from ${n} of your own sessions — keeps refining with each one.`
+                    : n >= 1
+                      ? `Using typical values, starting to calibrate to you (${n} session${n > 1 ? "s" : ""} so far).`
+                      : "Adjusts predicted onset and strength for swallowed doses — learns your own response as you give session feedback. Skip if unsure.";
+                })()}
+              </p>
             </div>
           )}
 

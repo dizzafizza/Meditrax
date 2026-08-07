@@ -412,7 +412,9 @@ function SessionDetail({ session, now }) {
   // Vertical markers where each redose was taken (skip the primary at 0).
   const redoseMarks = stack.slice(1).map((d) => Math.round(d.tOffset));
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["effectSessions"] });
+  // mealModel rides along: completing a session with feedback is exactly
+  // when the learned meal factors can change.
+  const invalidate = () => ["effectSessions", "mealModel"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   // Redosing (and undoing a redose) logs/unlogs a real dose under the hood,
   // which decrements/restores inventory -- so it needs the same broad
   // invalidation as any other dose-logging action (see Today.jsx, QuickLogSheet.jsx),

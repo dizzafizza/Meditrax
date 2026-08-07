@@ -84,12 +84,110 @@ const MEAL_FACTORS = {
   full: { onset: 1.6, comeUp: 1.25, intensity: 0.85, duration: 1.1 },
 };
 
+// The population table above is only the starting point: the same meal
+// shifts different people's absorption by very different amounts (gastric
+// emptying rate varies several-fold between individuals), so the factors
+// calibrate to the person the same way the timing model calibrates to them.
+// Every completed session that carried a meal answer yields one *observed*
+// factor sample -- how much later/earlier the person actually felt onset,
+// come-up and wear-off than their own no-meal baseline predicted -- and an
+// EWMA walks each factor from the population prior toward those samples.
+//
+// Two deliberate asymmetries versus the timing model's learner:
+//   - Seeded at the prior with a first step of one half (alpha = 1/(n+2))
+//     rather than adopting the first observation outright: a factor is a
+//     *ratio* of two noisy quantities, so single samples are far noisier
+//     than a raw timing tap.
+//   - `intensity` is never learned. Timing has a real observation channel
+//     (the feedback taps); peak intensity does not -- the strength slider is
+//     a 1-10 subjective rating dominated by dose and tolerance -- so the
+//     intensity factor stays a population prior instead of pretending to
+//     calibrate from a signal that isn't there.
+// Bounds keep one wild tap (a forgotten phone, a redose-adjacent guess) from
+// writing an absurd personal factor.
+export const MEAL_FACTOR_BOUNDS = {
+  onset: [0.3, 3.5],
+  comeUp: [0.4, 3.0],
+  duration: [0.6, 2.0],
+};
+const LEARNED_MEAL_KEYS = ["onset", "comeUp", "duration"];
+
 // Multipliers for a meal state on a given route. Identity for non-oral routes
 // (nothing swallowed passes through the stomach), for an unanswered question,
-// and for any unrecognized value.
-export function mealFactorsFor(lastMeal, form) {
+// and for any unrecognized value. `mealModel` (optional) is the per-person
+// learned model -- `{ empty: { onset, comeUp, duration, samples }, full: {...} }`
+// -- whose learned timing factors take precedence over the priors once they
+// have at least one sample.
+export function mealFactorsFor(lastMeal, form, mealModel = null) {
   if (!isOralForm(form)) return MEAL_IDENTITY;
-  return MEAL_FACTORS[lastMeal] || MEAL_IDENTITY;
+  const prior = MEAL_FACTORS[lastMeal] || MEAL_IDENTITY;
+  const learned = mealModel?.[lastMeal];
+  if (!learned || !(learned.samples > 0)) return prior;
+  const out = { ...prior };
+  for (const k of LEARNED_MEAL_KEYS) {
+    const v = Number(learned[k]);
+    if (isFinite(v) && v > 0) out[k] = clamp(v, MEAL_FACTOR_BOUNDS[k][0], MEAL_FACTOR_BOUNDS[k][1]);
+  }
+  return out;
+}
+
+// One observed factor sample from a completed session: what the person's
+// actual reported timings imply this meal state did to them, relative to
+// their own no-meal baseline. `obs` is observationsFromSession's output,
+// `profile` the session's (meal-adjusted) snapshot, `applied` the factors
+// that were baked into that snapshot at start. Undoing the applied factor
+// recovers the baseline expectation, so observed/expected is the person's
+// real factor for this session. Peak uses the profile's own onset:come-up
+// proportions rather than decomposing against a possibly-absent onset tap.
+export function observedMealFactors(obs = {}, profile = {}, applied = MEAL_IDENTITY) {
+  const out = {};
+  const on = Number(profile.onset_min), pk = Number(profile.peak_min), dur = Number(profile.duration_min);
+  if (obs.onset_min != null && isFinite(on) && on > 0 && applied.onset > 0) {
+    const expectedBase = on / applied.onset;
+    out.onset = clamp(obs.onset_min / expectedBase, MEAL_FACTOR_BOUNDS.onset[0], MEAL_FACTOR_BOUNDS.onset[1]);
+  }
+  if (obs.peak_min != null && isFinite(on) && isFinite(pk) && pk > on && applied.comeUp > 0) {
+    // Come-up sample: observed span from onset to peak against the baseline
+    // span the snapshot encoded ((pk - on) is the *meal-shifted* come-up, so
+    // dividing by the applied factor recovers the baseline one). Uses the
+    // real onset tap when there was one, the snapshot's onset otherwise.
+    const observedComeUp = obs.peak_min - (obs.onset_min != null ? obs.onset_min : on);
+    const baseComeUp = (pk - on) / applied.comeUp;
+    if (observedComeUp > 0 && baseComeUp > 0) {
+      out.comeUp = clamp(observedComeUp / baseComeUp, MEAL_FACTOR_BOUNDS.comeUp[0], MEAL_FACTOR_BOUNDS.comeUp[1]);
+    }
+  }
+  if (obs.end_min != null && isFinite(dur) && dur > 0 && applied.duration > 0) {
+    const expectedBase = dur / applied.duration;
+    out.duration = clamp(obs.end_min / expectedBase, MEAL_FACTOR_BOUNDS.duration[0], MEAL_FACTOR_BOUNDS.duration[1]);
+  }
+  return out;
+}
+
+// EWMA update of the per-person meal model from one session's observed
+// factors. Seeded at the population prior; alpha = 1/min(n+2, 6) so the
+// first sample moves halfway and the model keeps adapting forever after.
+export function updateMealModel(mealModel, state, observed = {}) {
+  if (!MEAL_STATES.includes(state) || state === "light") return mealModel || {};
+  const model = { ...(mealModel || {}) };
+  const prior = MEAL_FACTORS[state];
+  const entry = { ...(model[state] || {}) };
+  const n = entry.samples || 0;
+  const alpha = 1 / Math.min(n + 2, 6);
+  let any = false;
+  for (const k of LEARNED_MEAL_KEYS) {
+    const v = Number(observed[k]);
+    if (!isFinite(v) || v <= 0) continue;
+    const sample = clamp(v, MEAL_FACTOR_BOUNDS[k][0], MEAL_FACTOR_BOUNDS[k][1]);
+    const cur = isFinite(Number(entry[k])) && entry[k] > 0 ? entry[k] : prior[k];
+    entry[k] = Math.round((cur + (sample - cur) * alpha) * 1000) / 1000;
+    any = true;
+  }
+  if (!any) return mealModel || {};
+  entry.samples = n + 1;
+  entry.updated_at = new Date().toISOString();
+  model[state] = entry;
+  return model;
 }
 
 // ---- per-substance profiles ----
@@ -302,9 +400,10 @@ export function modelConfidence(model) {
 // this same medication -- a session snapshot with `tolerance.applicable`
 // simply omits `tolerance` here entirely, leaving intensity untouched.
 // `lastMeal` ("empty" | "light" | "full" | null) shifts timing and peak for
-// oral routes per MEAL_FACTORS above; null means unanswered and changes
-// nothing.
-export function personalizedProfile(med, model = null, dose = null, tolerance = null, { lastMeal = null } = {}) {
+// oral routes per MEAL_FACTORS above -- personalized by `mealModel` (the
+// learned per-person factors) where that has samples; null means unanswered
+// and changes nothing.
+export function personalizedProfile(med, model = null, dose = null, tolerance = null, { lastMeal = null, mealModel = null } = {}) {
   const d = defaultPkProfile(med);
   let onset = model?.onset_min ?? d.onset_min;
   let peak = model?.peak_min ?? d.peak_min;
@@ -341,7 +440,7 @@ export function personalizedProfile(med, model = null, dose = null, tolerance = 
   // is a per-dose condition, not part of the usual baseline the tolerance
   // math normalizes against -- this dose was taken on this stomach, whatever
   // the person's usual is.
-  const meal = mealFactorsFor(lastMeal, med.form);
+  const meal = mealFactorsFor(lastMeal, med.form, mealModel);
   if (meal !== MEAL_IDENTITY) {
     const comeUp = Math.max(0, peak - onset);
     onset *= meal.onset;
@@ -536,6 +635,31 @@ export function observationsFromSession(session) {
   const gone = first("gone");
   if (gone) obs.end_min = minsAt(gone.t);
   return obs;
+}
+
+// Undo a session's meal shift from its observed timings, so the base timing
+// model trains on baseline-equivalent numbers. Without this, every session
+// answered "full meal" would teach the model that this drug is just slow --
+// the meal's delay would leak into the meal-agnostic baseline and then be
+// applied *again* on top of itself next time. Identity `applied` (no meal
+// answer, non-oral route, old sessions) passes observations through
+// untouched. The onset split for a missing onset tap mirrors
+// observedMealFactors: the snapshot's own onset stands in.
+export function baselineObservations(obs = {}, profile = {}, applied = MEAL_IDENTITY) {
+  if (applied === MEAL_IDENTITY || (applied.onset === 1 && applied.comeUp === 1 && applied.duration === 1)) return obs;
+  const out = { ...obs };
+  const on = Number(profile.onset_min);
+  if (obs.onset_min != null && applied.onset > 0) out.onset_min = obs.onset_min / applied.onset;
+  if (obs.peak_min != null && applied.onset > 0 && applied.comeUp > 0) {
+    const onsetObs = obs.onset_min != null ? obs.onset_min : (isFinite(on) ? on : null);
+    if (onsetObs != null && obs.peak_min > onsetObs) {
+      out.peak_min = onsetObs / applied.onset + (obs.peak_min - onsetObs) / applied.comeUp;
+    } else {
+      out.peak_min = obs.peak_min / applied.comeUp;
+    }
+  }
+  if (obs.end_min != null && applied.duration > 0) out.end_min = obs.end_min / applied.duration;
+  return out;
 }
 
 // EWMA update of the per-med model from one completed session. alpha shrinks
