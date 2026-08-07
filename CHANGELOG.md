@@ -3,6 +3,44 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-07 — Bring back the original effects curve; ask how long ago you ate
+
+### Reverted
+- **The effect-intensity curve is back to the original three-segment shape**
+  (rise to the reported peak, a full-intensity plateau across the first
+  stretch after it, an eased decline to the reported end, then a small
+  after-effects tail), on user feedback that it tracked their real
+  experience better than the one-compartment PK/PD model that briefly
+  replaced it. The revert is surgical: an exact-match regression test now
+  pins the restored curve pointwise against an independent verbatim copy of
+  the original, and everything that shipped alongside the rewrite but isn't
+  the curve's shape — the saturating Emax dose-response, Emax redose
+  stacking, the tolerance model, the residual-on-board preview — is kept.
+  One knock-on effect worth knowing: the restored curve reads higher
+  mid-decline than the PK/PD one did, so the "+X% still active from a
+  recent dose" line in the dose preview reports larger numbers for the same
+  history (still capped as before).
+
+### Added
+- **"When did you last eat?" on the Track-effects toggle** for swallowed
+  doses. Gastric emptying is the rate-limiting step for an oral dose, so
+  stomach fullness genuinely moves the curve: a full meal (under an hour
+  ago) models slower onset and come-up, a somewhat blunted and slightly
+  longer effect (the blunt-and-spread pattern food-effect studies show);
+  an empty stomach (3+ hours) models faster onset and a slightly stronger
+  peak. A light meal (1–3 hours) is the baseline — the category values
+  were already population-typical oral numbers — and skipping the question
+  changes nothing at all. Same "UX prior, not medicine" framing as the
+  rest of the engine. The answer is stored on the session, correctable
+  later from the session card's edit panel, survives model resets and the
+  live tolerance recompute, feeds the dose-effect preview live while
+  logging, and the assistant's log_dose tool accepts it too. Non-oral
+  routes (smoked, insufflated, injected, patches) are never asked and
+  never adjusted.
+- Fixed a small pre-existing gap the meal picker exposed: the Today page's
+  log sheets never received the medication's form, so form-dependent UI
+  (like the capsule label) silently fell back to defaults.
+
 ## 2026-07-29 — Pharmacology audit: interaction gaps, false alarms, and a wrong nicotine curve
 
 Audited the pharmacology layer end to end — the PK/PD curve engine, the

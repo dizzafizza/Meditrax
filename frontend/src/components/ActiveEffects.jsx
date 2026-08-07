@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getPriorDoseTotalToday, getMedicationTolerance, getLogs, getMedications } from "@/lib/api";
-import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt } from "@/lib/effectsEngine";
+import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt, isOralForm } from "@/lib/effectsEngine";
 import { toleranceBand } from "@/lib/toleranceEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
@@ -18,6 +18,15 @@ import { fmtDate, doseLabel, relativeTime, toDatetimeLocal, MED_COLORS } from "@
 import { cn } from "@/lib/utils";
 import { Activity, AlertTriangle, ChevronRight, ChevronDown, X, Zap, TrendingUp, TrendingDown, CheckCircle2, Play, Pencil, Layers, Plus, Info } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceDot, CartesianGrid } from "recharts";
+
+// Stomach-fullness options for oral doses -- shared by the log sheet's
+// picker and the session edit panel so the wording never diverges. The
+// engine treats an unanswered picker (null) as no adjustment.
+export const MEAL_OPTIONS = [
+  { v: "empty", l: "Empty stomach", d: "3+ hrs since eating" },
+  { v: "light", l: "Light meal", d: "1–3 hrs ago" },
+  { v: "full", l: "Full meal", d: "under 1 hr ago" },
+];
 
 // Re-render on a timer so curves/labels track the clock while a session runs.
 function useNow(intervalMs = 30000) {
@@ -270,6 +279,7 @@ function SessionDetail({ session, now }) {
   const [editing, setEditing] = useState(false);
   const [editWhen, setEditWhen] = useState("");
   const [editDose, setEditDose] = useState("");
+  const [editMeal, setEditMeal] = useState(null);
   const [showPrevious, setShowPrevious] = useState(false);
   const [redosing, setRedosing] = useState(false);
   const [redoseAmt, setRedoseAmt] = useState("");
@@ -491,6 +501,7 @@ function SessionDetail({ session, now }) {
   const openEdit = () => {
     setEditWhen(toDatetimeLocal(session.started_at));
     setEditDose(session.dose != null ? String(session.dose) : "");
+    setEditMeal(session.last_meal || null);
     setEditing(true);
   };
   const saveEdit = () => {
@@ -503,6 +514,7 @@ function SessionDetail({ session, now }) {
       if (!isFinite(v) || v < 0) { toast.error("Enter a valid dose"); return; }
       patch.dose = v;
     }
+    if ((editMeal || null) !== (session.last_meal || null)) patch.last_meal = editMeal;
     edit.mutate(patch);
   };
 
@@ -536,6 +548,21 @@ function SessionDetail({ session, now }) {
               <Label className="text-xs text-muted-foreground">Dose{session.unit ? ` (${session.unit})` : ""}</Label>
               <Input type="number" value={editDose} onChange={(e) => setEditDose(e.target.value)} className="h-11 rounded-xl mt-1" data-testid="effect-edit-dose" />
             </div>
+            {isOralForm(session.medication_form) && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Last meal before this dose</Label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {MEAL_OPTIONS.map((m) => (
+                    <button key={m.v} onClick={() => setEditMeal(editMeal === m.v ? null : m.v)} data-testid={`effect-edit-meal-${m.v}`}
+                      className={cn("pressable rounded-xl border py-2 px-1 text-center", editMeal === m.v ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-foreground")}>
+                      <span className="block text-xs font-medium leading-tight">{m.l}</span>
+                      <span className={cn("block text-[10px] leading-tight mt-0.5", editMeal === m.v ? "text-primary-foreground/80" : "text-muted-foreground")}>{m.d}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5">Correcting this reshapes the predicted curve.</p>
+              </div>
+            )}
           </div>
           <div className="flex gap-2 mt-3">
             <Button size="sm" className="flex-1 rounded-xl" onClick={saveEdit} disabled={edit.isPending} data-testid="effect-edit-save">Save</Button>

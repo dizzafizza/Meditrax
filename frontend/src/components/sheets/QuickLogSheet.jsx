@@ -10,7 +10,8 @@ import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useUI } from "@/context/UIContext";
 import { createLog, updateLog, deleteLog, logDefaultsForMed, startEffectSession, getInteractionsForMedication, estimateDoseEffectiveness, getSettings, updateSettings } from "@/lib/api";
-import { ToleranceNote } from "@/components/ActiveEffects";
+import { ToleranceNote, MEAL_OPTIONS } from "@/components/ActiveEffects";
+import { isOralForm } from "@/lib/effectsEngine";
 import { scheduleAllReminders } from "@/lib/push";
 import { Switch } from "@/components/ui/switch";
 import MedColorDot from "@/components/MedColorDot";
@@ -158,6 +159,7 @@ export default function QuickLogSheet() {
   const [effectivenessTouched, setEffectivenessTouched] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [trackEffects, setTrackEffects] = useState(false);
+  const [lastMeal, setLastMeal] = useState(null);
   // While true, the dose/quantity fields track the computed taper/cyclic-aware
   // default; any manual change hands control to the user.
   const [autoDefault, setAutoDefault] = useState(true);
@@ -216,16 +218,21 @@ export default function QuickLogSheet() {
   effectivenessTouchedRef.current = effectivenessTouched;
   const doseNum = dose === "" ? null : Number(dose);
   const effSuggestionEnabled = !!(ui.logSheet.open && !editLog && consumingStatus);
+  // The meal answer only exists while the picker is visible (tracking on), so
+  // the preview uses it under the same condition -- toggling tracking off
+  // returns the preview to the unadjusted number rather than silently keeping
+  // a hidden answer applied.
+  const effMeal = trackEffects ? lastMeal : null;
   useEffect(() => {
     if (!effSuggestionEnabled) { effReqRef.current++; setEffSuggestion(null); return; }
     const reqId = ++effReqRef.current;
-    estimateDoseEffectiveness({ medication_id: med.id, dose: doseNum }).then((result) => {
+    estimateDoseEffectiveness({ medication_id: med.id, dose: doseNum, last_meal: effMeal }).then((result) => {
       if (reqId !== effReqRef.current) return; // superseded by a newer request
       setEffSuggestion(result);
       if (result && !effectivenessTouchedRef.current) setEffectiveness([result.suggested]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effSuggestionEnabled, med?.id, doseNum]);
+  }, [effSuggestionEnabled, med?.id, doseNum, effMeal]);
 
   useEffect(() => {
     if (!ui.logSheet.open || editLog || !autoDefault || !defaults) return;
@@ -258,6 +265,7 @@ export default function QuickLogSheet() {
       setNotes(""); setMood(null); setEffectiveness([7]); setShowMore(false);
     }
     setTrackEffects(false);
+    setLastMeal(null);
     setWhenTouched(false);
     setEffectivenessTouched(false);
   }, [ui.logSheet.open]); // eslint-disable-line
@@ -292,7 +300,7 @@ export default function QuickLogSheet() {
     onSuccess: async (log, payload) => {
       if (!editLog && trackEffects && ["taken", "partial"].includes(payload.status)) {
         try {
-          await startEffectSession({ medication_id: med.id, dose: payload.dose_taken, unit: med.unit, log_id: log.id, started_at: log.timestamp });
+          await startEffectSession({ medication_id: med.id, dose: payload.dose_taken, unit: med.unit, log_id: log.id, started_at: log.timestamp, last_meal: lastMeal });
           qc.invalidateQueries({ queryKey: ["effectSessions"] });
         } catch { toast.error("Could not start effects tracking"); }
       }
@@ -419,6 +427,25 @@ export default function QuickLogSheet() {
                 <p className="text-xs text-muted-foreground">Live onset → peak → wear-off curve that learns your metabolism</p>
               </div>
               <Switch checked={trackEffects} onCheckedChange={setTrackEffects} data-testid="quick-log-track-effects" />
+            </div>
+          )}
+
+          {/* Stomach fullness -- swallowed doses only (the engine ignores it
+              for every other route, so there's no point asking). Skipping is
+              always fine and means no adjustment. */}
+          {!editLog && trackEffects && consumingStatus && isOralForm(med.form) && (
+            <div className="mt-3 animate-rise">
+              <Label className="text-xs text-muted-foreground">When did you last eat?</Label>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {MEAL_OPTIONS.map((m) => (
+                  <button key={m.v} onClick={() => setLastMeal(lastMeal === m.v ? null : m.v)} data-testid={`quick-log-meal-${m.v}`}
+                    className={cn("pressable rounded-xl border py-2 px-1 text-center", lastMeal === m.v ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-foreground")}>
+                    <span className="block text-xs font-medium leading-tight">{m.l}</span>
+                    <span className={cn("block text-[10px] leading-tight mt-0.5", lastMeal === m.v ? "text-primary-foreground/80" : "text-muted-foreground")}>{m.d}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">Adjusts predicted onset and strength for swallowed doses — skip if unsure.</p>
             </div>
           )}
 
