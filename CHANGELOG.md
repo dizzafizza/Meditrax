@@ -3,6 +3,25 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-19 — Push the new logo to already-installed apps
+
+### Fixed
+- **Installed home-screen apps now actually receive the new logo.** The
+  redesign shipped under the same filenames, but Chrome only refreshes an
+  installed app's icon when the icon *URL* in the manifest changes (it
+  never re-downloads same-URL icons to compare bytes), and favicons sit in
+  stubborn HTTP caches of their own. Every icon reference — manifest,
+  favicon, Apple touch icon, and the notification icon/badge used by the
+  service worker and reminders — now points at versioned `-v2` filenames,
+  and the service worker cache name is bumped so old caches are swept on
+  activation. Android/desktop installs pick the new icon up on their next
+  launch-triggered manifest check; iOS snapshots its icon at
+  add-to-home-screen time and offers no update mechanism, so an existing
+  iOS install shows the new logo after removing and re-adding the app —
+  a platform restriction, not something a deploy can override. The old
+  filenames remain in place (carrying the new art) so anything still
+  holding stale references keeps working.
+
 ## 2026-08-19 — A new logo: the dose becomes the curve
 
 ### Changed

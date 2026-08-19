@@ -50,8 +50,8 @@ export async function showLocalNotification(title, body, data = {}) {
   if (!pushSupported() || Notification.permission !== "granted") return false;
   const opts = {
     body,
-    icon: "/icon-192.png",
-    badge: "/badge-96.png",
+    icon: "/icon-192-v2.png",
+    badge: "/badge-96-v2.png",
     tag: data.tag || "meditrax",
     data: { url: data.url || "/" },
     vibrate: [80, 40, 80],
