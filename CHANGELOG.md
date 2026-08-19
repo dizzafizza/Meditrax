@@ -3,6 +3,23 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-19 — A new logo: the dose becomes the curve
+
+### Changed
+- **New app icon across every surface** (home-screen icon, maskable Android
+  icon, Apple touch icon, favicon, notification badge), replacing the
+  generic flat capsule. The new mark tells the app's own story: an amber
+  capsule at the origin of a flowing mint line that draws Meditrax's actual
+  effect-intensity curve — rise, the signature full-intensity plateau,
+  eased decline — ending in fading data points, on a deep sea-glass
+  gradient. Nothing else in the health space looks like it because the
+  shape *is* this app's own model. All sizes are rendered from one master
+  SVG: the maskable variant keeps the mark inside the Android safe zone,
+  the Apple touch icon is full-bleed per iOS convention, and the
+  notification badge is the required pure-white-on-transparent monochrome.
+  Existing home-screen installs keep their cached icon until re-added —
+  that's platform behavior, not a bug.
+
 ## 2026-08-19 — Backup import audit: validation, active-profile safety, ghost cleanup
 
 ### Fixed
