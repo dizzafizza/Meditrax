@@ -3,6 +3,44 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-19 — Vacation planner: pack exactly enough for the whole trip
+
+### Added
+- **A Vacation Planner** (More → Vacation Planner) that answers "how much of
+  each medication do I need to bring?" for any date range. Scheduled
+  medications are simulated day by day through the exact engine the Today
+  screen uses, so weekday-limited schedules, cyclic off-days, and a taper's
+  declining dose during the trip are counted for real rather than
+  approximated with a flat daily rate. As-needed medications use the refill
+  predictor's exponentially-weighted average of your actual daily use, with
+  its confidence shown — and an as-needed medication with no usage history
+  is still listed (so it isn't forgotten in a bag) with an honest "your
+  call" instead of a made-up number. Adjustable buffer days add slack for
+  delays; each item is checked against tracked inventory with a clear
+  "stock covers it" or "short by N — refill first" verdict, shortfalls
+  sorted to the top under a refill banner; and the whole packing list
+  copies as text for sharing. The assistant gets the same power via a new
+  `plan_trip` tool ("how many capsules do I need for two weeks in Italy?").
+
+## 2026-08-19 — Push the new logo to already-installed apps
+
+### Fixed
+- **Installed home-screen apps now actually receive the new logo.** The
+  redesign shipped under the same filenames, but Chrome only refreshes an
+  installed app's icon when the icon *URL* in the manifest changes (it
+  never re-downloads same-URL icons to compare bytes), and favicons sit in
+  stubborn HTTP caches of their own. Every icon reference — manifest,
+  favicon, Apple touch icon, and the notification icon/badge used by the
+  service worker and reminders — now points at versioned `-v2` filenames,
+  and the service worker cache name is bumped so old caches are swept on
+  activation. Android/desktop installs pick the new icon up on their next
+  launch-triggered manifest check; iOS snapshots its icon at
+  add-to-home-screen time and offers no update mechanism, so an existing
+  iOS install shows the new logo after removing and re-adding the app —
+  a platform restriction, not something a deploy can override. The old
+  filenames remain in place (carrying the new art) so anything still
+  holding stale references keeps working.
+
 ## 2026-08-19 — A new logo: the dose becomes the curve
 
 ### Changed

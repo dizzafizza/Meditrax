@@ -1606,6 +1606,92 @@ export async function getInventory() {
   out.sort((a, b) => (a.days_left == null ? 1 : 0) - (b.days_left == null ? 1 : 0) || (a.days_left ?? 1e9) - (b.days_left ?? 1e9));
   return out;
 }
+// ---- trip / vacation planning ----
+// How much of each medication to pack for a date range. Scheduled meds are
+// simulated day by day through the exact same code the Today screen uses
+// (buildTodayDoses), so weekday-limited schedules, cyclic off-days, and a
+// taper's declining dose during the trip are all counted for real rather
+// than approximated with a flat per-day rate. As-needed meds have no
+// schedule to simulate, so their estimate reuses the refill predictor's
+// exponentially-weighted actual daily usage. `buffer_days` adds slack for
+// delays and lost doses. Dates are local "YYYY-MM-DD", inclusive on both
+// ends.
+export async function planTrip({ start, end, buffer_days = 2 } = {}) {
+  await ensureInit();
+  const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if (!isDate(start) || !isDate(end)) throw new Error("Enter valid start and end dates");
+  const tripDays = diffDays(start, end) + 1;
+  if (tripDays < 1) throw new Error("The trip must end on or after the day it starts");
+  if (tripDays > 366) throw new Error("Trips longer than a year aren't supported");
+  const buffer = Math.max(0, Math.min(30, Math.round(Number(buffer_days) || 0)));
+
+  const meds = await getArr(pkey("medications"));
+  const activeMeds = meds.filter((m) => m.is_active !== false);
+  const logs = await getArr(pkey("logs"));
+  const tapers = await getArr(pkey("tapers"));
+  const cyclicPlans = await getArr(pkey("cyclic"));
+  const settings = await getSettings();
+
+  // Scheduled units per med, simulated over the trip plus the buffer days
+  // (the buffer is counted at end-of-trip dosing levels -- for a taper
+  // that's the lower, later dose, which is the correct direction to err).
+  const scheduledTrip = new Map();
+  const scheduledBuffer = new Map();
+  for (let i = 0; i < tripDays + buffer; i++) {
+    const day = addDaysStr(start, i);
+    const { doses } = buildTodayDoses(meds, [], day, tapers, cyclicPlans);
+    const bucket = i < tripDays ? scheduledTrip : scheduledBuffer;
+    for (const d of doses) bucket.set(d.medication_id, (bucket.get(d.medication_id) || 0) + (Number(d.dose_quantity) || 0));
+  }
+
+  const items = [];
+  for (const med of activeMeds) {
+    const taper = tapers.find((t) => t.medication_id === med.id && t.is_active) || null;
+    let tripUnits, bufferUnits, basis, confidence = null, perDay = null;
+    if (med.is_prn) {
+      const prediction = predictRunOut({ med, logs, taper, settings });
+      perDay = Number(prediction.daily_rate) || 0;
+      if (!(perDay > 0)) {
+        // No usage history to estimate from -- surface the med so it isn't
+        // forgotten while packing, but be honest that there's no number.
+        items.push({ medication_id: med.id, name: med.name, color: med.color, unit: med.inventory?.unit || null, form: med.form || null, is_prn: true, basis: "unknown", trip_units: null, buffer_units: null, total_units: null, per_day: null, confidence: prediction.confidence || "low", current_stock: med.inventory?.current_count ?? null, enough: null, shortfall: null, is_tapering: false, days: tripDays, buffer_days: buffer });
+        continue;
+      }
+      tripUnits = perDay * tripDays;
+      bufferUnits = perDay * buffer;
+      basis = "usage";
+      confidence = prediction.confidence || null;
+    } else {
+      tripUnits = scheduledTrip.get(med.id) || 0;
+      bufferUnits = scheduledBuffer.get(med.id) || 0;
+      basis = "schedule";
+      if (tripUnits + bufferUnits <= 0) continue; // nothing due during the trip (e.g. taper already finished)
+    }
+    // Packing granularity is whole units -- nobody packs 0.4 of a capsule.
+    const total = Math.ceil(tripUnits + bufferUnits);
+    const stock = med.inventory?.current_count ?? null;
+    items.push({
+      medication_id: med.id, name: med.name, color: med.color,
+      unit: med.inventory?.unit || null, form: med.form || null, is_prn: !!med.is_prn,
+      basis, per_day: perDay != null ? Math.round(perDay * 100) / 100 : null, confidence,
+      trip_units: Math.ceil(tripUnits), buffer_units: Math.max(0, total - Math.ceil(tripUnits)),
+      total_units: total,
+      current_stock: stock,
+      enough: stock != null ? stock >= total : null,
+      shortfall: stock != null && stock < total ? total - stock : null,
+      is_tapering: !!med.is_tapering && !!taper,
+      days: tripDays, buffer_days: buffer,
+    });
+  }
+  items.sort((a, b) => (b.shortfall || 0) - (a.shortfall || 0) || (a.name || "").localeCompare(b.name || ""));
+  return {
+    start, end, days: tripDays, buffer_days: buffer,
+    items,
+    shortfalls: items.filter((x) => x.shortfall != null && x.shortfall > 0).length,
+    unknowns: items.filter((x) => x.basis === "unknown").length,
+  };
+}
+
 export async function getAnalytics(days = 30) {
   await ensureInit();
   const meds = await getArr(pkey("medications"));

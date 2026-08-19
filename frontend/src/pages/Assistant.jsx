@@ -22,7 +22,7 @@ const TOOL_LABELS = {
   get_active_effects: "Checking active effects", get_medication_tolerance: "Checking tolerance",
   get_dose_effect_preview: "Previewing dose effect", add_redose: "Adding redose",
   check_interactions: "Checking interactions", adjust_taper_plan: "Adjusting taper plan",
-  research_substance: "Researching substance",
+  research_substance: "Researching substance", plan_trip: "Planning trip supplies",
 };
 
 export default function Assistant() {

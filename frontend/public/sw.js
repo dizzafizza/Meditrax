@@ -1,5 +1,5 @@
 // Meditrax service worker — push notifications + light offline shell
-const CACHE = "meditrax-v1";
+const CACHE = "meditrax-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -30,8 +30,8 @@ self.addEventListener("push", (event) => {
   try { if (event.data) data = { ...data, ...event.data.json() }; } catch (e) {}
   const options = {
     body: data.body,
-    icon: data.icon || "/icon-192.png",
-    badge: data.badge || "/badge-96.png",
+    icon: data.icon || "/icon-192-v2.png",
+    badge: data.badge || "/badge-96-v2.png",
     tag: data.tag || "meditrax",
     vibrate: [80, 40, 80],
     data: { url: data.url || "/" },

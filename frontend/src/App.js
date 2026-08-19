@@ -16,6 +16,7 @@ import CalendarPage from "@/pages/CalendarPage";
 import Insights from "@/pages/Insights";
 import Inventory from "@/pages/Inventory";
 import TaperPlanner from "@/pages/TaperPlanner";
+import TripPlanner from "@/pages/TripPlanner";
 import TaperDetail from "@/pages/TaperDetail";
 import CyclicDosing from "@/pages/CyclicDosing";
 import CapsuleCalculator from "@/pages/CapsuleCalculator";
@@ -68,6 +69,7 @@ function App() {
                     <Route path="/calendar" element={<CalendarPage />} />
                     <Route path="/insights" element={<Insights />} />
                     <Route path="/inventory" element={<Inventory />} />
+                    <Route path="/trip" element={<TripPlanner />} />
                     <Route path="/taper" element={<TaperPlanner />} />
                     <Route path="/taper/:id" element={<TaperDetail />} />
                     <Route path="/cyclic" element={<CyclicDosing />} />

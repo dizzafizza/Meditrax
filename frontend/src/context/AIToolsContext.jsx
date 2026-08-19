@@ -39,6 +39,7 @@ export const TOOL_SCHEMA = [
   { type: "function", function: { name: "get_analytics", description: "Get adherence analytics for the active profile.", parameters: { type: "object", properties: { days: { type: "number" } } } } },
   { type: "function", function: { name: "navigate", description: "Navigate to a page in the app.", parameters: { type: "object", properties: { path: { type: "string", description: "e.g. /medications, /insights, /taper, /knowledge, /settings" } }, required: ["path"] } } },
   { type: "function", function: { name: "get_refill_prediction", description: "Predict when medication inventory runs out (run-out date, refill-by date, daily rate, confidence). Omit medication for all tracked meds.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name (optional)" } } } } },
+  { type: "function", function: { name: "plan_trip", description: "Vacation/trip packing plan: how many units of each active medication to pack to last a date range, plus whether current stock covers it. Scheduled meds are simulated day-by-day (weekday patterns, cyclic off-days and taper reductions counted); as-needed meds use real average daily usage.", parameters: { type: "object", properties: { start: { type: "string", description: "Departure date, local YYYY-MM-DD" }, end: { type: "string", description: "Return date, local YYYY-MM-DD (inclusive)" }, buffer_days: { type: "number", description: "Extra slack days (default 2)" } }, required: ["start", "end"] } } },
   { type: "function", function: { name: "get_behavior_analysis", description: "Get the deterministic usage-pattern / dependency-signal analysis for the user's medications (educational, not diagnostic). Omit medication for all applicable meds.", parameters: { type: "object", properties: { medication: { type: "string", description: "Medication name (optional)" } } } } },
   { type: "function", function: { name: "log_mood_checkin", description: "Save a standalone mood check-in for the user (mood 1=bad … 5=great; optional 1-5 dimensions).", parameters: { type: "object", properties: { mood: { type: "number", description: "1-5" }, energy: { type: "number" }, sleep: { type: "number" }, pain: { type: "number" }, anxiety: { type: "number" }, notes: { type: "string" } }, required: ["mood"] } } },
   { type: "function", function: { name: "get_mood_trends", description: "Get the user's mood trend (average, direction, recent daily values) from check-ins and dose logs.", parameters: { type: "object", properties: { days: { type: "number", description: "Window in days, default 30" } } } } },
@@ -230,6 +231,9 @@ export function AIToolsProvider({ children }) {
         if (!ROUTES.includes(base) && !ROUTES.includes(path)) return { error: `Unknown page "${path}"` };
         navigate(path);
         return { ok: true, navigated: path };
+      }
+      case "plan_trip": {
+        return db.planTrip({ start: args.start, end: args.end, buffer_days: args.buffer_days ?? 2 });
       }
       case "get_refill_prediction": {
         const inv = await db.getInventory();
