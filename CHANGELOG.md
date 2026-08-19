@@ -3,6 +3,40 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-19 — Backup import audit: validation, active-profile safety, ghost cleanup
+
+### Fixed
+- **Importing a backup could make all your data appear erased.** Two paths
+  led there: a backup missing its `activeProfileId` (or naming one not in
+  its own profile list) left the app pointed at a profile id that no longer
+  existed after the import — every screen read from a dead namespace and
+  looked wiped, while new logs quietly went to the same orphaned space. And
+  a malformed file containing an empty `profiles` array would overwrite the
+  real profile list, orphaning everything behind a fresh auto-created
+  profile on next launch. Import now validates the payload before writing a
+  single byte (anything that isn't a recognizable Meditrax backup is
+  rejected with a clear error instead of a false "Data imported" success),
+  and the active profile is guaranteed to land on a profile that actually
+  exists — the backup's own choice when valid, the device's current one if
+  it survived, the first imported profile otherwise.
+- **Corrupt collection values can no longer be written.** A damaged backup
+  with e.g. an object where the medications array belongs used to be stored
+  verbatim and crash every later read of that collection; unknown
+  collection names were stored too. Only known collections with well-formed
+  arrays are accepted now.
+- **After a restore, everything on screen updates.** The import success path
+  invalidated a hand-maintained list of caches that had quietly gone stale —
+  logs, check-ins, effect sessions, the learned meal model, interactions and
+  more were missing, so those screens kept showing pre-import data until a
+  full reload. It now flushes every cache, and reschedules the imported
+  reminders so they actually fire without waiting for some other trigger.
+- Smaller import/export hygiene: namespaces belonging to profiles the backup
+  doesn't include are cleaned up instead of sitting in storage forever as
+  invisible ghosts; the exported file's object URL is released after
+  download; a failed import clears the file picker so the same file can be
+  re-selected; and the real error reason is shown instead of a generic
+  "Invalid backup file" for every failure.
+
 ## 2026-08-07 — The meal factors now calibrate to your own metabolism
 
 ### Added
