@@ -110,13 +110,33 @@ export default function Settings() {
   async function doExport() {
     const data = await exportData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `meditrax-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `meditrax-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
     toast.success("Backup downloaded");
   }
   async function doImport(e) {
-    const file = e.target.files?.[0]; if (!file) return;
-    try { const text = await file.text(); const json = JSON.parse(text); await importData(json); ["medications", "today", "tapers", "cyclic", "reminders", "inventory", "analytics", "profile", "aiConfig", "settings"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.success("Data imported"); }
-    catch { toast.error("Invalid backup file"); }
+    const input = e.target;
+    const file = input.files?.[0]; if (!file) return;
+    try {
+      const text = await file.text();
+      let json;
+      try { json = JSON.parse(text); } catch { throw new Error("Invalid backup file"); }
+      await importData(json);
+      // A restore can change literally every piece of data the app shows --
+      // profiles, meds, logs, sessions, learned models, the catalog -- so
+      // invalidate everything rather than maintaining a list that goes
+      // stale each time a query key is added.
+      qc.invalidateQueries();
+      // Imported reminders should actually fire without waiting for the next
+      // organic reschedule trigger.
+      scheduleAllReminders().catch(() => {});
+      toast.success("Data imported");
+    } catch (err) {
+      toast.error(err?.message || "Invalid backup file");
+    } finally {
+      input.value = ""; // allow re-selecting the same file after a failure
+    }
   }
 
   const themes = [{ v: "light", l: "Light", icon: Sun }, { v: "dark", l: "Dark", icon: Moon }, { v: "system", l: "Auto", icon: Monitor }];

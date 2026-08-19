@@ -1658,21 +1658,63 @@ export async function exportData() {
   }
   return data;
 }
+// Restore a backup produced by exportData (v2), or a legacy v1 single-profile
+// export. Validates before writing anything: the old implementation accepted
+// arbitrary JSON -- an unrelated file "imported" successfully while writing
+// nothing, and a malformed one could overwrite the profile list with garbage
+// (an empty profiles array orphaned every byte of real data behind a fresh
+// auto-created profile). Import is atomic in intent: it either throws before
+// any write, or applies the whole backup.
 export async function importData(payload) {
   await ensureInit();
-  if (payload.profiles) await setArr("profiles", payload.profiles);
-  if (payload.appSettings) await store.setItem("appSettings", payload.appSettings);
-  if (payload.aiConfig) await store.setItem("aiConfig", payload.aiConfig);
-  if (payload.catalog) await setArr("catalog", payload.catalog);
-  if (payload.profileData) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Not a Meditrax backup file");
+  const isV2 = Array.isArray(payload.profiles) && payload.profileData && typeof payload.profileData === "object";
+  const isV1 = !payload.profileData && Array.isArray(payload.medications);
+  if (!isV2 && !isV1) throw new Error("Not a Meditrax backup file");
+  if (isV2) {
+    if (!payload.profiles.length) throw new Error("Backup contains no profiles");
+    if (payload.profiles.some((p) => !p || typeof p !== "object" || typeof p.id !== "string" || !p.id)) throw new Error("Backup profile list is damaged");
+  }
+
+  if (payload.appSettings && typeof payload.appSettings === "object" && !Array.isArray(payload.appSettings)) await store.setItem("appSettings", payload.appSettings);
+  if (payload.aiConfig && typeof payload.aiConfig === "object" && !Array.isArray(payload.aiConfig)) await store.setItem("aiConfig", payload.aiConfig);
+  if (Array.isArray(payload.catalog) && payload.catalog.length) await setArr("catalog", payload.catalog);
+
+  if (isV2) {
+    await setArr("profiles", payload.profiles);
+    const importedIds = new Set(payload.profiles.map((p) => p.id));
     for (const [pid, colls] of Object.entries(payload.profileData)) {
-      for (const [coll, arr] of Object.entries(colls)) await store.setItem(`p:${pid}:${coll}`, arr);
+      // Only data belonging to a profile the backup actually lists, only
+      // collections this app knows, and only well-formed arrays -- a corrupt
+      // value written here would crash every later read of that collection.
+      if (!importedIds.has(pid) || !colls || typeof colls !== "object") continue;
+      for (const coll of PROFILE_COLLECTIONS) {
+        if (Array.isArray(colls[coll])) await store.setItem(`p:${pid}:${coll}`, colls[coll]);
+      }
+    }
+    // The active profile must exist in the list that was just imported --
+    // otherwise every read/write after this targets a dead namespace and the
+    // app looks like the import erased everything. Prefer the backup's own
+    // choice, keep the device's current one if it survived, else first.
+    const target = importedIds.has(payload.activeProfileId) ? payload.activeProfileId
+      : importedIds.has(_activeId) ? _activeId
+      : payload.profiles[0].id;
+    _activeId = target;
+    await store.setItem("activeProfileId", target);
+    // Clear namespaces for profiles that no longer exist (from profiles the
+    // backup didn't include, or left over from older buggy imports) so they
+    // don't sit in storage forever as invisible ghosts.
+    if (typeof store.keys === "function") {
+      for (const key of await store.keys()) {
+        const m = /^p:([^:]+):/.exec(key);
+        if (m && !importedIds.has(m[1])) await store.removeItem(key);
+      }
+    }
+  } else {
+    // legacy v1 single-profile import (medications/logs arrays at top level)
+    for (const coll of PROFILE_COLLECTIONS) {
+      if (Array.isArray(payload[coll])) await setArr(pkey(coll), payload[coll]);
     }
   }
-  // legacy v1 single-profile import (medications/logs arrays at top level)
-  if (!payload.profileData && payload.medications) {
-    for (const coll of PROFILE_COLLECTIONS) if (payload[coll]) await setArr(pkey(coll), payload[coll]);
-  }
-  if (payload.activeProfileId) await setActiveProfile(payload.activeProfileId);
   return { imported: true };
 }
