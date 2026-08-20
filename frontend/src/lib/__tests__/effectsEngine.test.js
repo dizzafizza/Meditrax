@@ -649,7 +649,12 @@ describe("session lifecycle in localdb", () => {
     const withRedose = await db.addEffectDose(s.id, { amount: 5 });
     expect(withRedose.redoses).toHaveLength(1);
     expect(withRedose.redoses[0].amount).toBe(5);
-    expect(sessionDoseStack(withRedose)).toHaveLength(2);
+    // Taken moments after the primary, so the stack merges it into one
+    // combined dose (10+5 on a 10 reference) rather than treating it as a
+    // successor that would collapse the primary at its own peak.
+    const stack = sessionDoseStack(withRedose);
+    expect(stack).toHaveLength(1);
+    expect(stack[0].scale).toBeGreaterThan(1);
 
     // validation
     await expect(db.addEffectDose(s.id, { amount: -1 })).rejects.toThrow(/dose/i);
@@ -1586,5 +1591,51 @@ describe("meal-factor calibration (learned per-person model)", () => {
       const fasted = await db.startEffectSession({ medication_id: med.id, dose: 10 });
       expect(fed.profile.onset_min / fasted.profile.onset_min).toBeGreaterThan(1.6);
     });
+  });
+});
+
+// Regression: a redose logged at (or within minutes of) the primary dose is
+// the same swallowing event, not a successor -- it must merge into one
+// combined dose instead of "superseding" and collapsing the primary.
+describe("near-simultaneous redoses merge instead of collapsing the primary", () => {
+  const profile = { onset_min: 30, peak_min: 90, duration_min: 300, intensity_scale: 1, hill: 1.4, typicalFraction: 0.45 };
+  const base = "2026-07-23T12:00:00.000Z";
+  const plus = (min) => new Date(new Date(base).getTime() + min * 60000).toISOString();
+
+  test("the exact reported bug: 8000 mg primary + 1000 mg redose at 0 min no longer flattens the curve", () => {
+    const session = { started_at: base, dose: 8000, profile, redoses: [{ id: "r1", at: base, amount: 1000 }] };
+    const stack = sessionDoseStack(session);
+    expect(stack).toHaveLength(1); // one combined dose, no hand-off to collapse into
+    // Combined 9000 on an 8000 reference: at least the primary's own height.
+    expect(stack[0].scale).toBeGreaterThanOrEqual(1);
+    const atPeak = stackedIntensityAt(90, profile, stack);
+    expect(atPeak).toBeGreaterThanOrEqual(100); // was ~15% before the fix
+    // And the merged curve is exactly what one 9000 mg swallow would get.
+    expect(stack[0].scale).toBeCloseTo(doseResponse(9000 / 8000, { hill: 1.4, typicalFraction: 0.45 }), 6);
+  });
+
+  test("merge window: within 5 minutes merges, later stays a separate hand-off dose", () => {
+    const near = sessionDoseStack({ started_at: base, dose: 10, profile, redoses: [{ id: "a", at: plus(4), amount: 10 }] });
+    expect(near).toHaveLength(1);
+    const far = sessionDoseStack({ started_at: base, dose: 10, profile, redoses: [{ id: "a", at: plus(30), amount: 10 }] });
+    expect(far).toHaveLength(2);
+  });
+
+  test("a chain merges into the dose it was taken with, not the primary", () => {
+    const stack = sessionDoseStack({
+      started_at: base, dose: 10, profile,
+      redoses: [{ id: "a", at: plus(60), amount: 5 }, { id: "b", at: plus(63), amount: 5 }],
+    });
+    expect(stack).toHaveLength(2);
+    expect(stack[1].tOffset).toBe(60);
+    // 5+5 on a 10 reference merges to a full-strength second dose.
+    expect(stack[1].scale).toBeCloseTo(1, 6);
+  });
+
+  test("without recorded amounts, a same-time redose counts as a genuine double dose", () => {
+    const stack = sessionDoseStack({ started_at: base, dose: null, profile, redoses: [{ id: "a", at: base, amount: null }] });
+    expect(stack).toHaveLength(1);
+    expect(stack[0].scale).toBeCloseTo(doseResponse(2, { hill: 1.4, typicalFraction: 0.45 }), 6);
+    expect(stack[0].scale).toBeGreaterThan(1);
   });
 });
