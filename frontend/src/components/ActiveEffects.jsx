@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getActiveEffectSessions, getEffectSessions, addEffectEvent, deleteEffectEvent, endEffectSession, reopenEffectSession, startEffectSession, updateEffectSession, resetEffectModel, addEffectDose, removeEffectDose, getMedicationMaxDaily, getPriorDoseTotalToday, getMedicationTolerance, getLogs, getMedications } from "@/lib/api";
-import { phaseAt, fmtMins, sessionDoseStack, stackedIntensityAt, stackChartEnd, doseIntensityAt, isOralForm } from "@/lib/effectsEngine";
+import { phaseAt, fmtMins, sessionDoseStack, sessionTotalDose, stackedIntensityAt, stackChartEnd, doseIntensityAt, isOralForm } from "@/lib/effectsEngine";
 import { toleranceBand } from "@/lib/toleranceEngine";
 import { checkInteractions, severityMeta } from "@/lib/interactions";
 import { redoseWarnings } from "@/lib/redoseSafety";
@@ -217,7 +217,7 @@ function ActiveEffectsSimpleCard({ session: s, now }) {
             </div>
             <p className="text-xs text-muted-foreground">
               {phase.key === "waiting" ? `Onset ~${fmtMins(Math.max(0, p.onset_min - (t - lastOffset)))}` : `~${fmtMins(remaining)} left`}
-              {s.dose != null ? ` · ${doseLabel(s.dose, s.unit)}` : ""}
+              {sessionTotalDose(s) != null ? ` · ${doseLabel(sessionTotalDose(s), s.unit)}${(s.redoses || []).length ? " total" : ""}` : ""}
             </p>
             <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-[width] duration-1000" style={{ width: `${Math.max(3, pct)}%` }} />
@@ -528,8 +528,14 @@ function SessionDetail({ session, now }) {
         <MedColorDot color={session.medication_color} size={44} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold truncate">{session.medication_name}</p>
-          <p className="text-xs text-muted-foreground truncate">
-            {session.dose != null ? `${doseLabel(session.dose, session.unit)} · ` : ""}started {relativeTime(session.started_at)}
+          <p className="text-xs text-muted-foreground truncate" data-testid="effect-session-subtitle">
+            {/* Headline dose is the whole session's total: a redose raises
+                what was actually taken, so an 8000 mg session with a 1000 mg
+                redose reads 9000 mg, not the opening dose forever. */}
+            {sessionTotalDose(session) != null
+              ? `${doseLabel(sessionTotalDose(session), session.unit)}${(session.redoses || []).length ? ` total · ${1 + session.redoses.length} doses` : ""} · `
+              : ""}
+            started {relativeTime(session.started_at)}
           </p>
         </div>
         <button onClick={openEdit} aria-label="Edit session" data-testid="effect-edit-button" className="pressable h-9 w-9 rounded-full hover:bg-muted flex items-center justify-center text-primary shrink-0"><Pencil className="h-4 w-4" /></button>

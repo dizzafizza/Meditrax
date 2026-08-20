@@ -553,6 +553,20 @@ export function curveSeries(profile, points = 72) {
 // combined swallow of that total would get.
 export const REDOSE_MERGE_WINDOW_MIN = 5;
 
+// Total amount actually taken across the whole session -- primary plus every
+// redose with a recorded amount. This is what the UI's headline dose should
+// show once a session holds more than one dose (a session that opened at
+// 8000 mg and gained a 1000 mg redose IS a 9000 mg session), and it's
+// intentionally computed from session.redoses rather than the dose stack:
+// the stack merges near-simultaneous doses for curve purposes, but the
+// amount swallowed doesn't merge away. Null when no amount was recorded at
+// all; doses without amounts contribute nothing rather than guessing.
+export function sessionTotalDose(session) {
+  const amounts = [Number(session?.dose), ...(session?.redoses || []).map((r) => Number(r.amount))].filter((a) => isFinite(a) && a > 0);
+  if (!amounts.length) return null;
+  return Math.round(amounts.reduce((s, a) => s + a, 0) * 100) / 100;
+}
+
 export function sessionDoseStack(session) {
   const start = new Date(session.started_at).getTime();
   const baseScale = session.profile?.intensity_scale || 1;
