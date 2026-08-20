@@ -18,6 +18,7 @@ import {
   sessionDoseStack, stackedIntensityAt, stackChartEnd, stackedCurveSeries, doseWeightAt, doseIntensityAt,
   mealFactorsFor, isOralForm, MEAL_STATES,
   observedMealFactors, updateMealModel, baselineObservations, MEAL_FACTOR_BOUNDS,
+  sessionTotalDose,
 } from "../effectsEngine";
 import * as db from "../localdb";
 
@@ -1637,5 +1638,34 @@ describe("near-simultaneous redoses merge instead of collapsing the primary", ()
     expect(stack).toHaveLength(1);
     expect(stack[0].scale).toBeCloseTo(doseResponse(2, { hill: 1.4, typicalFraction: 0.45 }), 6);
     expect(stack[0].scale).toBeGreaterThan(1);
+  });
+});
+
+// The headline dose must follow the session's actual total, and reporting
+// must count redoses from the session itself -- the dose stack merges
+// near-simultaneous doses for curve purposes, which would otherwise make a
+// same-time redose vanish from counts and totals.
+describe("session total dose", () => {
+  const base = "2026-07-23T12:00:00.000Z";
+
+  test("sums the primary and every redose with a recorded amount", () => {
+    expect(sessionTotalDose({ dose: 8000, redoses: [{ at: base, amount: 1000 }] })).toBe(9000);
+    expect(sessionTotalDose({ dose: 10, redoses: [{ at: base, amount: 5 }, { at: base, amount: 2.5 }] })).toBe(17.5);
+    expect(sessionTotalDose({ dose: 10 })).toBe(10);
+    // unknown amounts contribute nothing rather than guessing
+    expect(sessionTotalDose({ dose: 10, redoses: [{ at: base, amount: null }] })).toBe(10);
+    expect(sessionTotalDose({ dose: null, redoses: [{ at: base, amount: null }] })).toBeNull();
+  });
+
+  test("describeActiveSession reports the true redose count and total even when the stack merged them", async () => {
+    const med = await db.createMedication({ name: "TotalDoseMed", strength: 10, unit: "mg", category: "opioid", form: "tablet", times: [], is_prn: true });
+    const s = await db.startEffectSession({ medication_id: med.id, dose: 8000, unit: "mg" });
+    await db.addEffectDose(s.id, { amount: 1000 }); // same-time -> stack merges to one entry
+    const sessions = await db.getActiveEffectSessions();
+    const live = sessions.find((x) => x.medication_id === med.id);
+    const d = db.describeActiveSession(live);
+    expect(d.redose_count).toBe(1); // from session.redoses, not the merged stack
+    expect(d.total_dose).toBe(9000);
+    expect(d.unit).toBe("mg");
   });
 });

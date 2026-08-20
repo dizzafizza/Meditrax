@@ -3,6 +3,20 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-20 — The session headline dose now tracks the total, not the first dose
+
+### Fixed
+- **Adding a redose now updates the session's displayed dosage.** The
+  session card and detail header kept showing the opening dose forever
+  ("8000 mg" after a 1000 mg redose), even though the session was by then a
+  9000 mg session. Both now show the running total with a dose count
+  ("9000 mg total · 2 doses"), the assistant's session report gained the
+  same `total_dose`, and its redose count now comes from the session's own
+  redose list rather than the curve's dose stack — which, since the
+  same-time-redose fix, merges simultaneous doses for plotting and would
+  have made such a redose vanish from the count. The share card already
+  totalled correctly and is unchanged.
+
 ## 2026-08-20 — A same-time redose no longer flattens the session curve
 
 ### Fixed

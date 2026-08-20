@@ -3,7 +3,7 @@
 import localforage from "localforage";
 import { CATALOG_SEED } from "./catalogSeed";
 import { generateTaperSchedule, taperDoseOnDate, suggestTaperParams } from "./taperEngine";
-import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt, mealFactorsFor, MEAL_STATES, observedMealFactors, updateMealModel, baselineObservations, isOralForm } from "./effectsEngine";
+import { personalizedProfile, observationsFromSession, updateModel, sessionDoseStack, sessionTotalDose, stackChartEnd, doseIntensityAt, phaseAt, modeledEffectiveness, modelConfidence, doseResponse, doseResponseFor, intensityAt, mealFactorsFor, MEAL_STATES, observedMealFactors, updateMealModel, baselineObservations, isOralForm } from "./effectsEngine";
 import { estimateTolerance, toleranceBand } from "./toleranceEngine";
 import { localDateStr, addDaysStr, diffDays, timestampToLocalDate, weekdayKeyLocal } from "./dates";
 import { doseQuantity, predictRunOut, inventoryStatus, taperState, pillsFromAmount } from "./predictor";
@@ -1326,7 +1326,12 @@ export function describeActiveSession(session, now = Date.now()) {
     elapsed_min: Math.round(t),
     phase: phase.label,
     intensity_pct: Math.round(doseIntensityAt(t, p, stack, newestIdx)),
-    redose_count: Math.max(0, stack.length - 1),
+    // From the session's own redose list, NOT the dose stack: the stack
+    // merges near-simultaneous doses for curve purposes, which would make a
+    // same-time redose disappear from this count.
+    redose_count: (session.redoses || []).length,
+    total_dose: sessionTotalDose(session),
+    unit: session.unit || null,
     predicted: { onset_at: at(p.onset_min), peak_at: at(p.peak_min), ends_at: at(stackChartEnd(p, stack)) },
     personalized: p.learned ? `from ${p.samples} sessions (${p.confidence} confidence)` : "typical values (no personal data yet)",
     tolerance: tol ? {
