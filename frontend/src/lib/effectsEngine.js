@@ -539,24 +539,55 @@ export function curveSeries(profile, points = 72) {
 // amount relative to the primary dose. Returns the doses normalized to
 // [{ tOffset (min from session start), scale }]; the primary dose is always
 // first with tOffset 0.
+//
+// Doses this close together are one dose, not a hand-off. The collapse model
+// below (doseWeightAt) exists for a redose taken meaningfully later -- the
+// new peak takes over from the old one's tail. A redose logged at (or within
+// minutes of) an earlier dose is the same swallowing event split into two
+// entries, and treating it as a successor was a real, visible bug: the tiny
+// "newer" dose faded the huge primary out across the primary's own come-up,
+// so an 8000 mg session with a 1000 mg same-time redose collapsed to the
+// redose's ~15% curve at the very moment it should have been peaking.
+// Near-simultaneous doses therefore merge into one entry whose amount is the
+// sum, scaled through the same saturating dose-response -- exactly what one
+// combined swallow of that total would get.
+export const REDOSE_MERGE_WINDOW_MIN = 5;
+
 export function sessionDoseStack(session) {
   const start = new Date(session.started_at).getTime();
   const baseScale = session.profile?.intensity_scale || 1;
   const primaryAmt = Number(session.dose);
-  const stack = [{ tOffset: 0, scale: baseScale }];
   // A redose's strength relative to the primary follows the same saturating
   // dose-response as everything else. It used to scale linearly and without
   // bound, so a redose of four times the primary was modeled as four times
   // the effect -- the same fault fixed in personalizedProfile.
   const dr = { hill: session.profile?.hill ?? 1.2, typicalFraction: session.profile?.typicalFraction ?? 0.6 };
+  // With no recorded primary amount there is nothing to relate amounts to,
+  // so every dose counts as one reference dose (a merged same-time pair then
+  // reads as a genuine double dose rather than being ignored).
+  const ref = isFinite(primaryAmt) && primaryAmt > 0 ? primaryAmt : 1;
+  const hasAmounts = isFinite(primaryAmt) && primaryAmt > 0;
+
+  const events = [{ tOffset: 0, amount: ref }];
   for (const r of session.redoses || []) {
     const tOffset = Math.max(0, (new Date(r.at).getTime() - start) / 60000);
-    let scale = baseScale;
     const ra = Number(r.amount);
-    if (isFinite(primaryAmt) && primaryAmt > 0 && isFinite(ra) && ra > 0) {
-      scale = baseScale * doseResponse(Math.min(10, Math.max(0.1, ra / primaryAmt)), dr);
+    events.push({ tOffset, amount: hasAmounts && isFinite(ra) && ra > 0 ? ra : ref, id: r.id });
+  }
+
+  const stack = [];
+  for (const e of events) {
+    const last = stack[stack.length - 1];
+    if (last && e.tOffset - last.tOffset <= REDOSE_MERGE_WINDOW_MIN) {
+      last.amount += e.amount;
+      if (e.id && !last.id) last.id = e.id;
+    } else {
+      stack.push({ ...e });
     }
-    stack.push({ tOffset, scale, id: r.id });
+  }
+  for (const s of stack) {
+    s.scale = baseScale * doseResponse(Math.min(10, Math.max(0.1, s.amount / ref)), dr);
+    delete s.amount;
   }
   return stack;
 }

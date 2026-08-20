@@ -3,6 +3,24 @@
 Notable changes to Meditrax. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-08-20 — A same-time redose no longer flattens the session curve
+
+### Fixed
+- **Adding a dose at (or within minutes of) the session's first dose made
+  the chart collapse to a fraction of its real height.** The redose model
+  treats a later dose as a hand-off — the old dose's curve fades out across
+  the new one's come-up, because a redose taken hours in genuinely takes
+  over from the fading tail. But a dose logged at the same moment as the
+  primary isn't a successor, it's the same swallowing event split into two
+  entries — and the hand-off math faded a large primary dose to zero at its
+  own peak, leaving only the (often much smaller) redose's curve: an
+  8000 mg session with a 1000 mg same-time redose drew a ~15% flat line at
+  the very moment it should have been peaking. Doses taken within a few
+  minutes of each other now merge into one combined dose, scaled through
+  the same saturating dose-response as everything else — exactly what one
+  swallow of the combined amount would get. Redoses taken meaningfully
+  later keep the existing hand-off behavior unchanged.
+
 ## 2026-08-19 — Vacation planner: pack exactly enough for the whole trip
 
 ### Added
